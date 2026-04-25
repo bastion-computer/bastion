@@ -5,6 +5,6 @@ export default defineConfig({
   schema: "./src/**/*.sql.ts",
   out: "./migrations",
   dbCredentials: {
-    url: "bastion.db",
+    url: "../../.bastion/sqlite.db",
   },
 });

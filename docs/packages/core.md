@@ -97,16 +97,17 @@ export namespace Example {
 
 - All modules MUST have a colocated test file named `$MODULE_NAME.test.ts`.
 - Tests use the [Bun test runner](https://bun.com/docs/test) (`bun:test`).
-- The `db` client automatically uses an **in-memory SQLite** database when `NODE_ENV=test` (set automatically by `bun test`). No mocking is required -- module code imports `db` from `../drizzle` as normal.
-- Tests MUST call `runMigrations()` from `../drizzle` in a `beforeAll` hook to set up the schema.
+- Tests MUST call `initDb(":memory:")` from `../drizzle` before `runMigrations()` to use an **in-memory SQLite** database. No mocking is required -- module code imports `db` from `../drizzle` as normal.
+- Tests MUST call `runMigrations()` from `../drizzle` in a `beforeAll` hook (after `initDb`) to set up the schema.
 - Tests MUST call `resetDatabase()` from `../drizzle` in a `beforeEach` hook to ensure isolation between tests.
 
 ```ts
 import { describe, test, expect, beforeAll, beforeEach } from "bun:test";
-import { runMigrations, resetDatabase } from "../drizzle";
+import { initDb, runMigrations, resetDatabase } from "../drizzle";
 import { Example } from ".";
 
 beforeAll(() => {
+  initDb(":memory:");
   runMigrations();
 });
 
@@ -125,10 +126,11 @@ describe("Example", () => {
 
 ### Drizzle exception
 
-The only exception to this module pattern is `src/drizzle` which has an `index.ts` file to instantiate and export the `db` client used by other modules. When `NODE_ENV=test`, the `db` client uses an in-memory SQLite database instead of the file-based `bastion.db`. It also exports:
+The only exception to this module pattern is `src/drizzle` which has an `index.ts` that initializes the database via dependency injection. Instead of eagerly creating the `db` client, it exports an `initDb(dataDir: string)` function that callers invoke before using `db`, `runMigrations()`, or `resetDatabase()`.
 
-- `runMigrations()` - Applies the migrations from the `migrations` directory to the database.
-- `resetDatabase()` - Deletes all rows from every user-defined table and resets autoincrement counters. Used in `beforeEach` hooks to ensure test isolation.
+- `initDb(dataDir: string)` - Creates the data directory if it doesn't exist (unless `dataDir` is `":memory:"`), opens a SQLite database at `dataDir/sqlite.db`, enables `PRAGMA foreign_keys`, and sets the module-level `db` and `sqlite` variables.
+- `runMigrations()` - Applies the migrations from the `migrations` directory to the database. Must be called after `initDb`.
+- `resetDatabase()` - Deletes all rows from every user-defined table and resets autoincrement counters. Used in `beforeEach` hooks to ensure test isolation. Must be called after `initDb`.
 
 ## Database
 
