@@ -2,6 +2,7 @@ import { initDb, runMigrations } from "@bastion/core/drizzle";
 import { Command } from "commander";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { exampleApi } from "./example";
@@ -25,6 +26,7 @@ if (isMain) {
   port = opts.port;
   const dataDir = resolve(opts.dataDir.replace(/^~/, homedir()));
 
+  mkdirSync(dataDir, { recursive: true });
   initDb(dataDir);
   runMigrations();
 }

@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 let sqlite: Database;
@@ -11,7 +11,9 @@ export function initDb(dataDir: string) {
   if (dataDir === ":memory:") {
     sqlite = new Database(":memory:");
   } else {
-    mkdirSync(dataDir, { recursive: true });
+    if (!existsSync(dataDir)) {
+      throw new Error(`Data directory does not exist: ${dataDir}`);
+    }
     sqlite = new Database(resolve(dataDir, "sqlite.db"));
   }
   sqlite.run("PRAGMA foreign_keys = ON");
