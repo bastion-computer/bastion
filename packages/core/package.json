@@ -1,0 +1,28 @@
+{
+  "name": "@bastion/core",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./*": "./src/*/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint ./src",
+    "prettier": "prettier --check '**'",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "db": "bunx drizzle-kit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.1",
+    "valibot": "^1.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "^1.3.11",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^10.1.0",
+    "prettier": "^3.8.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.57.2"
+  }
+}

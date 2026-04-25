@@ -1,0 +1,20 @@
+{
+  "name": "bastion",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "bun run --filter \"*\" lint",
+    "prettier": "bun run --filter \"*\" prettier",
+    "typecheck": "bun run --filter \"*\" typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
