@@ -1,10 +1,11 @@
 import { describe, test, expect, beforeAll, beforeEach } from "bun:test";
-import { runMigrations, resetDatabase } from "@bastion/core/drizzle";
+import { initDb, runMigrations, resetDatabase } from "@bastion/core/drizzle";
 import { Example } from "@bastion/core/example";
 import * as v from "valibot";
 import { app } from "..";
 
 beforeAll(() => {
+  initDb(":memory:");
   runMigrations();
 });
 

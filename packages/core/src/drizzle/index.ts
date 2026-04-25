@@ -2,13 +2,20 @@ import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 
-const isTest = process.env.NODE_ENV === "test";
-const sqlite = new Database(isTest ? ":memory:" : "bastion.db");
-// SQLite disables foreign key enforcement by default. Without this,
-// ON DELETE CASCADE constraints are silently ignored.
-sqlite.run("PRAGMA foreign_keys = ON");
+import { resolve } from "node:path";
 
-export const db = drizzle(sqlite);
+let sqlite: Database;
+export let db: ReturnType<typeof drizzle>;
+
+export function initDb(dataDir: string) {
+  if (dataDir === ":memory:") {
+    sqlite = new Database(":memory:");
+  } else {
+    sqlite = new Database(resolve(dataDir, "sqlite.db"));
+  }
+  sqlite.run("PRAGMA foreign_keys = ON");
+  db = drizzle(sqlite);
+}
 
 export function runMigrations() {
   const migrationsFolder = `${import.meta.dir}/../../migrations`;

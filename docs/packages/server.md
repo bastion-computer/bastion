@@ -90,18 +90,19 @@ This keeps filtering efficient (server-side SQL `WHERE` clause) rather than fetc
 - All routes MUST have a colocated test file named `$MODULE_NAME.test.ts`.
 - Tests MUST cover all CRUD routes.
 - Tests use the [Bun test runner](https://bun.com/docs/test) (`bun:test`).
-- Tests MUST call `runMigrations()` from `@bastion/core/drizzle` in a `beforeAll` hook to set up the schema.
+- Tests MUST call `initDb(":memory:")` and `runMigrations()` from `@bastion/core/drizzle` in a `beforeAll` hook (in that order) to set up the schema.
 - Tests SHOULD call `resetDatabase()` in a `beforeEach` hook to ensure isolation between tests.
 - Tests MUST NOT define inline types. Use `v.parse()` with schemas from the respective core module to validate and type response bodies.
 
 ```ts
 import { describe, test, expect, beforeAll, beforeEach } from "bun:test";
-import { runMigrations, resetDatabase } from "@bastion/core/drizzle";
+import { initDb, runMigrations, resetDatabase } from "@bastion/core/drizzle";
 import { Example } from "@bastion/core/example";
 import * as v from "valibot";
 import { app } from "..";
 
 beforeAll(() => {
+  initDb(":memory:");
   runMigrations();
 });
 

@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeAll, beforeEach } from "bun:test";
-import { runMigrations, resetDatabase } from "../drizzle";
+import { initDb, runMigrations, resetDatabase } from "../drizzle";
 import { Example } from ".";
 
 beforeAll(() => {
+  initDb(":memory:");
   runMigrations();
 });
 
