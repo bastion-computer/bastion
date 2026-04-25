@@ -2,4 +2,5 @@ migrations
 node_modules
 *.db
 *.db-*
+*.sh
 .prettierignore

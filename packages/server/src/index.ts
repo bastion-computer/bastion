@@ -12,7 +12,12 @@ const isMain = Bun.main === import.meta.path;
 if (isMain) {
   const program = new Command();
   program
-    .option("--port <number>", "port to listen on", (v) => parseInt(v, 10), 3148)
+    .option(
+      "--port <number>",
+      "port to listen on",
+      (v) => parseInt(v, 10),
+      3148,
+    )
     .option("--data-dir <path>", "directory for persistent data", "~/.bastion");
   program.parse();
 
