@@ -9,6 +9,7 @@
     "lint": "eslint ./src",
     "prettier": "prettier --check '**'",
     "typecheck": "tsc --noEmit",
+    "dev": "bun run --hot src/index.ts",
     "test": "bun test"
   },
   "dependencies": {

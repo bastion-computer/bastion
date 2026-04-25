@@ -1,6 +1,9 @@
+import { runMigrations } from "@bastion/core/drizzle";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { exampleApi } from "./example";
+
+runMigrations();
 
 const app = new Hono()
   .onError((err, c) => {
@@ -15,3 +18,4 @@ const app = new Hono()
 
 export { app };
 export type AppType = typeof app;
+export default { port: 3148, fetch: app.fetch };

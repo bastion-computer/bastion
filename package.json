@@ -9,6 +9,7 @@
   "scripts": {
     "lint": "bun run --filter \"*\" lint",
     "prettier": "bun run --filter \"*\" prettier",
+    "dev": "bun run --filter '*' --parallel dev",
     "typecheck": "bun run --filter \"*\" typecheck"
   },
   "devDependencies": {
