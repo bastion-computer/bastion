@@ -1,0 +1,8 @@
+node_modules
+.astro
+dist
+.gitignore
+.prettierignore
+public
+*.webp
+*.svg
