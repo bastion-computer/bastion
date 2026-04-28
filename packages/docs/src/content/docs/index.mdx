@@ -1,40 +1,68 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
+title: Bastion
+description: An open source platform to deploy, run, and scale AI agents.
+head:
+  - tag: title
+    content: Bastion Computer
+template: splash
+editUrl: false
 hero:
-  tagline: Congrats on setting up a new Starlight project!
-  image:
-    file: ../../assets/houston.webp
+  tagline: An open source platform to deploy, run, and scale AI agents.
   actions:
-    - text: Example Guide
-      link: /guides/example/
+    - text: Docs
+      link: /getting-started/
       icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
-      icon: external
+    - text: Star on GitHub
+      link: https://github.com/bastion-computer/bastion
+      icon: github
       variant: minimal
+      attrs:
+        target: _blank
+        rel: noopener noreferrer
 ---
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
+import { ContainerSection } from "starlight-theme-black/components";
 
-## Next steps
+<ContainerSection>
+
+```sh
+curl -fsSL https://bastion.computer/install.sh | bash
+```
+
+</ContainerSection>
+
+<ContainerSection>
 
 <CardGrid stagger>
-  <Card title="Update content" icon="pencil">
-    Edit `src/content/docs/index.mdx` to see this page change.
+  <Card title="Declarative Sandboxes" icon="seti:json">
+    Define agent environments, resources, policies, and lifecycle behavior with
+    versioned JSON configuration.
   </Card>
-  <Card title="Change page layout" icon="document">
-    Delete `template: splash` in `src/content/docs/index.mdx` to display a
-    sidebar on this page.
+  <Card title="Strong Isolation" icon="laptop">
+    Operate agents within Firecracker microVMs, giving each session a KVM-backed
+    isolation boundary with fast startup.
   </Card>
-  <Card title="Add new content" icon="add-document">
-    Add Markdown or MDX files to `src/content/docs` to create new pages.
+  <Card title="Secure Policies" icon="seti:lock">
+    Maintain fine-grained control over filesystem access, network ingress and
+    egress, secrets, and external resources.
   </Card>
-  <Card title="Configure your site" icon="setting">
-    Edit your `sidebar` and other config in `astro.config.mjs`.
+  <Card title="Ephemeral or Persistent Sessions" icon="add-document">
+    Start clean sandboxes on demand, duplicate existing workflows from
+    snapshots, and resume long-running sessions with durable storage.
   </Card>
-  <Card title="Read the docs" icon="open-book">
-    Learn more in [the Starlight Docs](https://starlight.astro.build/).
+  <Card title="Programmatic Access" icon="seti:json">
+    Built on strongly typed, versioned APIs for integration with downstream
+    services, UIs, CLIs, and SDKs.
+  </Card>
+  <Card title="Open Source" icon="seti:license">
+    Distributed under the MIT license and fully self-hostable on your own
+    infrastructure.
+  </Card>
+  <Card title="Built for Linux" icon="linux">
+    Runs on Linux systems with KVM support, from local machines to cloud
+    instances like AWS EC2.
   </Card>
 </CardGrid>
+
+</ContainerSection>
