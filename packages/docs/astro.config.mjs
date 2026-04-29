@@ -26,12 +26,10 @@ export default defineConfig({
         dark: "./src/assets/logo-dark.png",
       },
       sidebar: [
+        { label: "Getting Started", slug: "getting-started" },
         {
           label: "Guides",
-          items: [
-            // Each item here is one entry in the navigation menu.
-            { label: "Example Guide", slug: "guides/example" },
-          ],
+          items: [{ label: "Example Guide", slug: "guides/example" }],
         },
         {
           label: "Reference",
