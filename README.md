@@ -1,3 +1,3 @@
 # bastion
 
-Bastion is an open source platform for deploying, running, and scaling AI agents.
+Bastion is an open source platform to deploy, run, and scale AI agents.
