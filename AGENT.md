@@ -16,3 +16,4 @@ IMPORTANT:
 - [Packages](docs/packages/)
   - [Core](docs/packages/core.md) - Core business logic and database
   - [Server](docs/packages/server.md) - Hono API server
+  - [Docs](docs/packages/docs.md) - Astro Starlight documentation site
