@@ -1,17 +1,15 @@
 ---
-title: Getting Started
-description: A quick start guide to running parallel agents with bastion.
+title: Quick Start
+description: A quick guide to delploy your first agents with bastion.
 ---
-
-import { Aside } from "@astrojs/starlight/components";
 
 Bastion provides developers with a platform for deploying, running, and scaling their AI agents. This guide will take you from zero to one while introducing a few key concepts.
 
-<Aside>
-  _This guide assumes access to an `ANTHROPIC_API_KEY`. Bastion supports all
-  frontier models and you can substitute this value with your preferred
-  provider._
-</Aside>
+:::note
+_This guide assumes access to an `ANTHROPIC_API_KEY`. Bastion supports all
+frontier models and you can substitute this value with your preferred
+provider._
+:::
 
 ## Installation
 
@@ -27,10 +25,10 @@ This will install the necessary dependencies and start a `systemd` service to ru
 
 ## Define a static secret
 
-Bastion has a system for defining secrets that cannot be directly accessible via sandboxed agents. Rather than passing secrets to the agents, they are given a substituted value that gets intercepted and replaced by the host on outbound requests. This protects your secrets from exfiltration risk.
+Bastion has a vault for defining secrets that cannot be directly accessible via sandboxed agents. Rather than passing secrets to the agents, they are given a substituted value that gets intercepted and replaced by the host on outbound requests. This protects your secrets from exfiltration risk.
 
 ```sh
-bastion secret create --data '{
+bastion vault create --data '{
   "type": "static",
   "key": "ANTHROPIC_API_KEY",
   "value": "sk..."
@@ -47,16 +45,16 @@ bastion secret create --data '{
 
 We are defining a static secret for our `ANTHROPIC_API_KEY`. By default these values are stored on the host at `~/.bastion/sqlite.db`. However, this can be changed to work with any centralized secret store to prevent sprawl.
 
-> _See the extended [secrets]() guide for applying more advance options like block and allow lists for sensitive data_.
+> _See the extended guide on the [vault]() for applying more advanced options like block and allow lists for sensitive data_.
 
-## Define the environment
+## Define a template
 
 All agents running on the bastion platform execute within a secure sandbox that is isolated from your host system. This isolation is backed by a [Firecracker microVM](https://firecracker-microvm.github.io/) which can be booted in milliseconds and gives your agents full access to their own Linux environment.
 
 Rather than configuring every sandbox from scratch, bastion provides a declarative high level JSON schema for defining a VM environment.
 
 ```sh
-bastion environment create --config '{
+bastion template create --config '{
   "harness": {
     "type": "opencode",
     "provider": {
@@ -72,7 +70,7 @@ bastion environment create --config '{
 
 ```json
 {
-  "id": "env_xxxxxx",
+  "id": "tpl_xxxxxx",
   "createdAt": "<iso_timestamp>"
 }
 ```
@@ -81,14 +79,14 @@ This is the simplest configuration we can have. It is a minimal VM with an Anthr
 
 As mentioned previously, only a placeholder API key is passed into the sandbox. Bastion will intercept egress calls and replace this with the real value on the host layer.
 
-> _See the extended [configuration]() guide for all sandbox customization options._
+> _See the extended guide on [templates]() for all sandbox customization options._
 
 ## Deploy the agent
 
 We now have everything we need to create a sandbox.
 
 ```sh
-bastion sandbox create --environment env_xxxxxx
+bastion sandbox create --template tpl_xxxxxx
 ```
 
 ```json
@@ -96,14 +94,14 @@ bastion sandbox create --environment env_xxxxxx
   "id": "sbx_xxxxxx",
   "status": "pending",
   "source": {
-    "type": "environment",
-    "id": "env_xxxxxx"
+    "type": "template",
+    "id": "tpl_xxxxxx"
   },
   "createdAt": "<iso_timestamp>"
 }
 ```
 
-This action will asynchronously initialize a new Firecracker microVM with our configured environment. We can then use the following action to check on the status of our sandbox.
+This action will asynchronously initialize a new Firecracker microVM with our configured template. We can then use the following action to check on the status of our sandbox.
 
 ```sh
 bastion sandbox list
@@ -131,7 +129,7 @@ Once the sandbox is running you can start an opencode TUI using the following co
 bastion exec --id "sbx_xxxxxx" opencode
 ```
 
-For an actual coding agent use case, you would also want to setup your environments with code repositories and necessary tooling to spin up a dev server.
+For an actual coding agent use case, you would also want to setup your templates with code repositories and necessary tooling to spin up a dev server.
 
 > _See the extended [connection]() guide for more details on interacting with running sandboxes._
 
@@ -150,8 +148,8 @@ bastion sandbox pause sbx_xxxxxx
   "id": "sbx_xxxxxx",
   "status": "paused",
   "source": {
-    "type": "environment",
-    "id": "env_xxxxxx"
+    "type": "template",
+    "id": "tpl_xxxxxx"
   },
   "createdAt": "<iso_timestamp>"
 }
@@ -166,7 +164,7 @@ bastion sandbox snapshot sbx_xxxxxx
 ```json
 {
   "id": "snp_xxxxxx",
-  "sandbox": "snp_xxxxxx",
+  "sandbox": "sbx_xxxxxx",
   "status": "pending",
   "createdAt": "<iso_timestamp>"
 }
@@ -243,9 +241,9 @@ bastion sandbox list
 In this guide we ran through a "hello world" example of deploying parallel agents with bastion.
 
 - **Installation**: setup the bastion service and cli via a single shell command.
-- **Secrets**: defined sensitive values like API keys that are securely substituted at runtime.
-- **Environments**: used a declarative JSON schema to configure an agent's operating environment.
-- **Sandboxes**: initialized isolated Firecracker microVMs based on the defined environment.
+- **Vault**: defined sensitive values like API keys that are securely substituted at runtime.
+- **Templates**: used a declarative JSON schema to configure an agent's operating environment.
+- **Sandboxes**: initialized isolated Firecracker microVMs based on the defined template.
 - **Snapshots**: captured VM state and cloned it to scale out parallel workflows.
 
 From here, dive into the extended guides for deeper coverage on each topic.

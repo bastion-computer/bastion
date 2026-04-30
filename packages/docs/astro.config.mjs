@@ -26,7 +26,8 @@ export default defineConfig({
         dark: "./src/assets/logo-dark.png",
       },
       sidebar: [
-        { label: "Getting Started", slug: "getting-started" },
+        { label: "Introduction", slug: "introduction" },
+        { label: "Quick Start", slug: "quick-start" },
         {
           label: "Guides",
           items: [{ label: "Example Guide", slug: "guides/example" }],
