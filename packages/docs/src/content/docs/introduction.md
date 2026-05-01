@@ -35,4 +35,4 @@ The secret system prevents sensitive environment variables from entering the san
 
 Secret substitution alone is pointless if the actual value can't be used at some point. This is where the proxy comes in. All network calls that exit the sandbox go through a transparent proxy which handles TLS interception in order to replace the placeholder with the actual secret before sending the packet to its original destination (e.g. an external API service).
 
-Secret references can also be configured with allow lists which are enforced at the proxy to ensure secrets are only substituted for legitimate calls.
+Secret references can also be configured with allow lists which are enforced at the proxy to ensure secrets are only resolved for legitimate calls.
