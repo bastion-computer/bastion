@@ -48,7 +48,7 @@ bastion secrets bind SBX_ANTHROPIC_API_KEY:ANTHROPIC_API_KEY \
 
 We are creating a secret reference (`SBX_ANTHROPIC_API_KEY`) that maps to a host environment variable (`ANTHROPIC_API_KEY`).
 
-> _See the extended guide on [secrets](./guides/secrets.md) for all available commands and options_.
+> _See the extended guide on [secrets](/guides/secrets) for all available commands and options_.
 
 ## Define a template
 
