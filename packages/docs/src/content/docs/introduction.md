@@ -11,7 +11,7 @@ Bastion is an open source platform that makes it easy to run multiple agents on 
 
 On a high level, the bastion architecture is fairly simple and optimizes for an outcome where we can scale agents in a secure and reliable way.
 
-Everything within the bounded box is operating within a single Linux machine. The green components (vault, template, snapshot, and proxy) are on the host while the red sandboxes are isolated to virtual machines with their own guest kernel. Any interaction with bastion by downstream clients should occur via its public API.
+Everything within the bounded box is operating within a single Linux machine. The green components (secrets, template, snapshot, and proxy) are on the host while the red sandboxes are isolated to virtual machines with their own guest kernel. Any interaction with bastion by downstream clients should occur via its public API.
 
 ## Sandbox
 
@@ -27,12 +27,12 @@ Templates provide a system for configuring new sandboxes using a declarative sch
 
 Sandboxes can also be started from a saved state (including memory, CPU, and disk) of another sandbox rather than from a template. This can enable use cases like branching workflows from a point in time or restoring a long running session from a previous checkpoint.
 
-## Vault
+## Secrets
 
-The vault prevents sensitive secrets from entering the sandbox boundaries and exposing them to exfiltration risk. Vault secrets can be referenced in templates and substituted with placeholder values when starting a new sandbox. The sandbox will operate under the assumption that these placeholder values are the actual secrets.
+The secret system prevents sensitive environment variables from entering the sandbox boundaries and exposing them to exfiltration risk. Environment variables can be bound to secrets and referenced in templates. When initializing a new sandbox, the template will substitute a placeholder value that is sent into VM rather than the actual environment variable. The sandbox will operate under the assumption that these placeholder values are the actual secrets.
 
 ## Proxy
 
 Secret substitution alone is pointless if the actual value can't be used at some point. This is where the proxy comes in. All network calls that exit the sandbox go through a transparent proxy which handles TLS interception in order to replace the placeholder with the actual secret before sending the packet to its original destination (e.g. an external API service).
 
-Vault secrets can also be configured with allow and block lists which are enforced at the proxy to ensure secrets are only substituted for legitimate calls.
+Secret references can also be configured with allow lists which are enforced at the proxy to ensure secrets are only substituted for legitimate calls.

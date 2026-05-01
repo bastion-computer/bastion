@@ -30,7 +30,7 @@ export default defineConfig({
         { label: "Quick Start", slug: "quick-start" },
         {
           label: "Guides",
-          items: [{ label: "Example Guide", slug: "guides/example" }],
+          items: [{ label: "Secrets", slug: "guides/secrets" }],
         },
         {
           label: "Reference",

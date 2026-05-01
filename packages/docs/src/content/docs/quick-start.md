@@ -13,39 +13,42 @@ provider._
 
 ## Installation
 
-The most convenient way to install bastion is with the following one liner:
+The most convenient way to install bastion is with the following one liner.
 
 ```sh
 curl -fsSL https://bastion.computer/install.sh | bash
 ```
 
-This will install the necessary dependencies and start a `systemd` service to run bastion on the default `localhost` port `3148`.
+Then start the server which will listen on `localhost` port `3148` by default. For this guide, we will make sure the bastion process has access to the `ANTHROPIC_API_KEY`.
+
+```sh
+ANTHROPIC_API_KEY="sk..." bastion start
+```
 
 > _For downloading raw binaries, building from source, or using a package manager see the extended [installation]() guide._
 
-## Define a static secret
+## Bind a secret reference
 
-Bastion has a vault for defining secrets that cannot be directly accessible via sandboxed agents. Rather than passing secrets to the agents, they are given a substituted value that gets intercepted and replaced by the host on outbound requests. This protects your secrets from exfiltration risk.
+Bastion has a system for referencing environment variable secrets that cannot be directly accessible via sandboxed agents. Rather than passing secrets to the agents, they are given a substituted value that gets intercepted and replaced by the host on outbound requests. This protects secrets from exfiltration risk.
 
 ```sh
-bastion vault create --data '{
-  "type": "static",
-  "key": "ANTHROPIC_API_KEY",
-  "value": "sk..."
-}'
+bastion secrets bind SBX_ANTHROPIC_API_KEY:ANTHROPIC_API_KEY \
+    --allow-host "*.anthropic.com"
 ```
 
 ```json
 {
   "id": "sec_xxxxxx",
-  "key": "ANTHROPIC_API_KEY",
+  "key": "SBX_ANTHROPIC_API_KEY",
+  "env": "ANTHROPIC_API_KEY",
+  "allowHosts": ["*.anthropic.com"],
   "createdAt": "<iso_timestamp>"
 }
 ```
 
-We are defining a static secret for our `ANTHROPIC_API_KEY`. By default these values are stored on the host at `~/.bastion/sqlite.db`. However, this can be changed to work with any centralized secret store to prevent sprawl.
+We are creating a secret reference (`SBX_ANTHROPIC_API_KEY`) that maps to a host environment variable (`ANTHROPIC_API_KEY`).
 
-> _See the extended guide on the [vault]() for applying more advanced options like block and allow lists for sensitive data_.
+> _See the extended guide on [secrets](./guides/secrets.md) for all available commands and options_.
 
 ## Define a template
 
@@ -60,7 +63,7 @@ bastion template create --config '{
     "provider": {
       "anthropic": {
         "options": {
-          "apiKey": "{{$secret.ANTHROPIC_API_KEY}}"
+          "apiKey": "${{ secrets.SBX_ANTHROPIC_API_KEY }}"
         }
       }
     }
@@ -241,7 +244,7 @@ bastion sandbox list
 In this guide we ran through a "hello world" example of deploying parallel agents with bastion.
 
 - **Installation**: setup the bastion service and cli via a single shell command.
-- **Vault**: defined sensitive values like API keys that are securely substituted at runtime.
+- **Secrets**: bound host environment variables to secret references that are resolved on outbound calls.
 - **Templates**: used a declarative JSON schema to configure an agent's operating environment.
 - **Sandboxes**: initialized isolated Firecracker microVMs based on the defined template.
 - **Snapshots**: captured VM state and cloned it to scale out parallel workflows.
