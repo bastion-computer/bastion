@@ -29,7 +29,7 @@ ANTHROPIC_API_KEY="sk..." bastion start
 
 ## Bind a secret reference
 
-Bastion has a system for obfuscating environment variables so that they cannot be directly accessed within the sandbox. Rather than passing secrets to the sandbox, they are given a substituted value that gets intercepted and replaced by the host on outbound requests. This protects secrets from exfiltration risk.
+Bastion has a system for obfuscating environment variables so that they cannot be directly accessed within the sandbox. Rather than passing secrets to the sandbox, they are given a substituted value that gets intercepted and resolved by the host on outbound requests. This protects secrets from exfiltration risk.
 
 ```sh
 bastion secrets bind SBX_ANTHROPIC_API_KEY:ANTHROPIC_API_KEY \
