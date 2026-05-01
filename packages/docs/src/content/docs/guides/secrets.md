@@ -82,7 +82,7 @@ bastion secrets list [--limit] [--cursor]
 }
 ```
 
-`--limit` is an **optional** value that allows you to cap the amount of returned entries. If more entries are available it will return a `cursor` timestamp. Defaults to 20.
+`--limit` is an **optional** value that allows you to cap the number of returned entries. If more entries are available it will return a `cursor` timestamp. Defaults to 20.
 
 `--cursor` is an **optional** timestamp for fetching entries created after this point in time. Defaults to `null`.
 

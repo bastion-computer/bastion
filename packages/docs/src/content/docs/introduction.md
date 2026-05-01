@@ -9,7 +9,7 @@ Bastion is an open source platform that makes it easy to run multiple agents on 
 
 ![High level architecture](../../assets/high-level-architecture.png)
 
-On a high level, the bastion architecture is fairly simple and optimizes for an outcome where we can scale agents in a secure and reliable way.
+At a high level, the bastion architecture is fairly simple and optimizes for an outcome where we can scale agents in a secure and reliable way.
 
 Everything within the bounded box is operating within a single Linux machine. The green components (secrets, template, snapshot, and proxy) are on the host while the red sandboxes are isolated to virtual machines with their own guest kernel. Any interaction with bastion by downstream clients should occur via its public API.
 
@@ -19,17 +19,17 @@ The sandbox is the core component of the bastion platform. It is a [Firecracker 
 
 In production, it is typical to have many sandboxes running in parallel. All other components in the system are built to support the orchestration and security challenges in managing a cluster of these sandboxes.
 
-## Template
+## Templates
 
 Templates provide a system for configuring new sandboxes using a declarative schema. It allows developers to define the components (such as harnesses, resources, or secrets) that must be instrumented within the sandbox for their agents to operate.
 
-## Snapshot
+## Snapshots
 
 Sandboxes can also be started from a saved state (including memory, CPU, and disk) of another sandbox rather than from a template. This can enable use cases like branching workflows from a point in time or restoring a long running session from a previous checkpoint.
 
 ## Secrets
 
-The secret system prevents sensitive environment variables from entering the sandbox boundaries and exposing them to exfiltration risk. Environment variables can be bound to secrets and referenced in templates. When initializing a new sandbox, the template will substitute a placeholder value that is sent into VM rather than the actual environment variable. The sandbox will operate under the assumption that these placeholder values are the actual secrets.
+The secret system prevents sensitive environment variables from entering the sandbox boundaries and exposing them to exfiltration risk. Environment variables can be bound to secrets and referenced in templates. When initializing a new sandbox, the template will substitute a placeholder value that is sent into the VM rather than the actual environment variable. The sandbox will operate under the assumption that these placeholder values are the actual secrets.
 
 ## Proxy
 

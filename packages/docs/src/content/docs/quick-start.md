@@ -1,6 +1,6 @@
 ---
 title: Quick Start
-description: A quick guide to delploy your first agents with bastion.
+description: A quick guide to deploy your first agents with bastion.
 ---
 
 Bastion provides developers with a platform for deploying, running, and scaling their AI agents. This guide will take you from zero to one while introducing a few key concepts.
@@ -29,7 +29,7 @@ ANTHROPIC_API_KEY="sk..." bastion start
 
 ## Bind a secret reference
 
-Bastion has a system for referencing environment variable secrets that cannot be directly accessible via sandboxed agents. Rather than passing secrets to the agents, they are given a substituted value that gets intercepted and replaced by the host on outbound requests. This protects secrets from exfiltration risk.
+Bastion has a system for obfuscating environment variables so that they cannot be directly accessed within the sandbox. Rather than passing secrets to the sandbox, they are given a substituted value that gets intercepted and replaced by the host on outbound requests. This protects secrets from exfiltration risk.
 
 ```sh
 bastion secrets bind SBX_ANTHROPIC_API_KEY:ANTHROPIC_API_KEY \
@@ -57,7 +57,7 @@ All agents running on the bastion platform execute within a secure sandbox that 
 Rather than configuring every sandbox from scratch, bastion provides a declarative high level JSON schema for defining a VM environment.
 
 ```sh
-bastion template create --config '{
+bastion templates create --config '{
   "harness": {
     "type": "opencode",
     "provider": {
@@ -132,7 +132,7 @@ Once the sandbox is running you can start an opencode TUI using the following co
 bastion exec --id "sbx_xxxxxx" opencode
 ```
 
-For an actual coding agent use case, you would also want to setup your templates with code repositories and necessary tooling to spin up a dev server.
+For an actual coding agent use case, you would also want to set up your templates with code repositories and necessary tooling to spin up a dev server.
 
 > _See the extended [connection]() guide for more details on interacting with running sandboxes._
 
