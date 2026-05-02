@@ -29,7 +29,9 @@ Sandboxes can also be started from a saved state (including memory, CPU, and dis
 
 ## Secrets
 
-The secret system prevents sensitive environment variables from entering the sandbox boundaries and exposing them to exfiltration risk. Environment variables can be bound to secrets and referenced in templates. When initializing a new sandbox, the template will substitute a placeholder value that is sent into the VM rather than the actual environment variable. The sandbox will operate under the assumption that these placeholder values are the actual secrets.
+The secret system prevents sensitive environment variables from entering the sandbox and exposing them to exfiltration risk. Environment variables can be mapped to a reference and used in templates.
+
+When initializing a new sandbox, the template will substitute a placeholder value that is sent into the VM rather than the actual environment variable. The sandbox will operate under the assumption that these placeholder values are the actual secrets.
 
 ## Proxy
 
