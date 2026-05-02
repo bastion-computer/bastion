@@ -3,7 +3,7 @@ title: Quick Start
 description: A quick guide to deploy your first agents with bastion.
 ---
 
-Bastion provides developers with a platform for deploying, running, and scaling their AI agents. This guide will take you from zero to one while introducing a few key concepts.
+Bastion provides developers with a platform for deploying, running, and scaling their AI agents. This guide will take you from zero to one while putting a few key concepts into practice.
 
 :::note
 _This guide assumes access to an `ANTHROPIC_API_KEY`. Bastion supports all
@@ -19,7 +19,7 @@ The most convenient way to install bastion is with the following one liner.
 curl -fsSL https://bastion.computer/install.sh | bash
 ```
 
-Then start the server which will listen on `localhost` port `3148` by default. For this guide, we will make sure the bastion process has access to the `ANTHROPIC_API_KEY`.
+Then start the server which will listen on `localhost` port `3148` by default. For this guide, we will make sure the bastion process has access to the `ANTHROPIC_API_KEY` as an environment variable.
 
 ```sh
 ANTHROPIC_API_KEY="sk..." bastion start
@@ -80,7 +80,7 @@ bastion templates create --config '{
 
 This is the simplest configuration we can have. It is a minimal VM with an Anthropic authenticated [opencode](https://opencode.ai/docs/) harness. In practice, you will have many more options available, but for simplicity we'll keep it bare bones here.
 
-As mentioned previously, only a placeholder API key is passed into the sandbox. Bastion will intercept egress calls and replace this with the real value on the host layer.
+As mentioned previously, only a placeholder API key is passed into the sandbox. Bastion will intercept egress calls and resolve this with the real value on the host layer.
 
 > _See the extended guide on [templates]() for all sandbox customization options._
 
@@ -138,7 +138,7 @@ For an actual coding agent use case, you would also want to set up your template
 
 ## Sandbox snapshots
 
-Sandboxes can also be created from a snapshot. This can be useful for a variety of reasons such as branching parallel workflows from a certain checkpoint or restoring a session from a previous state.
+Sandboxes can also be created from a snapshot. This can be useful for a variety of reasons such as branching parallel workflows from a certain checkpoint or restoring a session to a previous state.
 
 1. Pause the sandbox
 

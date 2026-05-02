@@ -1,11 +1,11 @@
 ---
 title: Secrets
-description: A guide to referencing secret values on the bastion platform.
+description: A guide to referencing secret environment variables on the bastion platform.
 ---
 
-The secret system allows developers to map sensitive environment variables to a reference value. It works alongside the template and proxy systems so actual secrets remain obfuscated inside the sandbox boundary and only resolved during outbound calls at the host level.
+The secret system allows developers to map sensitive environment variables to a reference value. It works alongside the template and proxy systems so actual secrets remain obfuscated inside the sandbox and only resolved during outbound calls on the host.
 
-Secret references are immutable after creation. To change the environment variable, or allowed hosts, remove the existing reference and bind a new one. This keeps changes explicit and avoids ambiguous updates to security-sensitive fields.
+Secret references are immutable after creation. To change the environment variable or allowed hosts, remove the existing reference and bind a new one. This keeps changes explicit and avoids ambiguous updates to security-sensitive fields.
 
 ## Create a secret reference
 
@@ -66,16 +66,9 @@ bastion secrets list [--limit] [--cursor]
     },
     {
       "id": "sec_yyyyyy",
-      "key": "PUBLIC_KEY",
-      "env": "BASTION_PUBLIC_KEY",
-      "allowHosts": [],
-      "createdAt": "<iso_timestamp>"
-    },
-    {
-      "id": "sec_zzzzzz",
-      "key": "PRIVATE_KEY",
-      "env": "BASTION_PRIVATE_KEY",
-      "allowHosts": ["bastion.computer", "*.bastion.computer"],
+      "key": "ANOTHER_API_KEY",
+      "env": "BASTION_ANOTHER_API_KEY",
+      "allowHosts": ["api.example.com"],
       "createdAt": "<iso_timestamp>"
     }
   ]
