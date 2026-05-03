@@ -61,7 +61,7 @@ Use `env` to define environment variables made available inside sandboxes create
 {
   "env": {
     "NODE_ENV": "development",
-    "GITHUB_TOKEN": "${{ env.GITHUB_TOKEN }}",
+    "PUBLIC_KEY": "${{ env.PUBLIC_KEY }}",
     "ANTHROPIC_API_KEY": "${{ secrets.ANTHROPIC_API_KEY }}"
   }
 }
