@@ -6,9 +6,9 @@ description: A quick guide to deploy your first agents with bastion.
 Bastion provides developers with a platform for deploying, running, and scaling their AI agents. This guide will take you from zero to one while putting a few key concepts into practice.
 
 :::note
-_This guide assumes access to an `ANTHROPIC_API_KEY`. Bastion supports all
-frontier models and you can substitute this value with your preferred
-provider._
+_This guide assumes access to an `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. Bastion
+supports all frontier models and you can substitute these values with your
+preferred providers._
 :::
 
 ## Installation
@@ -19,10 +19,10 @@ The most convenient way to install bastion is with the following one liner.
 curl -fsSL https://bastion.computer/install.sh | bash
 ```
 
-Then start the server which will listen on `localhost` port `3148` by default. For this guide, we will make sure the bastion process has access to the `ANTHROPIC_API_KEY` as an environment variable.
+Then start the server which will listen on `localhost` port `3148` by default. For this guide, we will make sure the bastion process has access to the model provider keys as environment variables.
 
 ```sh
-ANTHROPIC_API_KEY="sk..." bastion start
+ANTHROPIC_API_KEY="sk-ant-..." OPENAI_API_KEY="sk-..." bastion start
 ```
 
 > _For downloading raw binaries, building from source, or using a package manager see the extended [installation]() guide._
@@ -32,21 +32,26 @@ ANTHROPIC_API_KEY="sk..." bastion start
 Bastion has a system for obfuscating environment variables so that they cannot be directly accessed within the sandbox. Rather than passing secrets to the sandbox, they are given a substituted value that gets intercepted and resolved by the host on outbound requests. This protects secrets from exfiltration risk.
 
 ```sh
-bastion secrets bind SBX_ANTHROPIC_API_KEY:ANTHROPIC_API_KEY \
+bastion secrets bind ANTHROPIC_API_KEY:ANTHROPIC_API_KEY \
     --allow-host "*.anthropic.com"
+```
+
+```sh
+bastion secrets bind OPENAI_API_KEY:OPENAI_API_KEY \
+    --allow-host "*.openai.com"
 ```
 
 ```json
 {
   "id": "sec_xxxxxx",
-  "key": "SBX_ANTHROPIC_API_KEY",
+  "key": "ANTHROPIC_API_KEY",
   "env": "ANTHROPIC_API_KEY",
   "allowHosts": ["*.anthropic.com"],
   "createdAt": "<iso_timestamp>"
 }
 ```
 
-We are creating a secret reference (`SBX_ANTHROPIC_API_KEY`) that maps to a host environment variable (`ANTHROPIC_API_KEY`).
+We are creating secret references that map to host environment variables. Templates can use these values with `"${{ secrets.ANTHROPIC_API_KEY }}"` and `"${{ secrets.OPENAI_API_KEY }}"`.
 
 > _See the extended guide on [secrets](/guides/secrets) for all available commands and options_.
 
@@ -57,16 +62,34 @@ All agents running on the bastion platform execute within a secure sandbox that 
 Rather than configuring every sandbox from scratch, bastion provides a declarative high level JSON schema for defining a VM environment.
 
 ```sh
-bastion templates create --config '{
-  "harness": {
-    "type": "opencode",
-    "provider": {
-      "anthropic": {
-        "options": {
-          "apiKey": "${{ secrets.SBX_ANTHROPIC_API_KEY }}"
+bastion templates create node-dev --config '{
+  "actions": {
+    "init": [
+      {
+        "use": "github.com/bastion-computer/setup-node",
+        "with": {
+          "version": "24"
+        }
+      },
+      {
+        "use": "github.com/bastion-computer/checkout",
+        "with": {
+          "repository": "github.com/bastion-computer/bastion"
+        }
+      },
+      {
+        "use": "github.com/bastion-computer/setup-opencode",
+        "with": {
+          "anthropicApiKey": "${{ secrets.ANTHROPIC_API_KEY }}",
+          "openaiApiKey": "${{ secrets.OPENAI_API_KEY }}"
         }
       }
-    }
+    ],
+    "start": [
+      {
+        "run": "npm run dev"
+      }
+    ]
   }
 }'
 ```
@@ -74,22 +97,26 @@ bastion templates create --config '{
 ```json
 {
   "id": "tpl_xxxxxx",
+  "key": "node-dev",
   "createdAt": "<iso_timestamp>"
 }
 ```
 
-This is the simplest configuration we can have. It is a minimal VM with an Anthropic authenticated [opencode](https://opencode.ai/docs/) harness. In practice, you will have many more options available, but for simplicity we'll keep it bare bones here.
+This template creates a small VM, installs Node.js, checks out the repository, configures [opencode](https://opencode.ai/docs/) with secret-backed provider keys, and starts the dev server.
 
-As mentioned previously, only a placeholder API key is passed into the sandbox. Bastion will intercept egress calls and resolve this with the real value on the host layer.
+As mentioned previously, only placeholder API keys are passed into the sandbox. Bastion will intercept egress calls and resolve these with the real values on the host layer.
 
-> _See the extended guide on [templates]() for all sandbox customization options._
+> _See the extended guide on [templates](/guides/templates) for all sandbox customization options._
 
 ## Deploy the agent
 
 We now have everything we need to create a sandbox.
 
 ```sh
-bastion sandbox create --template tpl_xxxxxx
+bastion sandbox create --key node-dev
+
+# The same sandbox can be created using the generated template ID.
+bastion sandbox create --id tpl_xxxxxx
 ```
 
 ```json
@@ -116,8 +143,8 @@ bastion sandbox list
     "id": "sbx_xxxxxx",
     "status": "running",
     "source": {
-      "type": "environment",
-      "id": "env_xxxxxx"
+      "type": "template",
+      "id": "tpl_xxxxxx"
     },
     "createdAt": "<iso_timestamp>"
   }
@@ -220,8 +247,8 @@ bastion sandbox list
     "id": "sbx_xxxxxx",
     "status": "paused",
     "source": {
-      "type": "environment",
-      "id": "env_xxxxxx"
+      "type": "template",
+      "id": "tpl_xxxxxx"
     },
     "createdAt": "<iso_timestamp>"
   },

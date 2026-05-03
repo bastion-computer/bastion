@@ -21,7 +21,7 @@ In production, it is typical to have many sandboxes running in parallel. All oth
 
 ## Templates
 
-Templates provide a system for configuring new sandboxes using a declarative schema. It allows developers to define the components (such as harnesses, resources, or secrets) that must be instrumented within the sandbox for their agents to operate.
+Templates provide a system for configuring new sandboxes using a declarative schema. It allows developers to define components such as actions, resources, environment variables, network rules, and secrets that must be instrumented within the sandbox for their agents to operate.
 
 ## Snapshots
 

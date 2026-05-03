@@ -3,6 +3,8 @@
   "type": "module",
   "private": true,
   "exports": {
+    "./schemas": "./schemas/index.ts",
+    "./schemas/*.json": "./schemas/*.json",
     "./*": "./src/*/index.ts"
   },
   "scripts": {

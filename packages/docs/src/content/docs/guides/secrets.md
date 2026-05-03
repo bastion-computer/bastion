@@ -1,6 +1,6 @@
 ---
 title: Secrets
-description: A guide to referencing secret environment variables on the bastion platform.
+description: A guide to securely referencing sensitive environment variables for use in sandboxes.
 ---
 
 The secret system allows developers to map sensitive environment variables to a reference value. It works alongside the template and proxy systems so actual secrets remain obfuscated inside the sandbox and only resolved during outbound calls on the host.
