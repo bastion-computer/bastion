@@ -89,7 +89,7 @@ Use `delegateCommands` to proxy named commands to a separate sandbox based on a 
 | Field              | Required | Description                                                                          |
 | ------------------ | -------- | ------------------------------------------------------------------------------------ |
 | Command name       | No       | Must start with a letter and can contain letters, numbers, underscores, and hyphens. |
-| Template reference | Yes      | Must reference a template by generated ID matching `tpl_*` or by template key.       |
+| Template reference | Yes      | Must reference a template by a generated ID matching `tpl_*` or by template key.     |
 
 ### Network Rules
 
@@ -148,10 +148,10 @@ Ingress objects define inbound traffic allowed into the VM.
 
 Sources define where ingress traffic can originate from. At least one of `cidrs` or `templates` is required.
 
-| Field       | Required      | Description                                                              |
-| ----------- | ------------- | ------------------------------------------------------------------------ |
-| `cidrs`     | Conditionally | One or more IPv4 or IPv6 CIDR ranges.                                    |
-| `templates` | Conditionally | One or more template references by generated ID matching `tpl_*` or key. |
+| Field       | Required      | Description                                                                 |
+| ----------- | ------------- | --------------------------------------------------------------------------- |
+| `cidrs`     | Conditionally | One or more IPv4 or IPv6 CIDR ranges.                                       |
+| `templates` | Conditionally | One or more template references by generated ID matching `tpl_*` or by key. |
 
 #### Egress Objects
 

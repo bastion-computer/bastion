@@ -59,7 +59,7 @@ We are creating secret references that map to host environment variables. Templa
 
 All agents running on the bastion platform execute within a secure sandbox that is isolated from your host system. This isolation is backed by a [Firecracker microVM](https://firecracker-microvm.github.io/) which can be booted in milliseconds and gives your agents full access to their own Linux environment.
 
-Rather than configuring every sandbox from scratch, bastion provides a declarative high level JSON schema for defining a VM environment.
+Rather than configuring every sandbox from scratch, bastion provides a declarative high-level JSON schema for defining a VM environment.
 
 ```sh
 bastion templates create node-dev --config '{
@@ -131,7 +131,7 @@ bastion sandbox create --id tpl_xxxxxx
 }
 ```
 
-This action will asynchronously initialize a new Firecracker microVM with our configured template. We can then use the following action to check on the status of our sandbox.
+This command will asynchronously initialize a new Firecracker microVM with our configured template. We can then use the following command to check on the status of our sandbox.
 
 ```sh
 bastion sandbox list

@@ -134,7 +134,7 @@ An exception to this module pattern is `src/drizzle` which has an `index.ts` tha
 
 ### Schemas exception
 
-Another exception to this module pattern is `src/schemas` which has an `index.ts` that re exports JSON schema artifacts used by other packages like docs.
+Another exception to this module pattern is `src/schemas`, which has an `index.ts` that re-exports JSON schema artifacts used by other packages, such as docs.
 
 ## Database
 
