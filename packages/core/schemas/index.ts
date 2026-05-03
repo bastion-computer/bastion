@@ -1,12 +1,5 @@
-const schemaModules = import.meta.glob("./*.json", {
-  eager: true,
-  import: "default",
-});
+import template from "./template.json";
 
-export const schemas = Object.fromEntries(
-  Object.entries(schemaModules).flatMap(([path, schema]) => {
-    const match = path.match(/\/([^/]+)\.json$/);
-
-    return match ? [[match[1], schema] as const] : [];
-  }),
-) as Record<string, unknown>;
+export const schemas = {
+  template,
+} as const;

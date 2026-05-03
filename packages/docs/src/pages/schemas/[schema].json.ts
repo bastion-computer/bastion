@@ -7,7 +7,7 @@ export const getStaticPaths = (() =>
   }))) satisfies GetStaticPaths;
 
 export const GET: APIRoute = ({ params }) => {
-  const schema = schemas[params.schema ?? ""];
+  const schema = schemas[params.schema as keyof typeof schemas];
 
   if (!schema) {
     return new Response(null, { status: 404 });
