@@ -126,11 +126,15 @@ describe("Example", () => {
 
 ### Drizzle exception
 
-The only exception to this module pattern is `src/drizzle` which has an `index.ts` that initializes the database. It exports an `initDb(dataDir: string)` function that callers invoke before using `db`, `runMigrations()`, or `resetDatabase()`.
+An exception to this module pattern is `src/drizzle` which has an `index.ts` that initializes the database. It exports an `initDb(dataDir: string)` function that callers invoke before using `db`, `runMigrations()`, or `resetDatabase()`.
 
 - `initDb(dataDir: string)` - Opens a SQLite database at `dataDir/sqlite.db` (or in-memory if `":memory:"`), enables `PRAGMA foreign_keys`, and sets the module-level `db` and `sqlite` variables. Callers are responsible for ensuring `dataDir` exists before calling `initDb`.
 - `runMigrations()` - Applies the migrations from the `migrations` directory to the database. Must be called after `initDb`.
 - `resetDatabase()` - Deletes all rows from every user-defined table and resets autoincrement counters. Used in `beforeEach` hooks to ensure test isolation. Must be called after `initDb`.
+
+### Schemas exception
+
+Another exception to this module pattern is `src/schemas` which has an `index.ts` that re exports JSON schema artifacts used by other packages like docs.
 
 ## Database
 
