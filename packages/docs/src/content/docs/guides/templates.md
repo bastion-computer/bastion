@@ -35,7 +35,7 @@ The full schema is available at <a href="/schemas/template.json" target="_blank"
 
 ### Resources
 
-Use `resources` to control the VM size allocated to sandboxes created from the template.
+Use `resources` to control the compute, memory, and storage of sandboxes created from the template.
 
 ```json
 {
