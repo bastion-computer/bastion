@@ -30,11 +30,20 @@ export default defineConfig({
         { label: "Quick Start", slug: "quick-start" },
         {
           label: "Guides",
-          items: [{ label: "Secrets", slug: "guides/secrets" }],
+          items: [
+            { label: "Secrets", slug: "guides/secrets" },
+            { label: "Templates", slug: "guides/templates" },
+          ],
         },
         {
-          label: "Reference",
-          autogenerate: { directory: "reference" },
+          label: "Schemas",
+          items: [
+            {
+              label: "Template",
+              link: "/schemas/template.json",
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
+            },
+          ],
         },
       ],
     }),

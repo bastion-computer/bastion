@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "portRange": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/port"
+        },
+        "to": {
+          "$ref": "#/$defs/port"
+        }
+      },
+      "required": ["from", "to"],
+      "additionalProperties": false
+    },
+    "cidrList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^((25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})(\\.(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})){3}/([0-9]|[1-2][0-9]|3[0-2])|([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}/([0-9]|[1-9][0-9]|1[0-1][0-9]|12[0-8]))$"
+      },
+      "minItems": 1
+    },
+    "templateReference": {
+      "type": "string",
+      "pattern": "^(tpl_[A-Za-z0-9]+|[A-Za-z][A-Za-z0-9_-]*)$"
+    },
+    "templateList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/templateReference"
+      },
+      "minItems": 1
+    },
+    "hostList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(\\*\\.)?([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,63}$"
+      },
+      "minItems": 1
+    },
+    "networkSource": {
+      "type": "object",
+      "properties": {
+        "cidrs": {
+          "$ref": "#/$defs/cidrList"
+        },
+        "templates": {
+          "$ref": "#/$defs/templateList"
+        }
+      },
+      "anyOf": [{ "required": ["cidrs"] }, { "required": ["templates"] }],
+      "additionalProperties": false
+    },
+    "networkDestination": {
+      "type": "object",
+      "properties": {
+        "cidrs": {
+          "$ref": "#/$defs/cidrList"
+        },
+        "hosts": {
+          "$ref": "#/$defs/hostList"
+        }
+      },
+      "anyOf": [{ "required": ["cidrs"] }, { "required": ["hosts"] }],
+      "additionalProperties": false
+    },
+    "networkRuleBase": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "protocol": {
+          "enum": ["tcp", "udp"]
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/port"
+          },
+          "minItems": 1
+        },
+        "portRange": {
+          "$ref": "#/$defs/portRange"
+        }
+      },
+      "required": ["protocol"],
+      "oneOf": [{ "required": ["ports"] }, { "required": ["portRange"] }]
+    },
+    "ingressNetworkRule": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/networkRuleBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "sources": {
+              "$ref": "#/$defs/networkSource"
+            }
+          },
+          "required": ["sources"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "egressNetworkRule": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/networkRuleBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destinations": {
+              "$ref": "#/$defs/networkDestination"
+            }
+          },
+          "required": ["destinations"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ingressNetworkRuleList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ingressNetworkRule"
+      }
+    },
+    "egressNetworkRuleList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/egressNetworkRule"
+      }
+    },
+    "externalAction": {
+      "type": "object",
+      "properties": {
+        "use": {
+          "type": "string"
+        },
+        "with": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "null"]
+          }
+        }
+      },
+      "required": ["use"],
+      "additionalProperties": false
+    },
+    "runAction": {
+      "type": "object",
+      "properties": {
+        "run": {
+          "type": "string"
+        }
+      },
+      "required": ["run"],
+      "additionalProperties": false
+    },
+    "action": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/externalAction"
+        },
+        {
+          "$ref": "#/$defs/runAction"
+        }
+      ]
+    },
+    "actionList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    }
+  },
+  "type": "object",
+  "properties": {
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vcpu": {
+          "type": "number",
+          "minimum": 1
+        },
+        "memory": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "volume": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "delegateCommands": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/templateReference"
+      }
+    },
+    "networkRules": {
+      "type": "object",
+      "properties": {
+        "ingress": {
+          "$ref": "#/$defs/ingressNetworkRuleList"
+        },
+        "egress": {
+          "$ref": "#/$defs/egressNetworkRuleList"
+        }
+      },
+      "additionalProperties": false
+    },
+    "actions": {
+      "type": "object",
+      "properties": {
+        "init": {
+          "$ref": "#/$defs/actionList"
+        },
+        "start": {
+          "$ref": "#/$defs/actionList"
+        }
+      },
+      "required": ["init"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["actions"],
+  "additionalProperties": false
+}
