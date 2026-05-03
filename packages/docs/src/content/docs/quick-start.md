@@ -110,13 +110,13 @@ As mentioned previously, only placeholder API keys are passed into the sandbox. 
 
 ## Deploy the agent
 
-We now have everything we need to create a sandbox.
+We now have everything we need to create a sandbox. Sandbox creation always starts from a source, which can be either a template or a snapshot. For the first deploy, use the `node-dev` template key we created above.
 
 ```sh
-bastion sandbox create --key node-dev
+bastion sandbox create --from template --key node-dev
 
 # The same sandbox can be created using the generated template ID.
-bastion sandbox create --id tpl_xxxxxx
+bastion sandbox create --from template --id tpl_xxxxxx
 ```
 
 ```json
@@ -130,6 +130,8 @@ bastion sandbox create --id tpl_xxxxxx
   "createdAt": "<iso_timestamp>"
 }
 ```
+
+`--from template` tells bastion to initialize the sandbox from a template, while `--key` or `--id` selects which template to use.
 
 This command will asynchronously initialize a new Firecracker microVM with our configured template. We can then use the following command to check on the status of our sandbox.
 
@@ -163,9 +165,9 @@ For an actual coding agent use case, you would also want to set up your template
 
 > _See the extended [connection]() guide for more details on interacting with running sandboxes._
 
-## Sandbox snapshots
+## Create a snapshot
 
-Sandboxes can also be created from a snapshot. This can be useful for a variety of reasons such as branching parallel workflows from a certain checkpoint or restoring a session to a previous state.
+Snapshots are first-class resources that capture the state of a sandbox. They can be used to branch parallel workflows from a checkpoint or restore a session to a previous state.
 
 1. Pause the sandbox
 
@@ -188,13 +190,17 @@ bastion sandbox pause sbx_xxxxxx
 2. Create a new snapshot
 
 ```sh
-bastion sandbox snapshot sbx_xxxxxx
+bastion snapshots create checkpoint --sandbox sbx_xxxxxx
 ```
 
 ```json
 {
   "id": "snp_xxxxxx",
-  "sandbox": "sbx_xxxxxx",
+  "key": "checkpoint",
+  "source": {
+    "type": "sandbox",
+    "id": "sbx_xxxxxx"
+  },
   "status": "pending",
   "createdAt": "<iso_timestamp>"
 }
@@ -203,14 +209,18 @@ bastion sandbox snapshot sbx_xxxxxx
 3. Verify snapshot completed successfully
 
 ```sh
-bastion sandbox snapshot list
+bastion snapshots list
 ```
 
 ```json
 [
   {
     "id": "snp_xxxxxx",
-    "sandbox": "sbx_xxxxxx",
+    "key": "checkpoint",
+    "source": {
+      "type": "sandbox",
+      "id": "sbx_xxxxxx"
+    },
     "status": "ok",
     "createdAt": "<iso_timestamp>"
   }
@@ -220,7 +230,7 @@ bastion sandbox snapshot list
 4. Initialize a new sandbox from the resulting snapshot
 
 ```sh
-bastion sandbox create --snapshot snp_xxxxxx
+bastion sandbox create --from snapshot --key checkpoint
 ```
 
 ```json
@@ -234,6 +244,8 @@ bastion sandbox create --snapshot snp_xxxxxx
   "createdAt": "<iso_timestamp>"
 }
 ```
+
+`--from snapshot` tells bastion to restore the sandbox from saved VM state, while `--key` selects the named snapshot.
 
 5. Get a list of all sandboxes
 
@@ -264,7 +276,7 @@ bastion sandbox list
 ]
 ```
 
-> _See the extended guide on [sandboxes]() for all available actions to manage VM lifecycles._
+> _See the extended guides on [sandboxes](/guides/sandboxes) and [snapshots](/guides/snapshots) for all available actions to manage VM lifecycles and saved state._
 
 ## Summary
 
