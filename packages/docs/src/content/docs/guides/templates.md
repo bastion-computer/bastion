@@ -67,10 +67,10 @@ Use `env` to define environment variables made available inside sandboxes create
 }
 ```
 
-| Value type                | Syntax                 | Description                                                    |
-| ------------------------- | ---------------------- | -------------------------------------------------------------- |
-| Literal value             | `"development"`        | Passes the string value directly into the VM.                  |
-| Host environment variable | `"${{ env.NAME }}"`    | Resolves the value from an environment variable on the host.   |
+| Value type                | Syntax                  | Description                                                    |
+| ------------------------- | ----------------------- | -------------------------------------------------------------- |
+| Literal value             | `"development"`         | Passes the string value directly into the VM.                  |
+| Host environment variable | `"${{ env.NAME }}"`     | Resolves the value from an environment variable on the host.   |
 | Secret reference          | `"${{ secrets.NAME }}"` | Resolves the value from a configured bastion secret reference. |
 
 ### Delegate Commands

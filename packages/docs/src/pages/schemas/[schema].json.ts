@@ -2,7 +2,9 @@ import type { APIRoute, GetStaticPaths } from "astro";
 import { schemas } from "@bastion/core/schemas";
 
 export const getStaticPaths = (() =>
-  Object.keys(schemas).map((schema) => ({ params: { schema } }))) satisfies GetStaticPaths;
+  Object.keys(schemas).map((schema) => ({
+    params: { schema },
+  }))) satisfies GetStaticPaths;
 
 export const GET: APIRoute = ({ params }) => {
   const schema = schemas[params.schema ?? ""];
