@@ -35,33 +35,29 @@ curl -fsSL https://bastion.computer/install.sh | bash
 <ContainerSection>
 
 <CardGrid stagger>
-  <Card title="Declarative Sandboxes" icon="seti:json">
-    Define agent environments, resources, policies, and lifecycle behavior with
-    versioned JSON configuration.
+  <Card title="Run Agents in Isolated Linux VMs" icon="laptop">
+    Give every agent its own Firecracker microVM with a guest kernel, full Linux
+    environment, and a hard isolation boundary from the host.
   </Card>
-  <Card title="Strong Isolation" icon="laptop">
-    Operate agents within Firecracker microVMs, giving each session a KVM-backed
-    isolation boundary with fast startup.
+  <Card title="Define Environments as JSON" icon="seti:json">
+    Capture resources, environment variables, network rules, and startup actions
+    in reusable templates validated by a public schema.
   </Card>
-  <Card title="Secure Policies" icon="seti:lock">
-    Maintain fine-grained control over filesystem access, network ingress and
-    egress, secrets, and external resources.
+  <Card title="Keep Secrets Out of Sandboxes" icon="seti:lock">
+    Use obfuscated secrets and proxy-layer resolution to let agents access
+    credentials without exposing raw values inside their runtime.
   </Card>
-  <Card title="Ephemeral or Persistent Sessions" icon="add-document">
-    Start clean sandboxes on demand, duplicate existing workflows from
-    snapshots, and resume long-running sessions with durable storage.
+  <Card title="Scale Parallel Agent Sessions" icon="rocket">
+    Create sandboxes from templates, run many sessions side by side, and manage
+    lifecycle state through Bastion's CLI and public API.
   </Card>
-  <Card title="Programmatic Access" icon="seti:json">
-    Built on strongly typed, versioned APIs for integration with downstream
-    services, UIs, CLIs, and SDKs.
+  <Card title="Branch Workflows from Snapshots" icon="add-document">
+    Checkpoint a deployed sandbox and fork it into parallel sessions or resume
+    work from a previous state.
   </Card>
-  <Card title="Open Source" icon="seti:license">
-    Distributed under the MIT license and fully self-hostable on your own
-    infrastructure.
-  </Card>
-  <Card title="Built for Linux" icon="linux">
-    Runs on Linux systems with KVM support, from local machines to cloud
-    instances like AWS EC2.
+  <Card title="Self-Host on Your Infrastructure" icon="linux">
+    Run Bastion on Linux systems with KVM support, from a local workstation to
+    cloud instances like AWS EC2.
   </Card>
 </CardGrid>
 
