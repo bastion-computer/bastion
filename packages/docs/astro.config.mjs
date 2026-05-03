@@ -33,6 +33,8 @@ export default defineConfig({
           items: [
             { label: "Secrets", slug: "guides/secrets" },
             { label: "Templates", slug: "guides/templates" },
+            { label: "Sandboxes", slug: "guides/sandboxes" },
+            { label: "Snapshots", slug: "guides/snapshots" },
           ],
         },
         {

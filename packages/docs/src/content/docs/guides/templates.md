@@ -25,13 +25,13 @@ The full schema is available at <a href="/schemas/template.json" target="_blank"
 }
 ```
 
-| Field              | Required | Description                                                                |
-| ------------------ | -------- | -------------------------------------------------------------------------- |
-| `resources`        | No       | VM resource limits such as vCPU, memory, and volume size.                  |
-| `env`              | No       | Environment variables made available inside the VM.                        |
-| `delegateCommands` | No       | Named command references that delegate execution to another template.      |
-| `networkRules`     | No       | Ingress and egress network access rules for the VM.                        |
-| `actions`          | Yes      | Ordered lifecycle actions to run during phases such as `init` and `start`. |
+| Field              | Required | Description                                                                 |
+| ------------------ | -------- | --------------------------------------------------------------------------- |
+| `resources`        | No       | VM resource limits such as vCPU, memory, and volume size.                   |
+| `env`              | No       | Environment variables made available inside the VM.                         |
+| `delegateCommands` | No       | Named command references that delegate execution to another sandbox source. |
+| `networkRules`     | No       | Ingress and egress network access rules for the VM.                         |
+| `actions`          | Yes      | Ordered lifecycle actions to run during phases such as `init` and `start`.  |
 
 ### Resources
 
@@ -75,21 +75,39 @@ Use `env` to define environment variables made available inside sandboxes create
 
 ### Delegate Commands
 
-Use `delegateCommands` to proxy named commands to a separate sandbox based on a specified template. This is useful for sensitive operations that should be isolated in a template with narrower access, such as commands that require a private key.
+Use `delegateCommands` to proxy named commands to a separate sandbox based on a specified template or snapshot. This is useful for sensitive operations that should be isolated in an environment with narrower access, such as commands that require a private key.
 
 ```json
 {
   "delegateCommands": {
-    "ssh": "ssh-runner",
-    "gpg": "tpl_e5f6g7h8"
+    "ssh": {
+      "source": "template",
+      "key": "ssh-runner"
+    },
+    "gpg": {
+      "source": "template",
+      "id": "tpl_e5f6g7h8"
+    },
+    "release": {
+      "source": "snapshot",
+      "key": "checkpoint"
+    }
   }
 }
 ```
 
-| Field              | Required | Description                                                                          |
-| ------------------ | -------- | ------------------------------------------------------------------------------------ |
-| Command name       | No       | Must start with a letter and can contain letters, numbers, underscores, and hyphens. |
-| Template reference | Yes      | Must reference a template by a generated ID matching `tpl_*` or by template key.     |
+| Field                  | Required | Description                                                                          |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------ |
+| Command name           | No       | Must start with a letter and can contain letters, numbers, underscores, and hyphens. |
+| Delegate source object | Yes      | Object that identifies the template or snapshot used to create the delegate sandbox. |
+
+#### Delegate Source Objects
+
+| Field    | Required      | Description                                                                                                      |
+| -------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `source` | Yes           | Source type used to initialize the delegate sandbox. Must be `template` or `snapshot`.                           |
+| `id`     | Conditionally | Generated source ID. Template IDs must match `tpl_*`; snapshot IDs must match `snp_*`. Use either `id` or `key`. |
+| `key`    | Conditionally | User-defined source key. Use either `id` or `key`.                                                               |
 
 ### Network Rules
 

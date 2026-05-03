@@ -27,14 +27,11 @@
       },
       "minItems": 1
     },
-    "templateReference": {
-      "type": "string",
-      "pattern": "^(tpl_[A-Za-z0-9]+|[A-Za-z][A-Za-z0-9_-]*)$"
-    },
     "templateList": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/templateReference"
+        "type": "string",
+        "pattern": "^(tpl_[A-Za-z0-9]+|[A-Za-z][A-Za-z0-9_-]*)$"
       },
       "minItems": 1
     },
@@ -216,7 +213,58 @@
         "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
       },
       "additionalProperties": {
-        "$ref": "#/$defs/templateReference"
+        "type": "object",
+        "properties": {
+          "source": {
+            "enum": ["template", "snapshot"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          }
+        },
+        "required": ["source"],
+        "oneOf": [{ "required": ["id"] }, { "required": ["key"] }],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "source": {
+                  "const": "template"
+                }
+              },
+              "required": ["source"]
+            },
+            "then": {
+              "properties": {
+                "id": {
+                  "pattern": "^tpl_[A-Za-z0-9]+$"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "source": {
+                  "const": "snapshot"
+                }
+              },
+              "required": ["source"]
+            },
+            "then": {
+              "properties": {
+                "id": {
+                  "pattern": "^snp_[A-Za-z0-9]+$"
+                }
+              }
+            }
+          }
+        ],
+        "additionalProperties": false
       }
     },
     "networkRules": {
