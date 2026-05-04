@@ -11,7 +11,7 @@ Bastion is an open source platform that makes it easy to run multiple agents on 
 
 At a high level, the bastion architecture is fairly simple and optimizes for an outcome where we can scale agents in a secure and reliable way.
 
-Everything within the bounded box is operating within a single Linux machine. The green components (secrets, template, snapshot, and proxy) are on the host while the red sandboxes are isolated to virtual machines with their own guest kernel. Any interaction with bastion by downstream clients should occur via its public API.
+Everything within the bounded box is operating within a single Linux machine. The green components (secrets, template, checkpoint, and proxy) are on the host while the red sandboxes are isolated to virtual machines with their own guest kernel. Any interaction with bastion by downstream clients should occur via its public API.
 
 ## Sandbox
 
@@ -23,7 +23,7 @@ In production, it is typical to have many sandboxes running in parallel. All oth
 
 Templates provide a system for configuring new sandboxes using a declarative schema. It allows developers to define components such as actions, resources, environment variables, network rules, and secrets that must be instrumented within the sandbox for their agents to operate.
 
-## Snapshots
+## Checkpoints
 
 Sandboxes can also be started from a saved state (including memory, CPU, and disk) of another sandbox rather than from a template. This can enable use cases like branching workflows from a point in time or restoring a long running session from a previous checkpoint.
 

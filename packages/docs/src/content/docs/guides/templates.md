@@ -75,7 +75,7 @@ Use `env` to define environment variables made available inside sandboxes create
 
 ### Delegate Commands
 
-Use `delegateCommands` to proxy named commands to a separate sandbox based on a specified template or snapshot. This is useful for sensitive operations that should be isolated in an environment with narrower access, such as commands that require a private key.
+Use `delegateCommands` to proxy named commands to a separate sandbox based on a specified template or checkpoint. This is useful for sensitive operations that should be isolated in an environment with narrower access, such as commands that require a private key.
 
 ```json
 {
@@ -89,25 +89,25 @@ Use `delegateCommands` to proxy named commands to a separate sandbox based on a 
       "id": "tpl_e5f6g7h8"
     },
     "release": {
-      "source": "snapshot",
-      "key": "checkpoint"
+      "source": "checkpoint",
+      "key": "dev-env/branch01"
     }
   }
 }
 ```
 
-| Field                  | Required | Description                                                                          |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------ |
-| Command name           | No       | Must start with a letter and can contain letters, numbers, underscores, and hyphens. |
-| Delegate source object | Yes      | Object that identifies the template or snapshot used to create the delegate sandbox. |
+| Field                  | Required | Description                                                                            |
+| ---------------------- | -------- | -------------------------------------------------------------------------------------- |
+| Command name           | No       | Must start with a letter and can contain letters, numbers, underscores, and hyphens.   |
+| Delegate source object | Yes      | Object that identifies the template or checkpoint used to create the delegate sandbox. |
 
 #### Delegate Source Objects
 
-| Field    | Required      | Description                                                                                                      |
-| -------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `source` | Yes           | Source type used to initialize the delegate sandbox. Must be `template` or `snapshot`.                           |
-| `id`     | Conditionally | Generated source ID. Template IDs must match `tpl_*`; snapshot IDs must match `snp_*`. Use either `id` or `key`. |
-| `key`    | Conditionally | User-defined source key. Use either `id` or `key`.                                                               |
+| Field    | Required      | Description                                                                                                        |
+| -------- | ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `source` | Yes           | Source type used to initialize the delegate sandbox. Must be `template` or `checkpoint`.                           |
+| `id`     | Conditionally | Generated source ID. Template IDs must match `tpl_*`; checkpoint IDs must match `chk_*`. Use either `id` or `key`. |
+| `key`    | Conditionally | User-defined source key. Use either `id` or `key`.                                                                 |
 
 ### Network Rules
 
@@ -280,13 +280,13 @@ Exactly one of `--config` or `--file` is required. The provided template definit
 Example:
 
 ```sh
-bastion templates create node-dev --file ./template.json
+bastion templates create dev-env --file ./template.json
 ```
 
 ```json
 {
   "id": "tpl_xxxxxx",
-  "key": "node-dev",
+  "key": "dev-env",
   "createdAt": "<iso_timestamp>"
 }
 ```
@@ -303,7 +303,7 @@ bastion templates list [--limit] [--cursor]
   "entries": [
     {
       "id": "tpl_xxxxxx",
-      "key": "node-dev",
+      "key": "dev-env",
       "createdAt": "<iso_timestamp>"
     },
     {
@@ -330,10 +330,10 @@ bastion templates get [--id] [--key]
 ```json
 // bastion templates get --id tpl_xxxxxx
 // or
-// bastion templates get --key node-dev
+// bastion templates get --key dev-env
 {
   "id": "tpl_xxxxxx",
-  "key": "node-dev",
+  "key": "dev-env",
   "config": {
     "actions": {
       "init": [
@@ -361,10 +361,10 @@ bastion templates remove [--id] [--key]
 ```json
 // bastion templates remove --id tpl_xxxxxx
 // or
-// bastion templates remove --key node-dev
+// bastion templates remove --key dev-env
 {
   "id": "tpl_xxxxxx",
-  "key": "node-dev",
+  "key": "dev-env",
   "config": {
     "actions": {
       "init": [

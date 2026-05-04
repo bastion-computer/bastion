@@ -5,18 +5,18 @@ description: A guide to creating and managing isolated VM environments for agent
 
 Sandboxes are isolated [Firecracker microVMs](https://firecracker-microvm.github.io/) where agents run with full access to their own Linux environment while remaining separated from the host system.
 
-Sandboxes can be created from a template or from a snapshot. Creating from a template initializes a fresh VM using declarative configuration, while creating from a snapshot restores a saved VM state including memory, CPU, and disk.
+Sandboxes can be created from a template or from a checkpoint. Creating from a template initializes a fresh VM using declarative configuration, while creating from a checkpoint restores a saved VM state including memory, CPU, and disk.
 
 ## Create a sandbox
 
 ```sh
-bastion sandbox create --from [template|snapshot] [--id] [--key]
+bastion sandbox create --from [template|checkpoint] [--id] [--key]
 ```
 
 ```json
 // bastion sandbox create --from template --id tpl_xxxxxx
 // or
-// bastion sandbox create --from template --key node-dev
+// bastion sandbox create --from template --key dev-env
 {
   "id": "sbx_xxxxxx",
   "status": "pending",
@@ -29,15 +29,15 @@ bastion sandbox create --from [template|snapshot] [--id] [--key]
 ```
 
 ```json
-// bastion sandbox create --from snapshot --id snp_xxxxxx
+// bastion sandbox create --from checkpoint --id chk_xxxxxx
 // or
-// bastion sandbox create --from snapshot --key checkpoint
+// bastion sandbox create --from checkpoint --key dev-env/branch01
 {
   "id": "sbx_yyyyyy",
   "status": "pending",
   "source": {
-    "type": "snapshot",
-    "id": "snp_xxxxxx"
+    "type": "checkpoint",
+    "id": "chk_xxxxxx"
   },
   "createdAt": "<iso_timestamp>"
 }
@@ -45,13 +45,13 @@ bastion sandbox create --from [template|snapshot] [--id] [--key]
 
 This command must specify a `--from` value and either an `--id` or `--key` value.
 
-`--from` is the source type used to initialize the sandbox. It must be either `template` or `snapshot`.
+`--from` is the source type used to initialize the sandbox. It must be either `template` or `checkpoint`.
 
 `--id` references the selected source by its generated ID.
 
 `--key` references the selected source by its user-defined key.
 
-Sandbox creation is asynchronous. A newly created sandbox starts in `pending` while bastion initializes the VM. Creating from a template runs the template lifecycle actions, while creating from a snapshot restores the saved VM state.
+Sandbox creation is asynchronous. A newly created sandbox starts in `pending` while bastion initializes the VM. Creating from a template runs the template lifecycle actions, while creating from a checkpoint restores the saved VM state.
 
 ## List all sandboxes
 
@@ -76,8 +76,8 @@ bastion sandbox list [--limit] [--cursor]
       "id": "sbx_yyyyyy",
       "status": "paused",
       "source": {
-        "type": "snapshot",
-        "id": "snp_xxxxxx"
+        "type": "checkpoint",
+        "id": "chk_xxxxxx"
       },
       "createdAt": "<iso_timestamp>"
     }
@@ -107,9 +107,9 @@ bastion sandbox pause $SANDBOX_ID
 }
 ```
 
-Pausing a sandbox stops VM execution while preserving its state so it can be snapshotted.
+Pausing a sandbox stops VM execution while preserving its state so a checkpoint can be created.
 
-> _See the extended guide on [snapshots](/guides/snapshots) for creating and managing saved VM state._
+> _See the extended guide on [checkpoints](/guides/checkpoints) for creating and managing saved VM state._
 
 ## Remove a sandbox
 

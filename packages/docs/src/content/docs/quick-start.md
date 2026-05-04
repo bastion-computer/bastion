@@ -62,7 +62,7 @@ All agents running on the bastion platform execute within a secure sandbox that 
 Rather than configuring every sandbox from scratch, bastion provides a declarative high-level JSON schema for defining a VM environment.
 
 ```sh
-bastion templates create node-dev --config '{
+bastion templates create dev-env --config '{
   "actions": {
     "init": [
       {
@@ -97,7 +97,7 @@ bastion templates create node-dev --config '{
 ```json
 {
   "id": "tpl_xxxxxx",
-  "key": "node-dev",
+  "key": "dev-env",
   "createdAt": "<iso_timestamp>"
 }
 ```
@@ -110,10 +110,10 @@ As mentioned previously, only placeholder API keys are passed into the sandbox. 
 
 ## Deploy the agent
 
-We now have everything we need to create a sandbox. Sandbox creation always starts from a source, which can be either a template or a snapshot. For the first deploy, use the `node-dev` template key we created above.
+We now have everything we need to create a sandbox. Sandbox creation always starts from a source, which can be either a template or a checkpoint. For the first deploy, use the `dev-env` template key we created above.
 
 ```sh
-bastion sandbox create --from template --key node-dev
+bastion sandbox create --from template --key dev-env
 
 # The same sandbox can be created using the generated template ID.
 bastion sandbox create --from template --id tpl_xxxxxx
@@ -165,9 +165,9 @@ For an actual coding agent use case, you would also want to set up your template
 
 > _See the extended [connection]() guide for more details on interacting with running sandboxes._
 
-## Create a snapshot
+## Create a checkpoint
 
-Snapshots are first-class resources that capture the state of a sandbox. They can be used to branch parallel workflows from a checkpoint or restore a session to a previous state.
+Checkpoints are first-class resources that capture the state of a sandbox. They can be used to branch parallel workflows from a checkpoint or restore a session to a previous state.
 
 1. Pause the sandbox
 
@@ -187,16 +187,16 @@ bastion sandbox pause sbx_xxxxxx
 }
 ```
 
-2. Create a new snapshot
+2. Create a new checkpoint
 
 ```sh
-bastion snapshots create checkpoint --sandbox sbx_xxxxxx
+bastion checkpoints create dev-env/branch01 --sandbox sbx_xxxxxx
 ```
 
 ```json
 {
-  "id": "snp_xxxxxx",
-  "key": "checkpoint",
+  "id": "chk_xxxxxx",
+  "key": "dev-env/branch01",
   "source": {
     "type": "sandbox",
     "id": "sbx_xxxxxx"
@@ -206,17 +206,17 @@ bastion snapshots create checkpoint --sandbox sbx_xxxxxx
 }
 ```
 
-3. Verify snapshot completed successfully
+3. Verify checkpoint completed successfully
 
 ```sh
-bastion snapshots list
+bastion checkpoints list
 ```
 
 ```json
 [
   {
-    "id": "snp_xxxxxx",
-    "key": "checkpoint",
+    "id": "chk_xxxxxx",
+    "key": "dev-env/branch01",
     "source": {
       "type": "sandbox",
       "id": "sbx_xxxxxx"
@@ -227,10 +227,10 @@ bastion snapshots list
 ]
 ```
 
-4. Initialize a new sandbox from the resulting snapshot
+4. Initialize a new sandbox from the resulting checkpoint
 
 ```sh
-bastion sandbox create --from snapshot --key checkpoint
+bastion sandbox create --from checkpoint --key dev-env/branch01
 ```
 
 ```json
@@ -238,14 +238,14 @@ bastion sandbox create --from snapshot --key checkpoint
   "id": "sbx_yyyyyy",
   "status": "pending",
   "source": {
-    "type": "snapshot",
-    "id": "snp_xxxxxx"
+    "type": "checkpoint",
+    "id": "chk_xxxxxx"
   },
   "createdAt": "<iso_timestamp>"
 }
 ```
 
-`--from snapshot` tells bastion to restore the sandbox from saved VM state, while `--key` selects the named snapshot.
+`--from checkpoint` tells bastion to restore the sandbox from saved VM state, while `--key` selects the named checkpoint.
 
 5. Get a list of all sandboxes
 
@@ -268,15 +268,15 @@ bastion sandbox list
     "id": "sbx_yyyyyy",
     "status": "running",
     "source": {
-      "type": "snapshot",
-      "id": "snp_xxxxxx"
+      "type": "checkpoint",
+      "id": "chk_xxxxxx"
     },
     "createdAt": "<iso_timestamp>"
   }
 ]
 ```
 
-> _See the extended guides on [sandboxes](/guides/sandboxes) and [snapshots](/guides/snapshots) for all available actions to manage VM lifecycles and saved state._
+> _See the extended guides on [sandboxes](/guides/sandboxes) and [checkpoints](/guides/checkpoints) for all available actions to manage VM lifecycles and saved state._
 
 ## Summary
 
@@ -286,6 +286,6 @@ In this guide we ran through a "hello world" example of deploying parallel agent
 - **Secrets**: bound host environment variables to secret references that are resolved on outbound calls.
 - **Templates**: used a declarative JSON schema to configure an agent's operating environment.
 - **Sandboxes**: initialized isolated Firecracker microVMs based on the defined template.
-- **Snapshots**: captured VM state and cloned it to scale out parallel workflows.
+- **Checkpoints**: captured VM state and cloned it to scale out parallel workflows.
 
 From here, dive into the extended guides for deeper coverage on each topic.
