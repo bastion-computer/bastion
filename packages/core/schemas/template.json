@@ -216,14 +216,14 @@
         "type": "object",
         "properties": {
           "source": {
-            "enum": ["template", "snapshot"]
+            "enum": ["template", "checkpoint"]
           },
           "id": {
             "type": "string"
           },
           "key": {
             "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*(/[A-Za-z0-9][A-Za-z0-9_-]*)*$"
           }
         },
         "required": ["source"],
@@ -250,7 +250,7 @@
             "if": {
               "properties": {
                 "source": {
-                  "const": "snapshot"
+                  "const": "checkpoint"
                 }
               },
               "required": ["source"]
@@ -258,7 +258,7 @@
             "then": {
               "properties": {
                 "id": {
-                  "pattern": "^snp_[A-Za-z0-9]+$"
+                  "pattern": "^chk_[A-Za-z0-9]+$"
                 }
               }
             }

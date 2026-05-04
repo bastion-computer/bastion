@@ -34,7 +34,7 @@ export default defineConfig({
             { label: "Secrets", slug: "guides/secrets" },
             { label: "Templates", slug: "guides/templates" },
             { label: "Sandboxes", slug: "guides/sandboxes" },
-            { label: "Snapshots", slug: "guides/snapshots" },
+            { label: "Checkpoints", slug: "guides/checkpoints" },
           ],
         },
         {
