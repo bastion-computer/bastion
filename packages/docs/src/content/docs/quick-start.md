@@ -25,8 +25,6 @@ Then start the server which will listen on `localhost` port `3148` by default. F
 ANTHROPIC_API_KEY="sk-ant-..." OPENAI_API_KEY="sk-..." bastion start
 ```
 
-> _For downloading raw binaries, building from source, or using a package manager see the extended [installation]() guide._
-
 ## Bind a secret reference
 
 Bastion has a system for obfuscating environment variables so that they cannot be directly accessed within the sandbox. Rather than passing secrets to the sandbox, they are given a substituted value that gets intercepted and resolved by the host on outbound requests. This protects secrets from exfiltration risk.
