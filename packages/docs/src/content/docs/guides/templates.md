@@ -252,10 +252,12 @@ Action objects define one executable step. Each action must use either `run` or 
 
 `with` inputs pass structured values to external `use` actions.
 
-| Field       | Required | Description                                                                       |
-| ----------- | -------- | --------------------------------------------------------------------------------- |
-| Input name  | No       | Name of an input accepted by the external action.                                 |
-| Input value | Yes      | Value passed to the external action. Can be a string, number, boolean, or `null`. |
+| Field       | Required | Description                                                               |
+| ----------- | -------- | ------------------------------------------------------------------------- |
+| Input name  | No       | Name of an input accepted by the external action.                         |
+| Input value | Yes      | Value passed to the external action. Can be a string, number, or boolean. |
+
+Input names must start with a letter and can contain letters, numbers, and underscores. Values are exposed to external actions as environment variables using the `BASTION_INPUT_` prefix, such as `version` becoming `BASTION_INPUT_VERSION`.
 
 ## Create a template
 

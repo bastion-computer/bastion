@@ -146,8 +146,11 @@
         },
         "with": {
           "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
           "additionalProperties": {
-            "type": ["string", "number", "boolean", "null"]
+            "type": ["string", "number", "boolean"]
           }
         }
       },
