@@ -71,11 +71,11 @@ Use `inputs` to declare the keys and values the action accepts from a template's
 
 Input keys must start with a letter and can only contain letters, numbers, and underscores.
 
-| Field         | Required | Description                                         |
-| ------------- | -------- | --------------------------------------------------- |
-| `type`        | Yes      | Input value type: `string`, `number`, or `boolean`. |
-| `description` | No       | Human-readable explanation for the input.           |
-| `required`    | No       | Whether templates must provide this input.          |
+| Field         | Required | Description                                                     |
+| ------------- | -------- | --------------------------------------------------------------- |
+| `type`        | Yes      | Input value type: `string`, `number`, or `boolean`.             |
+| `description` | No       | Human-readable explanation for the input.                       |
+| `required`    | No       | Whether templates must provide this input. Defaults to `false`. |
 
 ### Input environment variables
 
