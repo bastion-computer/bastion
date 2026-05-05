@@ -47,13 +47,13 @@ export default defineConfig({
           label: "Schemas",
           items: [
             {
-              label: "Action",
-              link: "/schemas/action.json",
+              label: "Template",
+              link: "/schemas/template.json",
               attrs: { target: "_blank", rel: "noopener noreferrer" },
             },
             {
-              label: "Template",
-              link: "/schemas/template.json",
+              label: "Action",
+              link: "/schemas/action.json",
               attrs: { target: "_blank", rel: "noopener noreferrer" },
             },
           ],
