@@ -38,8 +38,19 @@ export default defineConfig({
           ],
         },
         {
+          label: "Ecosystem",
+          items: [
+            { label: "Custom Actions", slug: "ecosystem/custom-actions" },
+          ],
+        },
+        {
           label: "Schemas",
           items: [
+            {
+              label: "Action",
+              link: "/schemas/action.json",
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
+            },
             {
               label: "Template",
               link: "/schemas/template.json",
