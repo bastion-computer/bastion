@@ -132,10 +132,6 @@ An exception to this module pattern is `src/drizzle` which has an `index.ts` tha
 - `runMigrations()` - Applies the migrations from the `migrations` directory to the database. Must be called after `initDb`.
 - `resetDatabase()` - Deletes all rows from every user-defined table and resets autoincrement counters. Used in `beforeEach` hooks to ensure test isolation. Must be called after `initDb`.
 
-### Schemas exception
-
-Another exception to this module pattern is `src/schemas`, which has an `index.ts` that re-exports JSON schema artifacts used by other packages, such as docs.
-
 ## Database
 
 An embedded Bun:SQLite database is managed by Drizzle ORM. All database commands can be handled via the `bun run db` script which is a proxy for running `drizzle-kit`.

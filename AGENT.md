@@ -15,5 +15,6 @@ IMPORTANT:
   - [Testing](docs/codebase/testing.md) - Linting, formatting, and typechecking commands
 - [Packages](docs/packages/)
   - [Core](docs/packages/core.md) - Core business logic and database
+  - [Spec](docs/packages/spec.md) - JSON Schema data type artifacts
   - [Server](docs/packages/server.md) - Hono API server
   - [Docs](docs/packages/docs.md) - Astro Starlight documentation site
