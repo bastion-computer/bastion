@@ -1,0 +1,14 @@
+{
+  "name": "@bastion/spec",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./data-types/*.json": "./data-types/*.json"
+  },
+  "scripts": {
+    "prettier": "prettier --check '**'"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1"
+  }
+}
