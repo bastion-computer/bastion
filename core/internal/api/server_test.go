@@ -133,6 +133,8 @@ func TestDeleteRoutes(t *testing.T) {
 
 	checkpointByKey := createCheckpoint(t, router, "checkpoint-delete-key", sandboxID)
 	assertDelete(t, router, "/v1/checkpoints/by-key/"+checkpointByKey.Key)
+
+	assertDelete(t, router, "/v1/sandboxes/"+sandboxID)
 }
 
 func newTestRouter(t *testing.T) http.Handler {
