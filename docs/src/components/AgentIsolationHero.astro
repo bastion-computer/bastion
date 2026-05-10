@@ -1,0 +1,215 @@
+---
+---
+
+<figure
+  class="agent-isolation-hero"
+  aria-label="Animation showing AI agents moving from one shared desktop into separate isolated environments."
+>
+  <div class="agent-isolation-hero__glow" aria-hidden="true"></div>
+  <div class="agent-isolation-hero__animation" data-agent-isolation-hero></div>
+</figure>
+
+<script>
+  import lottie from "lottie-web/build/player/lottie_light";
+  import { createAgentIsolationAnimationData } from "./agentIsolationLottie.js";
+
+  type Rgb = [number, number, number];
+  type LottieColor = [number, number, number, number];
+
+  const prefersReducedMotionQuery = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  );
+
+  const probe = document.createElement("span");
+  probe.hidden = true;
+  document.body.append(probe);
+
+  function readCssRgb(name: string, fallback: Rgb): Rgb {
+    probe.style.color = `var(${name})`;
+    const value = getComputedStyle(probe).color;
+    const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+
+    if (!channels || channels.length < 3 || channels.some(Number.isNaN)) {
+      return fallback;
+    }
+
+    return channels as Rgb;
+  }
+
+  function mix(from: Rgb, to: Rgb, amount: number): Rgb {
+    return from.map((value, index) => value * (1 - amount) + to[index] * amount) as Rgb;
+  }
+
+  function lottieColor(rgb: Rgb, alpha = 1): LottieColor {
+    return [
+      Math.max(0, Math.min(1, rgb[0] / 255)),
+      Math.max(0, Math.min(1, rgb[1] / 255)),
+      Math.max(0, Math.min(1, rgb[2] / 255)),
+      alpha,
+    ];
+  }
+
+  function createThemePalette(): Record<string, LottieColor> {
+    const isLight = document.documentElement.dataset.theme === "light";
+    const bg = readCssRgb("--sl-color-bg", isLight ? [255, 255, 255] : [22, 24, 31]);
+    const nav = readCssRgb("--sl-color-bg-nav", isLight ? [247, 248, 251] : [35, 38, 47]);
+    const text = readCssRgb("--sl-color-text", isLight ? [44, 48, 58] : [195, 199, 210]);
+    const accentHigh = readCssRgb("--sl-color-accent-high", isLight ? [28, 45, 138] : [179, 199, 255]);
+    const gray2 = readCssRgb("--sl-color-gray-2", isLight ? [54, 59, 71] : [195, 199, 210]);
+    const gray4 = readCssRgb("--sl-color-gray-4", isLight ? [138, 144, 158] : [83, 89, 108]);
+    const black: Rgb = [7, 10, 18];
+    const white: Rgb = [255, 255, 255];
+    const rightTerminalTint: Rgb = isLight ? [236, 249, 244] : [5, 22, 18];
+    const sandboxTint: Rgb = isLight ? [232, 246, 240] : [4, 22, 18];
+    const cursorDarkOutline: Rgb = [2, 4, 10];
+    const danger: Rgb = isLight ? [173, 48, 48] : [220, 85, 85];
+    const warning: Rgb = isLight ? [174, 102, 23] : [211, 145, 56];
+    const success: Rgb = isLight ? [40, 128, 88] : [91, 184, 136];
+    const violet: Rgb = isLight ? [109, 88, 184] : [164, 137, 220];
+    const teal: Rgb = isLight ? [42, 131, 157] : [92, 182, 204];
+
+    return {
+      terminal: lottieColor(mix(bg, nav, isLight ? 0.78 : 0.35), isLight ? 0.96 : 0.92),
+      terminalTop: lottieColor(mix(nav, bg, isLight ? 0.16 : 0.28), 1),
+      terminalLine: lottieColor(mix(text, bg, isLight ? 0.46 : 0.58), 1),
+      leftTerminal: lottieColor(mix(bg, isLight ? white : black, isLight ? 0.2 : 0.28), isLight ? 0.94 : 0.9),
+      rightTerminal: lottieColor(mix(bg, rightTerminalTint, isLight ? 0.55 : 0.38), isLight ? 0.94 : 0.9),
+      leftBorder: lottieColor(mix(accentHigh, gray2, isLight ? 0.42 : 0.22), isLight ? 0.75 : 0.8),
+      rightBorder: lottieColor(mix(success, gray2, isLight ? 0.25 : 0.08), isLight ? 0.78 : 0.74),
+      dangerLine: lottieColor(mix(danger, bg, isLight ? 0.44 : 0.6), 1),
+      dangerLineMuted: lottieColor(mix(danger, bg, isLight ? 0.58 : 0.66), 1),
+      sharedBus: lottieColor(mix(gray4, bg, isLight ? 0.28 : 0.42), 1),
+      inactiveLight: lottieColor(mix(gray4, bg, isLight ? 0.12 : 0.24), 1),
+      sandboxFill: lottieColor(mix(bg, sandboxTint, isLight ? 0.62 : 0.5), isLight ? 0.7 : 0.48),
+      sandboxBorder: lottieColor(mix(success, gray2, isLight ? 0.18 : 0.05), isLight ? 0.9 : 0.82),
+      rightStatus: lottieColor(mix(success, bg, isLight ? 0.62 : 0.58), 1),
+      popupPanel: lottieColor(mix(bg, isLight ? white : black, isLight ? 0.1 : 0.36), isLight ? 0.96 : 0.98),
+      popupShadow: lottieColor(black, isLight ? 0.16 : 0.34),
+      cursorBody: lottieColor(isLight ? white : mix(text, bg, 0.2), 1),
+      cursorOutline: lottieColor(isLight ? black : cursorDarkOutline, 1),
+      cursorShadow: lottieColor(black, 1),
+      cyan: lottieColor(teal, 1),
+      green: lottieColor(success, 1),
+      purple: lottieColor(violet, 1),
+      amber: lottieColor(warning, 1),
+      red: lottieColor(danger, 1),
+      text: lottieColor(text, 1),
+      mutedText: lottieColor(mix(text, bg, isLight ? 0.24 : 0.34), 1),
+      darkText: lottieColor(isLight ? black : bg, 1),
+    };
+  }
+
+  function loadHeroAnimation(container: HTMLElement, startFrame = 0) {
+    const prefersReducedMotion = prefersReducedMotionQuery.matches;
+    const animation = lottie.loadAnimation({
+      container,
+      renderer: "svg",
+      loop: !prefersReducedMotion,
+      autoplay: false,
+      animationData: createAgentIsolationAnimationData(createThemePalette()),
+      rendererSettings: {
+        preserveAspectRatio: "xMidYMid meet",
+      },
+    });
+
+    if (prefersReducedMotion) {
+      animation.addEventListener("DOMLoaded", () => animation.goToAndStop(90, true));
+    } else {
+      animation.addEventListener("DOMLoaded", () => animation.goToAndPlay(startFrame, true));
+      animation.play();
+    }
+
+    return animation;
+  }
+
+  for (const container of document.querySelectorAll(
+    "[data-agent-isolation-hero]",
+  )) {
+    if (!(container instanceof HTMLElement) || container.dataset.lottieLoaded) {
+      continue;
+    }
+
+    container.dataset.lottieLoaded = "true";
+
+    let animation = loadHeroAnimation(container);
+
+    const themeObserver = new MutationObserver(() => {
+      const currentFrame = animation.currentFrame || 0;
+
+      animation.destroy();
+      animation = loadHeroAnimation(container, currentFrame);
+    });
+
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+  }
+</script>
+
+<style>
+  .agent-isolation-hero {
+    position: relative;
+    max-width: 72rem;
+    margin: 0 auto clamp(2rem, 5vw, 4rem);
+  }
+
+  .agent-isolation-hero__glow {
+    position: absolute;
+    inset: 5% 7% auto;
+    height: 72%;
+    border-radius: 999px;
+    background:
+      radial-gradient(circle at 25% 42%, color-mix(in srgb, var(--sl-color-accent), transparent 86%), transparent 34%),
+      radial-gradient(circle at 72% 48%, color-mix(in srgb, var(--sl-color-gray-2), transparent 88%), transparent 38%),
+      radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--sl-color-accent-low), transparent 72%), transparent 48%);
+    filter: blur(30px);
+    opacity: 0.86;
+    pointer-events: none;
+  }
+
+  .agent-isolation-hero__animation {
+    position: relative;
+    aspect-ratio: 20 / 7;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--sl-color-gray-5), transparent 26%);
+    border-radius: 0;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--sl-color-gray-6), transparent 30%), transparent 16%),
+      radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--sl-color-accent-low), transparent 54%), transparent 32%),
+      color-mix(in srgb, var(--sl-color-bg), var(--sl-color-bg-nav) 44%);
+    box-shadow:
+      0 28px 80px color-mix(in srgb, black, transparent 76%),
+      inset 0 1px 0 color-mix(in srgb, white, transparent 88%);
+  }
+
+  .agent-isolation-hero__animation::before {
+    position: absolute;
+    inset: 0;
+    content: "";
+    background-image:
+      linear-gradient(color-mix(in srgb, var(--sl-color-gray-4), transparent 88%) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--sl-color-gray-4), transparent 90%) 1px, transparent 1px);
+    background-size: 34px 34px;
+    mask-image: linear-gradient(to bottom, transparent, black 16%, black 82%, transparent);
+    pointer-events: none;
+  }
+
+  .agent-isolation-hero__animation :global(svg) {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: scale(1.12) !important;
+    transform-origin: center;
+  }
+
+  @media (max-width: 640px) {
+    .agent-isolation-hero {
+      width: 100%;
+      margin-inline: auto;
+      transform: none;
+    }
+  }
+</style>

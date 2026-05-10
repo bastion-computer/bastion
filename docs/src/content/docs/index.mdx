@@ -23,8 +23,14 @@ hero:
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
 import { ContainerSection } from "starlight-theme-black/components";
+import AgentIsolationHero from "../../components/AgentIsolationHero.astro";
+import HeroAsciiArt from "../../components/HeroAsciiArt.astro";
+
+<HeroAsciiArt />
 
 <ContainerSection>
+
+<AgentIsolationHero />
 
 ```sh
 curl -fsSL https://bastion.computer/install.sh | bash
