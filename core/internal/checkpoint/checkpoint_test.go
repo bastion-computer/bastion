@@ -10,14 +10,14 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/sandbox"
-	templatepkg "github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/template"
 )
 
 func TestServiceCreatesListsGetsAndRemovesCheckpoint(t *testing.T) {
 	t.Parallel()
 
 	db := openDB(t)
-	templates := templatepkg.New(db)
+	templates := template.New(db)
 	sandboxes := sandbox.New(db)
 	service := checkpoint.New(db)
 	ctx := context.Background()
@@ -31,10 +31,10 @@ func TestServiceCreatesListsGetsAndRemovesCheckpoint(t *testing.T) {
 	assertCheckpointRemove(ctx, t, service, created.ID)
 }
 
-func createCheckpointSandbox(ctx context.Context, t *testing.T, templates *templatepkg.Service, sandboxes *sandbox.Service) sandbox.Sandbox {
+func createCheckpointSandbox(ctx context.Context, t *testing.T, templates *template.Service, sandboxes *sandbox.Service) sandbox.Sandbox {
 	t.Helper()
 
-	if _, err := templates.Create(ctx, templatepkg.CreateRequest{
+	if _, err := templates.Create(ctx, template.CreateRequest{
 		Key:    "dev-env",
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	}); err != nil {

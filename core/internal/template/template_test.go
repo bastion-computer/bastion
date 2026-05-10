@@ -8,17 +8,17 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	templatepkg "github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/template"
 )
 
 func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 	t.Parallel()
 
 	db := openDB(t)
-	service := templatepkg.New(db)
+	service := template.New(db)
 	ctx := context.Background()
 
-	created, err := service.Create(ctx, templatepkg.CreateRequest{
+	created, err := service.Create(ctx, template.CreateRequest{
 		Key:    "dev-env",
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	})

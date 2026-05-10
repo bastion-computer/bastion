@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	templatepkg "github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/template"
 )
 
 func newTemplatesCommand(opts *rootOptions) *cobra.Command {
@@ -41,7 +41,7 @@ func newTemplatesCreateCommand(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			template, err := apiClient(opts).CreateTemplate(cmd.Context(), templatepkg.CreateRequest{
+			template, err := apiClient(opts).CreateTemplate(cmd.Context(), template.CreateRequest{
 				Key:    args[0],
 				Config: contents,
 			})

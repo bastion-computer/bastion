@@ -14,7 +14,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/page"
 	"github.com/bastion-computer/bastion/core/internal/sandbox"
 	"github.com/bastion-computer/bastion/core/internal/secret"
-	templatepkg "github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/template"
 )
 
 func TestSecretsRoutes(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSandboxRoutes(t *testing.T) {
 
 	router := newTestRouter(t)
 
-	res := request(t, router, http.MethodPost, "/v1/templates", templatepkg.CreateRequest{
+	res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{
 		Key:    "dev-env",
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	})
@@ -166,10 +166,10 @@ func createSecret(t *testing.T, handler http.Handler, key string) secret.Secret 
 	return created
 }
 
-func createTemplate(t *testing.T, handler http.Handler, key string) templatepkg.Metadata {
+func createTemplate(t *testing.T, handler http.Handler, key string) template.Metadata {
 	t.Helper()
 
-	res := request(t, handler, http.MethodPost, "/v1/templates", templatepkg.CreateRequest{
+	res := request(t, handler, http.MethodPost, "/v1/templates", template.CreateRequest{
 		Key:    key,
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	})
@@ -177,7 +177,7 @@ func createTemplate(t *testing.T, handler http.Handler, key string) templatepkg.
 		t.Fatalf("create template status = %d, want %d", res.Code, http.StatusOK)
 	}
 
-	var created templatepkg.Metadata
+	var created template.Metadata
 	decode(t, res, &created)
 
 	return created
@@ -251,7 +251,7 @@ func assertGetTemplate(t *testing.T, handler http.Handler, path, id string) {
 		t.Fatalf("get template %s status = %d, want %d", path, res.Code, http.StatusOK)
 	}
 
-	var got templatepkg.Template
+	var got template.Template
 	decode(t, res, &got)
 
 	if got.ID != id {

@@ -1,3 +1,4 @@
+// Package api exposes the local Bastion HTTP API.
 package api
 
 import (
@@ -8,7 +9,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/bastion-computer/bastion/core/internal/api/checkpoints"
+	"github.com/bastion-computer/bastion/core/internal/api/sandboxes"
+	"github.com/bastion-computer/bastion/core/internal/api/secrets"
+	"github.com/bastion-computer/bastion/core/internal/api/templates"
+	"github.com/bastion-computer/bastion/core/internal/checkpoint"
 	"github.com/bastion-computer/bastion/core/internal/database"
+	"github.com/bastion-computer/bastion/core/internal/sandbox"
+	"github.com/bastion-computer/bastion/core/internal/secret"
+	"github.com/bastion-computer/bastion/core/internal/template"
 )
 
 func init() {
@@ -32,42 +41,47 @@ func NewRouter(db *database.Client) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
-	h := newHandler(db)
 	v1 := router.Group("/v1")
-	v1.GET("/health", h.health)
+	v1.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 
-	secrets := v1.Group("/secrets")
-	secrets.POST("", h.createSecret)
-	secrets.GET("", h.listSecrets)
-	secrets.GET("/:id", h.getSecretByID)
-	secrets.GET("/by-key/:key", h.getSecretByKey)
-	secrets.DELETE("/:id", h.removeSecretByID)
-	secrets.DELETE("/by-key/:key", h.removeSecretByKey)
-	secrets.POST("/resolve", h.resolveSecret)
+	secretHandler := secrets.NewHandler(secret.New(db))
+	secretRoutes := v1.Group("/secrets")
+	secretRoutes.POST("", secretHandler.Create)
+	secretRoutes.GET("", secretHandler.List)
+	secretRoutes.GET("/:id", secretHandler.GetByID)
+	secretRoutes.GET("/by-key/:key", secretHandler.GetByKey)
+	secretRoutes.DELETE("/:id", secretHandler.RemoveByID)
+	secretRoutes.DELETE("/by-key/:key", secretHandler.RemoveByKey)
+	secretRoutes.POST("/resolve", secretHandler.Resolve)
 
-	templates := v1.Group("/templates")
-	templates.POST("", h.createTemplate)
-	templates.GET("", h.listTemplates)
-	templates.GET("/:id", h.getTemplateByID)
-	templates.GET("/by-key/:key", h.getTemplateByKey)
-	templates.DELETE("/:id", h.removeTemplateByID)
-	templates.DELETE("/by-key/:key", h.removeTemplateByKey)
+	templateHandler := templates.NewHandler(template.New(db))
+	templateRoutes := v1.Group("/templates")
+	templateRoutes.POST("", templateHandler.Create)
+	templateRoutes.GET("", templateHandler.List)
+	templateRoutes.GET("/:id", templateHandler.GetByID)
+	templateRoutes.GET("/by-key/:key", templateHandler.GetByKey)
+	templateRoutes.DELETE("/:id", templateHandler.RemoveByID)
+	templateRoutes.DELETE("/by-key/:key", templateHandler.RemoveByKey)
 
-	sandboxes := v1.Group("/sandboxes")
-	sandboxes.POST("", h.createSandbox)
-	sandboxes.GET("", h.listSandboxes)
-	sandboxes.GET("/:id", h.getSandbox)
-	sandboxes.POST("/:id/pause", h.pauseSandbox)
-	sandboxes.POST("/:id/exec", h.execSandbox)
-	sandboxes.DELETE("/:id", h.removeSandbox)
+	sandboxHandler := sandboxes.NewHandler(sandbox.New(db))
+	sandboxRoutes := v1.Group("/sandboxes")
+	sandboxRoutes.POST("", sandboxHandler.Create)
+	sandboxRoutes.GET("", sandboxHandler.List)
+	sandboxRoutes.GET("/:id", sandboxHandler.Get)
+	sandboxRoutes.POST("/:id/pause", sandboxHandler.Pause)
+	sandboxRoutes.POST("/:id/exec", sandboxHandler.Exec)
+	sandboxRoutes.DELETE("/:id", sandboxHandler.Remove)
 
-	checkpoints := v1.Group("/checkpoints")
-	checkpoints.POST("", h.createCheckpoint)
-	checkpoints.GET("", h.listCheckpoints)
-	checkpoints.GET("/:id", h.getCheckpointByID)
-	checkpoints.GET("/by-key/:key", h.getCheckpointByKey)
-	checkpoints.DELETE("/:id", h.removeCheckpointByID)
-	checkpoints.DELETE("/by-key/:key", h.removeCheckpointByKey)
+	checkpointHandler := checkpoints.NewHandler(checkpoint.New(db))
+	checkpointRoutes := v1.Group("/checkpoints")
+	checkpointRoutes.POST("", checkpointHandler.Create)
+	checkpointRoutes.GET("", checkpointHandler.List)
+	checkpointRoutes.GET("/:id", checkpointHandler.GetByID)
+	checkpointRoutes.GET("/by-key/:key", checkpointHandler.GetByKey)
+	checkpointRoutes.DELETE("/:id", checkpointHandler.RemoveByID)
+	checkpointRoutes.DELETE("/by-key/:key", checkpointHandler.RemoveByKey)
 
 	return router
 }

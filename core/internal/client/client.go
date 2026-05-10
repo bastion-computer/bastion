@@ -18,7 +18,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/page"
 	"github.com/bastion-computer/bastion/core/internal/sandbox"
 	"github.com/bastion-computer/bastion/core/internal/secret"
-	templatepkg "github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/template"
 )
 
 // Client wraps HTTP access to the Bastion API.
@@ -83,20 +83,20 @@ func (c *Client) RemoveSecret(ctx context.Context, id, key string) (secret.Secre
 }
 
 // CreateTemplate stores a sandbox template.
-func (c *Client) CreateTemplate(ctx context.Context, req templatepkg.CreateRequest) (templatepkg.Metadata, error) {
-	var out templatepkg.Metadata
+func (c *Client) CreateTemplate(ctx context.Context, req template.CreateRequest) (template.Metadata, error) {
+	var out template.Metadata
 	return out, c.do(ctx, http.MethodPost, "/v1/templates", req, &out)
 }
 
 // ListTemplates returns template metadata.
-func (c *Client) ListTemplates(ctx context.Context, limit int, cursor string) (page.Page[templatepkg.Metadata], error) {
-	var out page.Page[templatepkg.Metadata]
+func (c *Client) ListTemplates(ctx context.Context, limit int, cursor string) (page.Page[template.Metadata], error) {
+	var out page.Page[template.Metadata]
 	return out, c.do(ctx, http.MethodGet, listPath("/v1/templates", limit, cursor), nil, &out)
 }
 
 // GetTemplate returns a template by ID or key.
-func (c *Client) GetTemplate(ctx context.Context, id, key string) (templatepkg.Template, error) {
-	var out templatepkg.Template
+func (c *Client) GetTemplate(ctx context.Context, id, key string) (template.Template, error) {
+	var out template.Template
 
 	path, err := resourcePath("/v1/templates", id, key)
 	if err != nil {
@@ -107,8 +107,8 @@ func (c *Client) GetTemplate(ctx context.Context, id, key string) (templatepkg.T
 }
 
 // RemoveTemplate deletes a template.
-func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (templatepkg.Template, error) {
-	var out templatepkg.Template
+func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (template.Template, error) {
+	var out template.Template
 
 	path, err := resourcePath("/v1/templates", id, key)
 	if err != nil {
