@@ -52,8 +52,13 @@ func (h handler) listSecrets(c *gin.Context) {
 	respond(c, secrets, err, http.StatusOK)
 }
 
-func (h handler) getSecret(c *gin.Context) {
-	secret, err := h.secrets.Get(c.Request.Context(), c.Query("id"), c.Query("key"))
+func (h handler) getSecretByID(c *gin.Context) {
+	secret, err := h.secrets.Get(c.Request.Context(), c.Param("id"), "")
+	respond(c, secret, err, http.StatusOK)
+}
+
+func (h handler) getSecretByKey(c *gin.Context) {
+	secret, err := h.secrets.Get(c.Request.Context(), "", c.Param("key"))
 	respond(c, secret, err, http.StatusOK)
 }
 
@@ -67,8 +72,13 @@ func (h handler) resolveSecret(c *gin.Context) {
 	respond(c, value, err, http.StatusOK)
 }
 
-func (h handler) removeSecret(c *gin.Context) {
-	secret, err := h.secrets.Remove(c.Request.Context(), c.Query("id"), c.Query("key"))
+func (h handler) removeSecretByID(c *gin.Context) {
+	secret, err := h.secrets.Remove(c.Request.Context(), c.Param("id"), "")
+	respond(c, secret, err, http.StatusOK)
+}
+
+func (h handler) removeSecretByKey(c *gin.Context) {
+	secret, err := h.secrets.Remove(c.Request.Context(), "", c.Param("key"))
 	respond(c, secret, err, http.StatusOK)
 }
 
@@ -88,13 +98,23 @@ func (h handler) listTemplates(c *gin.Context) {
 	respond(c, templates, err, http.StatusOK)
 }
 
-func (h handler) getTemplate(c *gin.Context) {
-	template, err := h.templates.Get(c.Request.Context(), c.Query("id"), c.Query("key"))
+func (h handler) getTemplateByID(c *gin.Context) {
+	template, err := h.templates.Get(c.Request.Context(), c.Param("id"), "")
 	respond(c, template, err, http.StatusOK)
 }
 
-func (h handler) removeTemplate(c *gin.Context) {
-	template, err := h.templates.Remove(c.Request.Context(), c.Query("id"), c.Query("key"))
+func (h handler) getTemplateByKey(c *gin.Context) {
+	template, err := h.templates.Get(c.Request.Context(), "", c.Param("key"))
+	respond(c, template, err, http.StatusOK)
+}
+
+func (h handler) removeTemplateByID(c *gin.Context) {
+	template, err := h.templates.Remove(c.Request.Context(), c.Param("id"), "")
+	respond(c, template, err, http.StatusOK)
+}
+
+func (h handler) removeTemplateByKey(c *gin.Context) {
+	template, err := h.templates.Remove(c.Request.Context(), "", c.Param("key"))
 	respond(c, template, err, http.StatusOK)
 }
 
@@ -112,6 +132,11 @@ func (h handler) listSandboxes(c *gin.Context) {
 	limit, cursor := listParams(c)
 	sandboxes, err := h.sandboxes.List(c.Request.Context(), limit, cursor)
 	respond(c, sandboxes, err, http.StatusOK)
+}
+
+func (h handler) getSandbox(c *gin.Context) {
+	sandbox, err := h.sandboxes.Get(c.Request.Context(), c.Param("id"))
+	respond(c, sandbox, err, http.StatusOK)
 }
 
 func (h handler) pauseSandbox(c *gin.Context) {
@@ -150,8 +175,23 @@ func (h handler) listCheckpoints(c *gin.Context) {
 	respond(c, checkpoints, err, http.StatusOK)
 }
 
-func (h handler) removeCheckpoint(c *gin.Context) {
-	checkpoint, err := h.checkpoints.Remove(c.Request.Context(), c.Query("id"), c.Query("key"))
+func (h handler) getCheckpointByID(c *gin.Context) {
+	checkpoint, err := h.checkpoints.Get(c.Request.Context(), c.Param("id"), "")
+	respond(c, checkpoint, err, http.StatusOK)
+}
+
+func (h handler) getCheckpointByKey(c *gin.Context) {
+	checkpoint, err := h.checkpoints.Get(c.Request.Context(), "", c.Param("key"))
+	respond(c, checkpoint, err, http.StatusOK)
+}
+
+func (h handler) removeCheckpointByID(c *gin.Context) {
+	checkpoint, err := h.checkpoints.Remove(c.Request.Context(), c.Param("id"), "")
+	respond(c, checkpoint, err, http.StatusOK)
+}
+
+func (h handler) removeCheckpointByKey(c *gin.Context) {
+	checkpoint, err := h.checkpoints.Remove(c.Request.Context(), "", c.Param("key"))
 	respond(c, checkpoint, err, http.StatusOK)
 }
 

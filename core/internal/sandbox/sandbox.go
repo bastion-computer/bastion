@@ -130,7 +130,7 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page
 
 // Pause marks a sandbox as paused.
 func (s *Service) Pause(ctx context.Context, sandboxID string) (Sandbox, error) {
-	sandbox, err := s.get(ctx, sandboxID)
+	sandbox, err := s.Get(ctx, sandboxID)
 	if err != nil {
 		return Sandbox{}, err
 	}
@@ -145,7 +145,7 @@ func (s *Service) Pause(ctx context.Context, sandboxID string) (Sandbox, error) 
 
 // Remove deletes a sandbox and returns the removed record.
 func (s *Service) Remove(ctx context.Context, sandboxID string) (Sandbox, error) {
-	sandbox, err := s.get(ctx, sandboxID)
+	sandbox, err := s.Get(ctx, sandboxID)
 	if err != nil {
 		return Sandbox{}, err
 	}
@@ -163,14 +163,15 @@ func (s *Service) Exec(ctx context.Context, sandboxID string, command []string) 
 		return ExecResponse{}, fmt.Errorf("%w: command is required", failure.ErrInvalid)
 	}
 
-	if _, err := s.get(ctx, sandboxID); err != nil {
+	if _, err := s.Get(ctx, sandboxID); err != nil {
 		return ExecResponse{}, err
 	}
 
 	return ExecResponse{ID: sandboxID, Command: append([]string(nil), command...), Status: "not_implemented"}, nil
 }
 
-func (s *Service) get(ctx context.Context, sandboxID string) (Sandbox, error) {
+// Get returns a sandbox by ID.
+func (s *Service) Get(ctx context.Context, sandboxID string) (Sandbox, error) {
 	var sandbox Sandbox
 
 	err := s.db.QueryRowContext(ctx, `SELECT id, status, source_type, source_id, created_at FROM sandboxes WHERE id = ?`, sandboxID).Scan(&sandbox.ID, &sandbox.Status, &sandbox.Source.Type, &sandbox.Source.ID, &sandbox.CreatedAt)

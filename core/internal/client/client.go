@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,7 +52,13 @@ func (c *Client) ListSecrets(ctx context.Context, limit int, cursor string) (pag
 // GetSecret returns a secret reference by ID or key.
 func (c *Client) GetSecret(ctx context.Context, id, key string) (secret.Secret, error) {
 	var out secret.Secret
-	return out, c.do(ctx, http.MethodGet, lookupPath("/v1/secrets/lookup", id, key), nil, &out)
+
+	path, err := resourcePath("/v1/secrets", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
 }
 
 // ResolveSecret returns the host environment value for a secret reference.
@@ -66,7 +73,13 @@ func (c *Client) ResolveSecret(ctx context.Context, id, key string) (secret.Valu
 // RemoveSecret deletes a secret reference.
 func (c *Client) RemoveSecret(ctx context.Context, id, key string) (secret.Secret, error) {
 	var out secret.Secret
-	return out, c.do(ctx, http.MethodDelete, lookupPath("/v1/secrets/lookup", id, key), nil, &out)
+
+	path, err := resourcePath("/v1/secrets", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
 }
 
 // CreateTemplate stores a sandbox template.
@@ -84,13 +97,25 @@ func (c *Client) ListTemplates(ctx context.Context, limit int, cursor string) (p
 // GetTemplate returns a template by ID or key.
 func (c *Client) GetTemplate(ctx context.Context, id, key string) (templatepkg.Template, error) {
 	var out templatepkg.Template
-	return out, c.do(ctx, http.MethodGet, lookupPath("/v1/templates/lookup", id, key), nil, &out)
+
+	path, err := resourcePath("/v1/templates", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
 }
 
 // RemoveTemplate deletes a template.
 func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (templatepkg.Template, error) {
 	var out templatepkg.Template
-	return out, c.do(ctx, http.MethodDelete, lookupPath("/v1/templates/lookup", id, key), nil, &out)
+
+	path, err := resourcePath("/v1/templates", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
 }
 
 // CreateSandbox creates a sandbox from a template or checkpoint.
@@ -103,6 +128,12 @@ func (c *Client) CreateSandbox(ctx context.Context, req sandbox.CreateRequest) (
 func (c *Client) ListSandboxes(ctx context.Context, limit int, cursor string) (page.Page[sandbox.Sandbox], error) {
 	var out page.Page[sandbox.Sandbox]
 	return out, c.do(ctx, http.MethodGet, listPath("/v1/sandboxes", limit, cursor), nil, &out)
+}
+
+// GetSandbox returns a sandbox by ID.
+func (c *Client) GetSandbox(ctx context.Context, id string) (sandbox.Sandbox, error) {
+	var out sandbox.Sandbox
+	return out, c.do(ctx, http.MethodGet, "/v1/sandboxes/"+url.PathEscape(id), nil, &out)
 }
 
 // PauseSandbox marks a sandbox as paused.
@@ -138,10 +169,28 @@ func (c *Client) ListCheckpoints(ctx context.Context, limit int, cursor string) 
 	return out, c.do(ctx, http.MethodGet, listPath("/v1/checkpoints", limit, cursor), nil, &out)
 }
 
+// GetCheckpoint returns a checkpoint by ID or key.
+func (c *Client) GetCheckpoint(ctx context.Context, id, key string) (checkpoint.Checkpoint, error) {
+	var out checkpoint.Checkpoint
+
+	path, err := resourcePath("/v1/checkpoints", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
 // RemoveCheckpoint deletes a checkpoint.
 func (c *Client) RemoveCheckpoint(ctx context.Context, id, key string) (checkpoint.Checkpoint, error) {
 	var out checkpoint.Checkpoint
-	return out, c.do(ctx, http.MethodDelete, lookupPath("/v1/checkpoints/lookup", id, key), nil, &out)
+
+	path, err := resourcePath("/v1/checkpoints", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
@@ -210,15 +259,13 @@ func listPath(path string, limit int, cursor string) string {
 	return path + "?" + values.Encode()
 }
 
-func lookupPath(path, id, key string) string {
-	values := url.Values{}
-	if id != "" {
-		values.Set("id", id)
+func resourcePath(path, id, key string) (string, error) {
+	switch {
+	case id != "" && key == "":
+		return path + "/" + url.PathEscape(id), nil
+	case id == "" && key != "":
+		return path + "/by-key/" + url.PathEscape(key), nil
+	default:
+		return "", errors.New("specify exactly one of id or key")
 	}
-
-	if key != "" {
-		values.Set("key", key)
-	}
-
-	return path + "?" + values.Encode()
 }
