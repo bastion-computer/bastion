@@ -17,5 +17,4 @@ IMPORTANT:
   - [Core](.agents/docs/packages/core.md) - Go host API service and CLI
   - [Dev DB](.agents/docs/packages/dev-db.md) - Development-only database debugging tools
   - [Spec](.agents/docs/packages/spec.md) - JSON Schema data type artifacts
-  - [Server](.agents/docs/packages/server.md) - Deprecated TypeScript API server
   - [Docs](.agents/docs/packages/docs.md) - Astro Starlight documentation site
