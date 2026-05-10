@@ -13,17 +13,19 @@ The core package lives in `core/` and builds the `bastion` binary. That binary i
 | ---- | ------- |
 | `cmd/bastion` | Minimal binary entrypoint. |
 | `internal/cli` | Cobra command tree and CLI output handling. |
-| `internal/api` | Gin-based host API routes, handlers, middleware, and HTTP server setup. |
+| `internal/api` | Gin router assembly and HTTP server setup. Route definitions live here. |
 | `internal/client` | HTTP client used by CLI commands to call the host API. |
 | `internal/config` | Environment defaults and local path handling. |
 | `internal/database` | SQLite client setup, query helpers, transactions, and migration handling. |
 | `internal/failure` | Shared domain error sentinels mapped by the API layer. |
+| `internal/handlers` | HTTP route handlers grouped by domain. Handlers adapt Gin requests to services. |
+| `internal/httputil` | Shared HTTP helpers for JSON binding, error responses, and pagination query parsing. |
 | `internal/id` | Public ID generation for domain resources. |
 | `internal/page` | Shared cursor pagination response helpers. |
-| `internal/secret` | Secret request/response types and persistence service. |
-| `internal/template` | Template request/response types and persistence service. |
-| `internal/sandbox` | Sandbox request/response types and persistence service. |
-| `internal/checkpoint` | Checkpoint request/response types and persistence service. |
+| `internal/services/secret` | Secret request/response types and persistence service. |
+| `internal/services/template` | Template request/response types and persistence service. |
+| `internal/services/sandbox` | Sandbox request/response types and persistence service. |
+| `internal/services/checkpoint` | Checkpoint request/response types and persistence service. |
 | `migrations` | Embedded SQL migrations applied by core. |
 
 Implementation packages should stay under `internal/` unless another Go module has a concrete need to import them.
@@ -50,7 +52,7 @@ Root aggregate tasks include this package, so `mise run dev:up`, `mise run lint`
 - `--addr`: listen address. Defaults to `localhost:3148` and can be set with `BASTION_ADDR`.
 - `--data-dir`: persistent data directory. Defaults to `~/.bastion` and can be set with `BASTION_DATA_DIR`.
 
-The service uses Gin and wraps it in `http.Server` so timeouts and graceful shutdown remain explicit.
+The service uses Gin and wraps it in `http.Server` so timeouts and graceful shutdown remain explicit. `internal/api/server.go` owns route registration. Domain-specific handler packages under `internal/handlers` expose `NewHandler(service)` constructors and handler methods used by those routes.
 
 ## Database
 
@@ -64,7 +66,7 @@ SQL migrations live in `core/migrations` and are embedded into the Go binary. `i
 
 The core migrations are the schema source of truth. Development tools such as Drizzle Studio may inspect `.bastion/sqlite.db`, but they do not own or generate core migrations.
 
-`internal/database` intentionally stays small: it opens SQLite, runs migrations, exposes context-aware query and transaction methods, and detects SQLite constraint errors. Domain packages own their own SQL and CRUD behavior.
+`internal/database` intentionally stays small: it opens SQLite, runs migrations, exposes context-aware query and transaction methods, and detects SQLite constraint errors. Service packages under `internal/services` own their own SQL and CRUD behavior.
 
 ## CLI
 
