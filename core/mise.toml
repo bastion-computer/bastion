@@ -26,7 +26,12 @@ run = '''
 set -euo pipefail
 
 mkdir -p tmp
-go build -o ./tmp/bastion ./cmd/bastion
+ldflags=""
+if [ -n "${BASTION_VERSION:-}" ]; then
+  ldflags="-X github.com/bastion-computer/bastion/core/internal/config.Version=${BASTION_VERSION}"
+fi
+
+go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
 '''
 
 [tasks.test]

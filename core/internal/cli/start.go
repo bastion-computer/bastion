@@ -11,7 +11,7 @@ import (
 )
 
 func newStartCommand() *cobra.Command {
-	addr := config.EnvDefault("BASTION_ADDR", "localhost:3148")
+	addr := config.EnvDefault("BASTION_ADDR", config.DefaultAddr)
 	dataDir := config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir())
 
 	cmd := &cobra.Command{

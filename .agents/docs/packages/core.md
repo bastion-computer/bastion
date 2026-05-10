@@ -40,10 +40,12 @@ Run package tasks from the repo root with mise:
 | `mise run //core:lint` | `golangci-lint run ./...` | Run Go linters. |
 | `mise run //core:format:check` | `gofmt -l .` check | Check Go formatting without writing files. |
 | `mise run //core:format:write` | `gofmt -w .` | Rewrite Go formatting. |
-| `mise run //core:build` | `go build -o ./tmp/bastion ./cmd/bastion` | Build the CLI binary. |
+| `mise run //core:build` | `go build -o ./tmp/bastion ./cmd/bastion` with optional version ldflags | Build the CLI binary. |
 | `mise run //core:test` | `go test ./...` | Run Go tests. |
 
 Root aggregate tasks include this package, so `mise run dev:up`, `mise run lint`, `mise run format:check`, `mise run build`, and `mise run test` can all be run from the repository root. The root `dev:up` task opens a tmux session with a dedicated pane for this package's Air process.
+
+Local builds report `dev` from `internal/config.Version`. Release builds can inject a version by setting `BASTION_VERSION` before running `mise run //core:build`.
 
 ## API Service
 

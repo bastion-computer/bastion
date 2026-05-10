@@ -9,11 +9,14 @@ import (
 	"strings"
 )
 
+// DefaultAddr is the local Bastion API listen address.
+const DefaultAddr = "localhost:3148"
+
 // DefaultAPIURL is the local Bastion API endpoint used by the CLI.
-const DefaultAPIURL = "http://localhost:3148"
+const DefaultAPIURL = "http://" + DefaultAddr
 
 // Version is the Bastion CLI version.
-var Version = "0.1"
+var Version = "dev"
 
 // EnvDefault returns an environment variable value or fallback when unset.
 func EnvDefault(name, fallback string) string {
