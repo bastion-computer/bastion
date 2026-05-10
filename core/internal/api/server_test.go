@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/api"
@@ -88,25 +90,25 @@ func TestGetRoutes(t *testing.T) {
 	router := newTestRouter(t)
 
 	secretByID := createSecret(t, router, "API_KEY_GET_ID")
-	assertGetSecret(t, router, "/v1/secrets/"+secretByID.ID, secretByID.ID)
+	assertGet[secret.Secret](t, router, "/v1/secrets/"+secretByID.ID, secretByID.ID)
 
 	secretByKey := createSecret(t, router, "API_KEY_GET_KEY")
-	assertGetSecret(t, router, "/v1/secrets/by-key/"+secretByKey.Key, secretByKey.ID)
+	assertGet[secret.Secret](t, router, "/v1/secrets/by-key/"+secretByKey.Key, secretByKey.ID)
 
 	templateByID := createTemplate(t, router, "template-get-id")
-	assertGetTemplate(t, router, "/v1/templates/"+templateByID.ID, templateByID.ID)
+	assertGet[template.Template](t, router, "/v1/templates/"+templateByID.ID, templateByID.ID)
 
 	templateByKey := createTemplate(t, router, "template-get-key")
-	assertGetTemplate(t, router, "/v1/templates/by-key/"+templateByKey.Key, templateByKey.ID)
+	assertGet[template.Template](t, router, "/v1/templates/by-key/"+templateByKey.Key, templateByKey.ID)
 
 	sandboxID := createPausedSandbox(t, router)
-	assertGetSandbox(t, router, "/v1/sandboxes/"+sandboxID, sandboxID)
+	assertGet[sandbox.Sandbox](t, router, "/v1/sandboxes/"+sandboxID, sandboxID)
 
 	checkpointByID := createCheckpoint(t, router, "checkpoint-get-id", sandboxID)
-	assertGetCheckpoint(t, router, "/v1/checkpoints/"+checkpointByID.ID, checkpointByID.ID)
+	assertGet[checkpoint.Checkpoint](t, router, "/v1/checkpoints/"+checkpointByID.ID, checkpointByID.ID)
 
 	checkpointByKey := createCheckpoint(t, router, "checkpoint-get-key", sandboxID)
-	assertGetCheckpoint(t, router, "/v1/checkpoints/by-key/"+checkpointByKey.Key, checkpointByKey.ID)
+	assertGet[checkpoint.Checkpoint](t, router, "/v1/checkpoints/by-key/"+checkpointByKey.Key, checkpointByKey.ID)
 }
 
 func TestDeleteRoutes(t *testing.T) {
@@ -227,69 +229,44 @@ func assertDelete(t *testing.T, handler http.Handler, path string) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("delete %s status = %d, want %d", path, res.Code, http.StatusOK)
 	}
+
+	res = request(t, handler, http.MethodGet, path, nil)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("get deleted %s status = %d, want %d", path, res.Code, http.StatusNotFound)
+	}
 }
 
-func assertGetSecret(t *testing.T, handler http.Handler, path, id string) {
+func assertGet[T any](t *testing.T, handler http.Handler, path, id string) {
 	t.Helper()
 
 	res := request(t, handler, http.MethodGet, path, nil)
 	if res.Code != http.StatusOK {
-		t.Fatalf("get secret %s status = %d, want %d", path, res.Code, http.StatusOK)
+		t.Fatalf("get %s status = %d, want %d", path, res.Code, http.StatusOK)
 	}
 
-	var got secret.Secret
+	var got T
 	decode(t, res, &got)
 
-	if got.ID != id {
-		t.Fatalf("get secret %s id = %q, want %q", path, got.ID, id)
-	}
-}
+	fields := reflect.ValueOf(got)
+	if fields.Kind() == reflect.Pointer {
+		if fields.IsNil() {
+			t.Fatalf("get %s response ID: %v", path, fmt.Errorf("response type %T is nil", got))
+		}
 
-func assertGetTemplate(t *testing.T, handler http.Handler, path, id string) {
-	t.Helper()
-
-	res := request(t, handler, http.MethodGet, path, nil)
-	if res.Code != http.StatusOK {
-		t.Fatalf("get template %s status = %d, want %d", path, res.Code, http.StatusOK)
+		fields = fields.Elem()
 	}
 
-	var got template.Template
-	decode(t, res, &got)
-
-	if got.ID != id {
-		t.Fatalf("get template %s id = %q, want %q", path, got.ID, id)
-	}
-}
-
-func assertGetSandbox(t *testing.T, handler http.Handler, path, id string) {
-	t.Helper()
-
-	res := request(t, handler, http.MethodGet, path, nil)
-	if res.Code != http.StatusOK {
-		t.Fatalf("get sandbox %s status = %d, want %d", path, res.Code, http.StatusOK)
+	if fields.Kind() != reflect.Struct {
+		t.Fatalf("get %s response ID: %v", path, fmt.Errorf("response type %T is not a struct", got))
 	}
 
-	var got sandbox.Sandbox
-	decode(t, res, &got)
-
-	if got.ID != id {
-		t.Fatalf("get sandbox %s id = %q, want %q", path, got.ID, id)
-	}
-}
-
-func assertGetCheckpoint(t *testing.T, handler http.Handler, path, id string) {
-	t.Helper()
-
-	res := request(t, handler, http.MethodGet, path, nil)
-	if res.Code != http.StatusOK {
-		t.Fatalf("get checkpoint %s status = %d, want %d", path, res.Code, http.StatusOK)
+	field := fields.FieldByName("ID")
+	if !field.IsValid() || field.Kind() != reflect.String {
+		t.Fatalf("get %s response ID: %v", path, fmt.Errorf("response type %T has no string ID field", got))
 	}
 
-	var got checkpoint.Checkpoint
-	decode(t, res, &got)
-
-	if got.ID != id {
-		t.Fatalf("get checkpoint %s id = %q, want %q", path, got.ID, id)
+	if gotID := field.String(); gotID != id {
+		t.Fatalf("get %s id = %q, want %q", path, gotID, id)
 	}
 }
 
