@@ -6,11 +6,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bastion-computer/bastion/core/internal/checkpoint"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	"github.com/bastion-computer/bastion/core/internal/sandbox"
-	"github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/services/checkpoint"
+	"github.com/bastion-computer/bastion/core/internal/services/sandbox"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 func TestServiceCreatesListsGetsAndRemovesCheckpoint(t *testing.T) {

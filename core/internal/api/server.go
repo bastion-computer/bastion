@@ -9,15 +9,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/bastion-computer/bastion/core/internal/api/checkpoints"
-	"github.com/bastion-computer/bastion/core/internal/api/sandboxes"
-	"github.com/bastion-computer/bastion/core/internal/api/secrets"
-	"github.com/bastion-computer/bastion/core/internal/api/templates"
-	"github.com/bastion-computer/bastion/core/internal/checkpoint"
 	"github.com/bastion-computer/bastion/core/internal/database"
-	"github.com/bastion-computer/bastion/core/internal/sandbox"
-	"github.com/bastion-computer/bastion/core/internal/secret"
-	"github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/handlers/checkpoints"
+	"github.com/bastion-computer/bastion/core/internal/handlers/sandboxes"
+	"github.com/bastion-computer/bastion/core/internal/handlers/secrets"
+	"github.com/bastion-computer/bastion/core/internal/handlers/templates"
+	"github.com/bastion-computer/bastion/core/internal/services/checkpoint"
+	"github.com/bastion-computer/bastion/core/internal/services/sandbox"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 func init() {

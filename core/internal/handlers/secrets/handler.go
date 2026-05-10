@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/bastion-computer/bastion/core/internal/api/httputil"
-	"github.com/bastion-computer/bastion/core/internal/secret"
+	"github.com/bastion-computer/bastion/core/internal/httputil"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 )
 
 // Handler handles secret route requests.

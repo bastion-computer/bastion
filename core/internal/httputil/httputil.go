@@ -1,4 +1,4 @@
-// Package httputil provides shared HTTP helpers for Bastion API route packages.
+// Package httputil provides shared HTTP helpers for Bastion handlers.
 package httputil
 
 import (

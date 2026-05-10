@@ -3,7 +3,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/bastion-computer/bastion/core/internal/sandbox"
+	"github.com/bastion-computer/bastion/core/internal/services/sandbox"
 )
 
 func newSandboxCommand(opts *rootOptions) *cobra.Command {

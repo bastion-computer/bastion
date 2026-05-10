@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 func newTemplatesCommand(opts *rootOptions) *cobra.Command {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/bastion-computer/bastion/core/internal/api/httputil"
-	"github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/httputil"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 // Handler handles template route requests.

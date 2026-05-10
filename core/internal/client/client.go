@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bastion-computer/bastion/core/internal/checkpoint"
 	"github.com/bastion-computer/bastion/core/internal/page"
-	"github.com/bastion-computer/bastion/core/internal/sandbox"
-	"github.com/bastion-computer/bastion/core/internal/secret"
-	"github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/services/checkpoint"
+	"github.com/bastion-computer/bastion/core/internal/services/sandbox"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 // Client wraps HTTP access to the Bastion API.

@@ -9,12 +9,12 @@ import (
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/api"
-	"github.com/bastion-computer/bastion/core/internal/checkpoint"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/page"
-	"github.com/bastion-computer/bastion/core/internal/sandbox"
-	"github.com/bastion-computer/bastion/core/internal/secret"
-	"github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/services/checkpoint"
+	"github.com/bastion-computer/bastion/core/internal/services/sandbox"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 func TestSecretsRoutes(t *testing.T) {

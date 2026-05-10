@@ -8,7 +8,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	"github.com/bastion-computer/bastion/core/internal/template"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {

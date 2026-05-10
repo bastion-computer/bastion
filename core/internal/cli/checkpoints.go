@@ -4,7 +4,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/bastion-computer/bastion/core/internal/checkpoint"
+	"github.com/bastion-computer/bastion/core/internal/services/checkpoint"
 )
 
 func newCheckpointsCommand(opts *rootOptions) *cobra.Command {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bastion-computer/bastion/core/internal/secret"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 )
 
 func newSecretsCommand(opts *rootOptions) *cobra.Command {

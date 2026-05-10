@@ -7,7 +7,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	"github.com/bastion-computer/bastion/core/internal/secret"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 )
 
 func TestServiceCreatesListsResolvesAndRemovesSecret(t *testing.T) {
