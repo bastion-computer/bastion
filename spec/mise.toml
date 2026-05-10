@@ -1,0 +1,7 @@
+[tasks."format:check"]
+description = "Check spec formatting"
+run = "bun run format:check"
+
+[tasks."format:write"]
+description = "Format spec files"
+run = "bun run format:write"

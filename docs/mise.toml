@@ -1,0 +1,27 @@
+[tasks.dev]
+description = "Start the docs dev server"
+run = "bun run dev"
+
+[tasks.build]
+description = "Build the docs site"
+run = "bun run build"
+
+[tasks.preview]
+description = "Preview the built docs site"
+run = "bun run preview"
+
+[tasks.lint]
+description = "Lint docs source"
+run = "bun run lint"
+
+[tasks."format:check"]
+description = "Check docs formatting"
+run = "bun run format:check"
+
+[tasks."format:write"]
+description = "Format docs files"
+run = "bun run format:write"
+
+[tasks.typecheck]
+description = "Typecheck docs source"
+run = "bun run typecheck"

@@ -1,0 +1,76 @@
+experimental_monorepo_root = true
+
+[settings]
+experimental = true
+
+[hooks]
+postinstall = { task = "install:js" }
+
+[env]
+CC = "zig cc"
+CGO_ENABLED = "1"
+
+[tools]
+bun = "1.3.13"
+go = "1.26.2"
+air = "latest"
+golangci-lint = "2.12.2"
+tmux = "3.6a"
+zig = "0.15.2"
+
+[monorepo]
+config_roots = [
+  "core",
+  "dev-db",
+  "docs",
+  "spec",
+]
+
+[tasks.lint]
+description = "Run lint tasks across all active packages"
+run = [{ tasks = ["//core:lint", "//docs:lint"] }]
+
+[tasks."format:check"]
+description = "Check formatting across all active packages"
+run = [{ tasks = ["//core:format:check", "//dev-db:format:check", "//docs:format:check", "//spec:format:check"] }]
+
+[tasks."format:write"]
+description = "Format all active packages"
+run = [{ tasks = ["//core:format:write", "//dev-db:format:write", "//docs:format:write", "//spec:format:write"] }]
+
+[tasks.build]
+description = "Run build tasks across all active packages"
+run = [{ tasks = ["//core:build", "//docs:build"] }]
+
+[tasks.typecheck]
+description = "Run typecheck tasks across all active packages"
+run = [{ tasks = ["//docs:typecheck"] }]
+
+[tasks.test]
+description = "Run tests across all active packages"
+run = [{ tasks = ["//core:test"] }]
+
+[tasks."install:js"]
+description = "Install JavaScript dependencies"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${CI:-}" = "true" ]; then
+  bun install --frozen-lockfile
+else
+  bun install
+fi
+'''
+
+[tasks."dev:up"]
+description = "Start active development services"
+run = "bash ./dev.sh up"
+
+[tasks."dev:down"]
+description = "Stop active development services"
+run = "bash ./dev.sh down"
+
+[tasks."dev:bastion"]
+description = "Run the Bastion CLI against the local dev API"
+run = "go run ./core/cmd/bastion --api-url \"${BASTION_API_URL:-http://localhost:3148}\""
