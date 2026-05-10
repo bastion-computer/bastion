@@ -52,8 +52,8 @@ type Service struct {
 	db *database.Client
 }
 
-// New returns a sandbox service backed by db.
-func New(db *database.Client) *Service {
+// NewService returns a sandbox service backed by db.
+func NewService(db *database.Client) *Service {
 	return &Service{db: db}
 }
 

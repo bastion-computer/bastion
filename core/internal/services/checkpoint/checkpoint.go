@@ -41,8 +41,8 @@ type Service struct {
 	db *database.Client
 }
 
-// New returns a checkpoint service backed by db.
-func New(db *database.Client) *Service {
+// NewService returns a checkpoint service backed by db.
+func NewService(db *database.Client) *Service {
 	return &Service{db: db}
 }
 

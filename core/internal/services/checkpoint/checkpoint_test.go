@@ -17,9 +17,9 @@ func TestServiceCreatesListsGetsAndRemovesCheckpoint(t *testing.T) {
 	t.Parallel()
 
 	db := openDB(t)
-	templates := template.New(db)
-	sandboxes := sandbox.New(db)
-	service := checkpoint.New(db)
+	templates := template.NewService(db)
+	sandboxes := sandbox.NewService(db)
+	service := checkpoint.NewService(db)
 	ctx := context.Background()
 
 	createdSandbox := createCheckpointSandbox(ctx, t, templates, sandboxes)

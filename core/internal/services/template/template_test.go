@@ -15,7 +15,7 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 	t.Parallel()
 
 	db := openDB(t)
-	service := template.New(db)
+	service := template.NewService(db)
 	ctx := context.Background()
 
 	created, err := service.Create(ctx, template.CreateRequest{

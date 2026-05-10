@@ -14,8 +14,8 @@ func TestServiceCreatesListsPausesExecsAndRemovesSandbox(t *testing.T) {
 	t.Parallel()
 
 	db := openDB(t)
-	templates := template.New(db)
-	service := sandbox.New(db)
+	templates := template.NewService(db)
+	service := sandbox.NewService(db)
 	ctx := context.Background()
 
 	created := createSandboxFromTemplate(ctx, t, templates, service)

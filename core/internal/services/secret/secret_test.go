@@ -12,7 +12,7 @@ import (
 
 func TestServiceCreatesListsResolvesAndRemovesSecret(t *testing.T) {
 	db := openDB(t)
-	service := secret.New(db)
+	service := secret.NewService(db)
 	ctx := context.Background()
 
 	t.Setenv("BASTION_SECRET_TEST", "secret-value")

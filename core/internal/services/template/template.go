@@ -42,8 +42,8 @@ type Service struct {
 	db *database.Client
 }
 
-// New returns a template service backed by db.
-func New(db *database.Client) *Service {
+// NewService returns a template service backed by db.
+func NewService(db *database.Client) *Service {
 	return &Service{db: db}
 }
 

@@ -46,7 +46,7 @@ func NewRouter(db *database.Client) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	secretHandler := secrets.NewHandler(secret.New(db))
+	secretHandler := secrets.NewHandler(secret.NewService(db))
 	secretRoutes := v1.Group("/secrets")
 	secretRoutes.POST("", secretHandler.Create)
 	secretRoutes.GET("", secretHandler.List)
@@ -56,7 +56,7 @@ func NewRouter(db *database.Client) *gin.Engine {
 	secretRoutes.DELETE("/by-key/:key", secretHandler.RemoveByKey)
 	secretRoutes.POST("/resolve", secretHandler.Resolve)
 
-	templateHandler := templates.NewHandler(template.New(db))
+	templateHandler := templates.NewHandler(template.NewService(db))
 	templateRoutes := v1.Group("/templates")
 	templateRoutes.POST("", templateHandler.Create)
 	templateRoutes.GET("", templateHandler.List)
@@ -65,7 +65,7 @@ func NewRouter(db *database.Client) *gin.Engine {
 	templateRoutes.DELETE("/:id", templateHandler.RemoveByID)
 	templateRoutes.DELETE("/by-key/:key", templateHandler.RemoveByKey)
 
-	sandboxHandler := sandboxes.NewHandler(sandbox.New(db))
+	sandboxHandler := sandboxes.NewHandler(sandbox.NewService(db))
 	sandboxRoutes := v1.Group("/sandboxes")
 	sandboxRoutes.POST("", sandboxHandler.Create)
 	sandboxRoutes.GET("", sandboxHandler.List)
@@ -74,7 +74,7 @@ func NewRouter(db *database.Client) *gin.Engine {
 	sandboxRoutes.POST("/:id/exec", sandboxHandler.Exec)
 	sandboxRoutes.DELETE("/:id", sandboxHandler.Remove)
 
-	checkpointHandler := checkpoints.NewHandler(checkpoint.New(db))
+	checkpointHandler := checkpoints.NewHandler(checkpoint.NewService(db))
 	checkpointRoutes := v1.Group("/checkpoints")
 	checkpointRoutes.POST("", checkpointHandler.Create)
 	checkpointRoutes.GET("", checkpointHandler.List)
