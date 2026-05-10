@@ -19,69 +19,29 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
-func TestSecretsRoutes(t *testing.T) {
+func TestListRoutes(t *testing.T) {
 	t.Parallel()
 
 	router := newTestRouter(t)
 
-	res := request(t, router, http.MethodPost, "/v1/secrets", secret.CreateRequest{
-		Key:        "API_KEY",
-		Env:        "BASTION_API_KEY",
-		AllowHosts: []string{"*.example.com"},
-	})
-	if res.Code != http.StatusOK {
-		t.Fatalf("create secret status = %d, want %d", res.Code, http.StatusOK)
-	}
+	createSecret(t, router, "API_KEY_LIST_1")
+	createSecret(t, router, "API_KEY_LIST_2")
 
-	var secretValue secret.Secret
-	decode(t, res, &secretValue)
+	templateOne := createTemplate(t, router, "template-list-1")
+	templateTwo := createTemplate(t, router, "template-list-2")
 
-	if secretValue.ID == "" || secretValue.Key != "API_KEY" {
-		t.Fatalf("unexpected secret response: %#v", secretValue)
-	}
+	sandboxOne := createSandbox(t, router, templateOne.Key)
+	sandboxTwo := createSandbox(t, router, templateTwo.Key)
+	pauseSandbox(t, router, sandboxOne.ID)
+	pauseSandbox(t, router, sandboxTwo.ID)
 
-	res = request(t, router, http.MethodGet, "/v1/secrets", nil)
-	if res.Code != http.StatusOK {
-		t.Fatalf("list secrets status = %d, want %d", res.Code, http.StatusOK)
-	}
+	createCheckpoint(t, router, "checkpoint-list-1", sandboxOne.ID)
+	createCheckpoint(t, router, "checkpoint-list-2", sandboxTwo.ID)
 
-	var secretsPage page.Page[secret.Secret]
-	decode(t, res, &secretsPage)
-
-	if len(secretsPage.Entries) != 1 {
-		t.Fatalf("list secrets entries = %d, want 1", len(secretsPage.Entries))
-	}
-}
-
-func TestSandboxRoutes(t *testing.T) {
-	t.Parallel()
-
-	router := newTestRouter(t)
-
-	res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{
-		Key:    "dev-env",
-		Config: json.RawMessage(`{"actions":{"init":[]}}`),
-	})
-	if res.Code != http.StatusOK {
-		t.Fatalf("create template status = %d, want %d", res.Code, http.StatusOK)
-	}
-
-	res = request(t, router, http.MethodPost, "/v1/sandboxes", sandbox.CreateRequest{From: "template", Key: "dev-env"})
-	if res.Code != http.StatusOK {
-		t.Fatalf("create sandbox status = %d, want %d", res.Code, http.StatusOK)
-	}
-
-	var sandboxValue sandbox.Sandbox
-	decode(t, res, &sandboxValue)
-
-	if sandboxValue.Status != "pending" {
-		t.Fatalf("sandbox status = %q, want pending", sandboxValue.Status)
-	}
-
-	res = request(t, router, http.MethodPost, "/v1/sandboxes/"+sandboxValue.ID+"/pause", nil)
-	if res.Code != http.StatusOK {
-		t.Fatalf("pause sandbox status = %d, want %d", res.Code, http.StatusOK)
-	}
+	assertList[secret.Secret](t, router, "/v1/secrets", 2)
+	assertList[template.Metadata](t, router, "/v1/templates", 2)
+	assertList[sandbox.Sandbox](t, router, "/v1/sandboxes", 2)
+	assertList[checkpoint.Checkpoint](t, router, "/v1/checkpoints", 2)
 }
 
 func TestGetRoutes(t *testing.T) {
@@ -101,13 +61,15 @@ func TestGetRoutes(t *testing.T) {
 	templateByKey := createTemplate(t, router, "template-get-key")
 	assertGet[template.Template](t, router, "/v1/templates/by-key/"+templateByKey.Key, templateByKey.ID)
 
-	sandboxID := createPausedSandbox(t, router)
-	assertGet[sandbox.Sandbox](t, router, "/v1/sandboxes/"+sandboxID, sandboxID)
+	sandboxTemplate := createTemplate(t, router, "sandbox-get-source")
+	sandboxValue := createSandbox(t, router, sandboxTemplate.Key)
+	pauseSandbox(t, router, sandboxValue.ID)
+	assertGet[sandbox.Sandbox](t, router, "/v1/sandboxes/"+sandboxValue.ID, sandboxValue.ID)
 
-	checkpointByID := createCheckpoint(t, router, "checkpoint-get-id", sandboxID)
+	checkpointByID := createCheckpoint(t, router, "checkpoint-get-id", sandboxValue.ID)
 	assertGet[checkpoint.Checkpoint](t, router, "/v1/checkpoints/"+checkpointByID.ID, checkpointByID.ID)
 
-	checkpointByKey := createCheckpoint(t, router, "checkpoint-get-key", sandboxID)
+	checkpointByKey := createCheckpoint(t, router, "checkpoint-get-key", sandboxValue.ID)
 	assertGet[checkpoint.Checkpoint](t, router, "/v1/checkpoints/by-key/"+checkpointByKey.Key, checkpointByKey.ID)
 }
 
@@ -128,15 +90,17 @@ func TestDeleteRoutes(t *testing.T) {
 	templateByKey := createTemplate(t, router, "template-delete-key")
 	assertDelete(t, router, "/v1/templates/by-key/"+templateByKey.Key)
 
-	sandboxID := createPausedSandbox(t, router)
+	sandboxTemplate := createTemplate(t, router, "sandbox-delete-source")
+	sandboxValue := createSandbox(t, router, sandboxTemplate.Key)
+	pauseSandbox(t, router, sandboxValue.ID)
 
-	checkpointByID := createCheckpoint(t, router, "checkpoint-delete-id", sandboxID)
+	checkpointByID := createCheckpoint(t, router, "checkpoint-delete-id", sandboxValue.ID)
 	assertDelete(t, router, "/v1/checkpoints/"+checkpointByID.ID)
 
-	checkpointByKey := createCheckpoint(t, router, "checkpoint-delete-key", sandboxID)
+	checkpointByKey := createCheckpoint(t, router, "checkpoint-delete-key", sandboxValue.ID)
 	assertDelete(t, router, "/v1/checkpoints/by-key/"+checkpointByKey.Key)
 
-	assertDelete(t, router, "/v1/sandboxes/"+sandboxID)
+	assertDelete(t, router, "/v1/sandboxes/"+sandboxValue.ID)
 }
 
 func newTestRouter(t *testing.T) http.Handler {
@@ -187,12 +151,10 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 	return created
 }
 
-func createPausedSandbox(t *testing.T, handler http.Handler) string {
+func createSandbox(t *testing.T, handler http.Handler, templateKey string) sandbox.Sandbox {
 	t.Helper()
 
-	template := createTemplate(t, handler, "checkpoint-source")
-
-	res := request(t, handler, http.MethodPost, "/v1/sandboxes", sandbox.CreateRequest{From: "template", Key: template.Key})
+	res := request(t, handler, http.MethodPost, "/v1/sandboxes", sandbox.CreateRequest{From: "template", Key: templateKey})
 	if res.Code != http.StatusOK {
 		t.Fatalf("create sandbox status = %d, want %d", res.Code, http.StatusOK)
 	}
@@ -200,12 +162,27 @@ func createPausedSandbox(t *testing.T, handler http.Handler) string {
 	var created sandbox.Sandbox
 	decode(t, res, &created)
 
-	res = request(t, handler, http.MethodPost, "/v1/sandboxes/"+created.ID+"/pause", nil)
+	if created.Status != "pending" {
+		t.Fatalf("created sandbox status = %q, want pending", created.Status)
+	}
+
+	return created
+}
+
+func pauseSandbox(t *testing.T, handler http.Handler, sandboxID string) {
+	t.Helper()
+
+	res := request(t, handler, http.MethodPost, "/v1/sandboxes/"+sandboxID+"/pause", nil)
 	if res.Code != http.StatusOK {
 		t.Fatalf("pause sandbox status = %d, want %d", res.Code, http.StatusOK)
 	}
 
-	return created.ID
+	var paused sandbox.Sandbox
+	decode(t, res, &paused)
+
+	if paused.Status != "paused" {
+		t.Fatalf("paused sandbox status = %q, want paused", paused.Status)
+	}
 }
 
 func createCheckpoint(t *testing.T, handler http.Handler, key, sandboxID string) checkpoint.Checkpoint {
@@ -233,6 +210,22 @@ func assertDelete(t *testing.T, handler http.Handler, path string) {
 	res = request(t, handler, http.MethodGet, path, nil)
 	if res.Code != http.StatusNotFound {
 		t.Fatalf("get deleted %s status = %d, want %d", path, res.Code, http.StatusNotFound)
+	}
+}
+
+func assertList[T any](t *testing.T, handler http.Handler, path string, entries int) {
+	t.Helper()
+
+	res := request(t, handler, http.MethodGet, path, nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("list %s status = %d, want %d", path, res.Code, http.StatusOK)
+	}
+
+	var got page.Page[T]
+	decode(t, res, &got)
+
+	if len(got.Entries) != entries {
+		t.Fatalf("list %s entries = %d, want %d", path, len(got.Entries), entries)
 	}
 }
 
