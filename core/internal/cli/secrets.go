@@ -33,9 +33,9 @@ func newSecretsBindCommand(opts *rootOptions) *cobra.Command {
 		Short: "Bind a secret reference to a host environment variable",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			key, env, err := splitKeyEnv(args[0])
-			if err != nil {
-				return err
+			key, env, ok := strings.Cut(args[0], ":")
+			if !ok || key == "" || env == "" {
+				return errors.New("expected KEY:ENV_VAR")
 			}
 
 			secret, err := apiClient(opts).CreateSecret(cmd.Context(), secret.CreateRequest{
@@ -77,13 +77,4 @@ func newSecretsRemoveCommand(opts *rootOptions) *cobra.Command {
 	return newIDKeyCommand(removeIDKeyUse, "Remove a secret reference", "secret ID", "secret key", func(cmd *cobra.Command, id, key string) (any, error) {
 		return apiClient(opts).RemoveSecret(cmd.Context(), id, key)
 	})
-}
-
-func splitKeyEnv(value string) (string, string, error) {
-	key, env, ok := strings.Cut(value, ":")
-	if !ok || key == "" || env == "" {
-		return "", "", errors.New("expected KEY:ENV_VAR")
-	}
-
-	return key, env, nil
 }

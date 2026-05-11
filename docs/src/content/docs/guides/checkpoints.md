@@ -74,6 +74,30 @@ bastion checkpoints list [--limit] [--cursor]
 
 Use the resulting checkpoint ID or key with `bastion sandbox create --from checkpoint` to initialize a new sandbox from the saved state.
 
+## Get single checkpoint
+
+```sh
+bastion checkpoints get [--id] [--key]
+```
+
+```json
+// bastion checkpoints get --id chk_xxxxxx
+// or
+// bastion checkpoints get --key dev-env/branch01
+{
+  "id": "chk_xxxxxx",
+  "key": "dev-env/branch01",
+  "source": {
+    "type": "sandbox",
+    "id": "sbx_xxxxxx"
+  },
+  "status": "ok",
+  "createdAt": "<iso_timestamp>"
+}
+```
+
+This command must specify either an `--id` or `--key` value.
+
 ## Remove a checkpoint
 
 ```sh

@@ -15,6 +15,7 @@ func newCheckpointsCommand(opts *rootOptions) *cobra.Command {
 	cmd.AddCommand(
 		newCheckpointsCreateCommand(opts),
 		newCheckpointsListCommand(opts),
+		newCheckpointsGetCommand(opts),
 		newCheckpointsRemoveCommand(opts),
 	)
 
@@ -48,6 +49,12 @@ func newCheckpointsCreateCommand(opts *rootOptions) *cobra.Command {
 func newCheckpointsListCommand(opts *rootOptions) *cobra.Command {
 	return newListCommand("List checkpoints", func(cmd *cobra.Command, limit int, cursor string) (any, error) {
 		return apiClient(opts).ListCheckpoints(cmd.Context(), limit, cursor)
+	})
+}
+
+func newCheckpointsGetCommand(opts *rootOptions) *cobra.Command {
+	return newIDKeyCommand(getIDKeyUse, "Get a checkpoint", "checkpoint ID", "checkpoint key", func(cmd *cobra.Command, id, key string) (any, error) {
+		return apiClient(opts).GetCheckpoint(cmd.Context(), id, key)
 	})
 }
 

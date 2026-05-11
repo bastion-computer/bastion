@@ -36,9 +36,18 @@ func newTemplatesCreateCommand(opts *rootOptions) *cobra.Command {
 		Short: "Create a sandbox template",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			contents, err := templateConfig(configValue, file)
-			if err != nil {
-				return err
+			if (configValue == "") == (file == "") {
+				return errors.New("specify exactly one of --config or --file")
+			}
+
+			contents := json.RawMessage(configValue)
+			if file != "" {
+				fileContents, err := os.ReadFile(file) //nolint:gosec // CLI user explicitly chooses the template file path.
+				if err != nil {
+					return err
+				}
+
+				contents = json.RawMessage(fileContents)
 			}
 
 			template, err := apiClient(opts).CreateTemplate(cmd.Context(), template.CreateRequest{
@@ -74,21 +83,4 @@ func newTemplatesRemoveCommand(opts *rootOptions) *cobra.Command {
 	return newIDKeyCommand(removeIDKeyUse, "Remove a template", "template ID", "template key", func(cmd *cobra.Command, id, key string) (any, error) {
 		return apiClient(opts).RemoveTemplate(cmd.Context(), id, key)
 	})
-}
-
-func templateConfig(configValue, file string) (json.RawMessage, error) {
-	if (configValue == "") == (file == "") {
-		return nil, errors.New("specify exactly one of --config or --file")
-	}
-
-	if configValue != "" {
-		return json.RawMessage(configValue), nil
-	}
-
-	contents, err := os.ReadFile(file) //nolint:gosec // CLI user explicitly chooses the template file path.
-	if err != nil {
-		return nil, err
-	}
-
-	return json.RawMessage(contents), nil
 }

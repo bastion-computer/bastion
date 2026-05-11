@@ -89,6 +89,26 @@ bastion sandbox list [--limit] [--cursor]
 
 `--cursor` is an **optional** timestamp for fetching entries created after this point in time. Defaults to `null`.
 
+## Get single sandbox
+
+```sh
+bastion sandbox get $SANDBOX_ID
+```
+
+```json
+{
+  "id": "sbx_xxxxxx",
+  "status": "running",
+  "source": {
+    "type": "template",
+    "id": "tpl_xxxxxx"
+  },
+  "createdAt": "<iso_timestamp>"
+}
+```
+
+Use the sandbox ID returned by `create` or `list` to fetch a single sandbox.
+
 ## Pause a sandbox
 
 ```sh

@@ -44,8 +44,3 @@ func NewRootCommand() *cobra.Command {
 
 	return cmd
 }
-
-func addListFlags(cmd *cobra.Command, limit *int, cursor *string) {
-	cmd.Flags().IntVar(limit, "limit", 20, "maximum entries to return")
-	cmd.Flags().StringVar(cursor, "cursor", "", "pagination cursor")
-}

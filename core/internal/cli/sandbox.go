@@ -14,6 +14,7 @@ func newSandboxCommand(opts *rootOptions) *cobra.Command {
 	cmd.AddCommand(
 		newSandboxCreateCommand(opts),
 		newSandboxListCommand(opts),
+		newSandboxGetCommand(opts),
 		newSandboxPauseCommand(opts),
 		newSandboxRemoveCommand(opts),
 	)
@@ -60,6 +61,22 @@ func newSandboxListCommand(opts *rootOptions) *cobra.Command {
 	return newListCommand("List sandboxes", func(cmd *cobra.Command, limit int, cursor string) (any, error) {
 		return apiClient(opts).ListSandboxes(cmd.Context(), limit, cursor)
 	})
+}
+
+func newSandboxGetCommand(opts *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "get SANDBOX_ID",
+		Short: "Get a sandbox",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sandbox, err := apiClient(opts).GetSandbox(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+
+			return writeJSON(cmd.OutOrStdout(), sandbox)
+		},
+	}
 }
 
 func newSandboxPauseCommand(opts *rootOptions) *cobra.Command {

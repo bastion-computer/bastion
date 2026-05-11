@@ -51,7 +51,8 @@ func newListCommand(short string, action listCommandAction) *cobra.Command {
 			return writeJSON(cmd.OutOrStdout(), value)
 		},
 	}
-	addListFlags(cmd, &limit, &cursor)
+	cmd.Flags().IntVar(&limit, "limit", 20, "maximum entries to return")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor")
 
 	return cmd
 }
