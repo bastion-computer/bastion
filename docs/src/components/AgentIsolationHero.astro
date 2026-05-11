@@ -1,4 +1,5 @@
 ---
+
 ---
 
 <figure
@@ -27,7 +28,10 @@
   function readCssRgb(name: string, fallback: Rgb): Rgb {
     probe.style.color = `var(${name})`;
     const value = getComputedStyle(probe).color;
-    const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+    const channels = value
+      .match(/[\d.]+/g)
+      ?.slice(0, 3)
+      .map(Number);
 
     if (!channels || channels.length < 3 || channels.some(Number.isNaN)) {
       return fallback;
@@ -37,7 +41,9 @@
   }
 
   function mix(from: Rgb, to: Rgb, amount: number): Rgb {
-    return from.map((value, index) => value * (1 - amount) + to[index] * amount) as Rgb;
+    return from.map(
+      (value, index) => value * (1 - amount) + to[index] * amount,
+    ) as Rgb;
   }
 
   function lottieColor(rgb: Rgb, alpha = 1): LottieColor {
@@ -51,12 +57,30 @@
 
   function createThemePalette(): Record<string, LottieColor> {
     const isLight = document.documentElement.dataset.theme === "light";
-    const bg = readCssRgb("--sl-color-bg", isLight ? [255, 255, 255] : [22, 24, 31]);
-    const nav = readCssRgb("--sl-color-bg-nav", isLight ? [247, 248, 251] : [35, 38, 47]);
-    const text = readCssRgb("--sl-color-text", isLight ? [44, 48, 58] : [195, 199, 210]);
-    const accentHigh = readCssRgb("--sl-color-accent-high", isLight ? [28, 45, 138] : [179, 199, 255]);
-    const gray2 = readCssRgb("--sl-color-gray-2", isLight ? [54, 59, 71] : [195, 199, 210]);
-    const gray4 = readCssRgb("--sl-color-gray-4", isLight ? [138, 144, 158] : [83, 89, 108]);
+    const bg = readCssRgb(
+      "--sl-color-bg",
+      isLight ? [255, 255, 255] : [22, 24, 31],
+    );
+    const nav = readCssRgb(
+      "--sl-color-bg-nav",
+      isLight ? [247, 248, 251] : [35, 38, 47],
+    );
+    const text = readCssRgb(
+      "--sl-color-text",
+      isLight ? [44, 48, 58] : [195, 199, 210],
+    );
+    const accentHigh = readCssRgb(
+      "--sl-color-accent-high",
+      isLight ? [28, 45, 138] : [179, 199, 255],
+    );
+    const gray2 = readCssRgb(
+      "--sl-color-gray-2",
+      isLight ? [54, 59, 71] : [195, 199, 210],
+    );
+    const gray4 = readCssRgb(
+      "--sl-color-gray-4",
+      isLight ? [138, 144, 158] : [83, 89, 108],
+    );
     const black: Rgb = [7, 10, 18];
     const white: Rgb = [255, 255, 255];
     const rightTerminalTint: Rgb = isLight ? [236, 249, 244] : [5, 22, 18];
@@ -69,21 +93,45 @@
     const teal: Rgb = isLight ? [42, 131, 157] : [92, 182, 204];
 
     return {
-      terminal: lottieColor(mix(bg, nav, isLight ? 0.78 : 0.35), isLight ? 0.96 : 0.92),
+      terminal: lottieColor(
+        mix(bg, nav, isLight ? 0.78 : 0.35),
+        isLight ? 0.96 : 0.92,
+      ),
       terminalTop: lottieColor(mix(nav, bg, isLight ? 0.16 : 0.28), 1),
       terminalLine: lottieColor(mix(text, bg, isLight ? 0.46 : 0.58), 1),
-      leftTerminal: lottieColor(mix(bg, isLight ? white : black, isLight ? 0.2 : 0.28), isLight ? 0.94 : 0.9),
-      rightTerminal: lottieColor(mix(bg, rightTerminalTint, isLight ? 0.55 : 0.38), isLight ? 0.94 : 0.9),
-      leftBorder: lottieColor(mix(accentHigh, gray2, isLight ? 0.42 : 0.22), isLight ? 0.75 : 0.8),
-      rightBorder: lottieColor(mix(success, gray2, isLight ? 0.25 : 0.08), isLight ? 0.78 : 0.74),
+      leftTerminal: lottieColor(
+        mix(bg, isLight ? white : black, isLight ? 0.2 : 0.28),
+        isLight ? 0.94 : 0.9,
+      ),
+      rightTerminal: lottieColor(
+        mix(bg, rightTerminalTint, isLight ? 0.55 : 0.38),
+        isLight ? 0.94 : 0.9,
+      ),
+      leftBorder: lottieColor(
+        mix(accentHigh, gray2, isLight ? 0.42 : 0.22),
+        isLight ? 0.75 : 0.8,
+      ),
+      rightBorder: lottieColor(
+        mix(success, gray2, isLight ? 0.25 : 0.08),
+        isLight ? 0.78 : 0.74,
+      ),
       dangerLine: lottieColor(mix(danger, bg, isLight ? 0.44 : 0.6), 1),
       dangerLineMuted: lottieColor(mix(danger, bg, isLight ? 0.58 : 0.66), 1),
       sharedBus: lottieColor(mix(gray4, bg, isLight ? 0.28 : 0.42), 1),
       inactiveLight: lottieColor(mix(gray4, bg, isLight ? 0.12 : 0.24), 1),
-      sandboxFill: lottieColor(mix(bg, sandboxTint, isLight ? 0.62 : 0.5), isLight ? 0.7 : 0.48),
-      sandboxBorder: lottieColor(mix(success, gray2, isLight ? 0.18 : 0.05), isLight ? 0.9 : 0.82),
+      sandboxFill: lottieColor(
+        mix(bg, sandboxTint, isLight ? 0.62 : 0.5),
+        isLight ? 0.7 : 0.48,
+      ),
+      sandboxBorder: lottieColor(
+        mix(success, gray2, isLight ? 0.18 : 0.05),
+        isLight ? 0.9 : 0.82,
+      ),
       rightStatus: lottieColor(mix(success, bg, isLight ? 0.62 : 0.58), 1),
-      popupPanel: lottieColor(mix(bg, isLight ? white : black, isLight ? 0.1 : 0.36), isLight ? 0.96 : 0.98),
+      popupPanel: lottieColor(
+        mix(bg, isLight ? white : black, isLight ? 0.1 : 0.36),
+        isLight ? 0.96 : 0.98,
+      ),
       popupShadow: lottieColor(black, isLight ? 0.16 : 0.34),
       cursorBody: lottieColor(isLight ? white : mix(text, bg, 0.2), 1),
       cursorOutline: lottieColor(isLight ? black : cursorDarkOutline, 1),
@@ -113,9 +161,13 @@
     });
 
     if (prefersReducedMotion) {
-      animation.addEventListener("DOMLoaded", () => animation.goToAndStop(90, true));
+      animation.addEventListener("DOMLoaded", () =>
+        animation.goToAndStop(90, true),
+      );
     } else {
-      animation.addEventListener("DOMLoaded", () => animation.goToAndPlay(startFrame, true));
+      animation.addEventListener("DOMLoaded", () =>
+        animation.goToAndPlay(startFrame, true),
+      );
       animation.play();
     }
 
@@ -160,9 +212,21 @@
     height: 72%;
     border-radius: 999px;
     background:
-      radial-gradient(circle at 25% 42%, color-mix(in srgb, var(--sl-color-accent), transparent 86%), transparent 34%),
-      radial-gradient(circle at 72% 48%, color-mix(in srgb, var(--sl-color-gray-2), transparent 88%), transparent 38%),
-      radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--sl-color-accent-low), transparent 72%), transparent 48%);
+      radial-gradient(
+        circle at 25% 42%,
+        color-mix(in srgb, var(--sl-color-accent), transparent 86%),
+        transparent 34%
+      ),
+      radial-gradient(
+        circle at 72% 48%,
+        color-mix(in srgb, var(--sl-color-gray-2), transparent 88%),
+        transparent 38%
+      ),
+      radial-gradient(
+        circle at 50% 50%,
+        color-mix(in srgb, var(--sl-color-accent-low), transparent 72%),
+        transparent 48%
+      );
     filter: blur(30px);
     opacity: 0.86;
     pointer-events: none;
@@ -172,11 +236,20 @@
     position: relative;
     aspect-ratio: 20 / 7;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--sl-color-gray-5), transparent 26%);
+    border: 1px solid
+      color-mix(in srgb, var(--sl-color-gray-5), transparent 26%);
     border-radius: 0;
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--sl-color-gray-6), transparent 30%), transparent 16%),
-      radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--sl-color-accent-low), transparent 54%), transparent 32%),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--sl-color-gray-6), transparent 30%),
+        transparent 16%
+      ),
+      radial-gradient(
+        circle at 50% 42%,
+        color-mix(in srgb, var(--sl-color-accent-low), transparent 54%),
+        transparent 32%
+      ),
       color-mix(in srgb, var(--sl-color-bg), var(--sl-color-bg-nav) 44%);
     box-shadow:
       0 28px 80px color-mix(in srgb, black, transparent 76%),
@@ -188,10 +261,23 @@
     inset: 0;
     content: "";
     background-image:
-      linear-gradient(color-mix(in srgb, var(--sl-color-gray-4), transparent 88%) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--sl-color-gray-4), transparent 90%) 1px, transparent 1px);
+      linear-gradient(
+        color-mix(in srgb, var(--sl-color-gray-4), transparent 88%) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--sl-color-gray-4), transparent 90%) 1px,
+        transparent 1px
+      );
     background-size: 34px 34px;
-    mask-image: linear-gradient(to bottom, transparent, black 16%, black 82%, transparent);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black 16%,
+      black 82%,
+      transparent
+    );
     pointer-events: none;
   }
 

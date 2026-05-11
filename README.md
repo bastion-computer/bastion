@@ -1,6 +1,6 @@
 # bastion
 
-Bastion is an open source platform to deploy virtual computers for AI agents.
+Bastion is a platform to scale virtual computers for AI agents.
 
 **See the full documentation at [bastion.computer](https://bastion.computer).**
 

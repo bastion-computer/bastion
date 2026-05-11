@@ -1,4 +1,5 @@
 ---
+
 ---
 
 <style is:global>
@@ -12,8 +13,7 @@
     position: absolute;
     right: 0;
     top: 50%;
-    content:
-      "                                  |>>>" "\A"
+    content: "                                  |>>>" "\A"
       "                                  |" "\A"
       "                    |>>>      _  _|_  _         |>>>" "\A"
       "                    |        |;| |;| |;|        |" "\A"
@@ -25,15 +25,18 @@
       "                 ||:  .|||_|;|_|;|_|;|_|;|_|;||:.  |" "\A"
       "                 ||:   ||.    .     .      . ||:  .|" "\A"
       "                 ||: . || .     . .   .  ,   ||:   |       \\,/" "\A"
-      "                 ||:   ||:  ,  _______   .   ||: , |            /`\\" "\A"
-      "                 ||:   || .   /+++++++\\    . ||:   |" "\A"
+      "                 ||:   ||:  ,  _______   .   ||: , |            /`\\"
+      "\A" "                 ||:   || .   /+++++++\\    . ||:   |" "\A"
       "                 ||:   ||.    |+++++++| .    ||: . |" "\A"
       "              __ ||: . ||: ,  |+++++++|.  . _||_   |" "\A"
-      "     ____--`~    '--~~__|.    |+++++__|----~    ~`---,              ___" "\A"
+      "     ____--`~    '--~~__|.    |+++++__|----~    ~`---,              ___"
+      "\A"
       "-~--~                   ~---__|,--~'                  ~~----_____-~'   `~----~~";
     transform: translateY(-50%);
     color: color-mix(in srgb, var(--sl-color-text-accent), white 20%);
-    font-family: var(--__sl-font-mono), "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+      var(--__sl-font-mono), "Geist Mono", ui-monospace, SFMono-Regular, Menlo,
+      Monaco, Consolas, monospace;
     font-size: clamp(0.56rem, 1.08vw, 0.92rem);
     font-weight: 700;
     line-height: 1;
@@ -41,7 +44,8 @@
     white-space: pre;
     opacity: 0.7;
     pointer-events: none;
-    text-shadow: 0 0 22px color-mix(in srgb, var(--sl-color-text-accent), transparent 52%);
+    text-shadow: 0 0 22px
+      color-mix(in srgb, var(--sl-color-text-accent), transparent 52%);
   }
 
   @media (max-width: 900px) {
