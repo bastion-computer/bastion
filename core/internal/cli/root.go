@@ -27,7 +27,7 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:           "bastion",
-		Short:         "The open source platform to deploy, run, and scale AI agents",
+		Short:         "The open source platform to deploy virtual computers for AI agents",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
