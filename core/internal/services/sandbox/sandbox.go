@@ -72,31 +72,23 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Sandbox, error
 		return Sandbox{}, err
 	}
 
-	for attempt := range id.Retries {
-		sandboxID, err := id.New("sbx")
-		if err != nil {
-			return Sandbox{}, err
-		}
-
-		sandbox := Sandbox{ID: sandboxID, Status: "pending", Source: Source{Type: req.From, ID: sourceID}, CreatedAt: now()}
-
-		_, err = s.db.ExecContext(ctx, `INSERT INTO sandboxes (id, status, source_type, source_id, created_at) VALUES (?, ?, ?, ?, ?)`, sandbox.ID, sandbox.Status, sandbox.Source.Type, sandbox.Source.ID, sandbox.CreatedAt)
-		if err != nil {
-			if database.IsConstraint(err) {
-				if attempt == id.Retries-1 {
-					return Sandbox{}, fmt.Errorf("%w: sandbox already exists", failure.ErrConflict)
-				}
-
-				continue
-			}
-
-			return Sandbox{}, fmt.Errorf("create sandbox: %w", err)
-		}
-
-		return sandbox, nil
+	sandboxID, err := id.New("sbx")
+	if err != nil {
+		return Sandbox{}, err
 	}
 
-	return Sandbox{}, fmt.Errorf("%w: unable to generate unique sandbox id", failure.ErrConflict)
+	sandbox := Sandbox{ID: sandboxID, Status: "pending", Source: Source{Type: req.From, ID: sourceID}, CreatedAt: now()}
+
+	_, err = s.db.ExecContext(ctx, `INSERT INTO sandboxes (id, status, source_type, source_id, created_at) VALUES (?, ?, ?, ?, ?)`, sandbox.ID, sandbox.Status, sandbox.Source.Type, sandbox.Source.ID, sandbox.CreatedAt)
+	if err != nil {
+		if database.IsConstraint(err) {
+			return Sandbox{}, fmt.Errorf("%w: sandbox already exists", failure.ErrConflict)
+		}
+
+		return Sandbox{}, fmt.Errorf("create sandbox: %w", err)
+	}
+
+	return sandbox, nil
 }
 
 // List returns sandboxes ordered by creation time.

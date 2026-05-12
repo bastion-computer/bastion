@@ -57,31 +57,23 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 		return Metadata{}, fmt.Errorf("%w: template config must be valid JSON", failure.ErrInvalid)
 	}
 
-	for attempt := range id.Retries {
-		templateID, err := id.New("tpl")
-		if err != nil {
-			return Metadata{}, err
-		}
-
-		template := Template{ID: templateID, Key: req.Key, Config: append([]byte(nil), req.Config...), CreatedAt: now()}
-
-		_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, created_at) VALUES (?, ?, ?, ?)`, template.ID, template.Key, string(template.Config), template.CreatedAt)
-		if err != nil {
-			if database.IsConstraint(err) {
-				if attempt == id.Retries-1 {
-					return Metadata{}, fmt.Errorf("%w: template already exists", failure.ErrConflict)
-				}
-
-				continue
-			}
-
-			return Metadata{}, fmt.Errorf("create template: %w", err)
-		}
-
-		return template.Metadata(), nil
+	templateID, err := id.New("tpl")
+	if err != nil {
+		return Metadata{}, err
 	}
 
-	return Metadata{}, fmt.Errorf("%w: unable to generate unique template id", failure.ErrConflict)
+	template := Template{ID: templateID, Key: req.Key, Config: append([]byte(nil), req.Config...), CreatedAt: now()}
+
+	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, created_at) VALUES (?, ?, ?, ?)`, template.ID, template.Key, string(template.Config), template.CreatedAt)
+	if err != nil {
+		if database.IsConstraint(err) {
+			return Metadata{}, fmt.Errorf("%w: template already exists", failure.ErrConflict)
+		}
+
+		return Metadata{}, fmt.Errorf("create template: %w", err)
+	}
+
+	return template.Metadata(), nil
 }
 
 // List returns template metadata ordered by creation time.

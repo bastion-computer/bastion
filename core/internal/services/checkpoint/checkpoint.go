@@ -56,29 +56,21 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Checkpoint, er
 		return Checkpoint{}, fmt.Errorf("%w: sandbox id is required", failure.ErrInvalid)
 	}
 
-	for attempt := range id.Retries {
-		checkpointID, err := id.New("chk")
-		if err != nil {
-			return Checkpoint{}, err
-		}
-
-		checkpoint := Checkpoint{ID: checkpointID, Key: req.Key, Source: Source{Type: "sandbox", ID: req.SandboxID}, Status: "pending", CreatedAt: now()}
-		if err := s.insert(ctx, checkpoint); err != nil {
-			if database.IsConstraint(err) {
-				if attempt == id.Retries-1 {
-					return Checkpoint{}, fmt.Errorf("%w: checkpoint already exists", failure.ErrConflict)
-				}
-
-				continue
-			}
-
-			return Checkpoint{}, err
-		}
-
-		return checkpoint, nil
+	checkpointID, err := id.New("chk")
+	if err != nil {
+		return Checkpoint{}, err
 	}
 
-	return Checkpoint{}, fmt.Errorf("%w: unable to generate unique checkpoint id", failure.ErrConflict)
+	checkpoint := Checkpoint{ID: checkpointID, Key: req.Key, Source: Source{Type: "sandbox", ID: req.SandboxID}, Status: "pending", CreatedAt: now()}
+	if err := s.insert(ctx, checkpoint); err != nil {
+		if database.IsConstraint(err) {
+			return Checkpoint{}, fmt.Errorf("%w: checkpoint already exists", failure.ErrConflict)
+		}
+
+		return Checkpoint{}, err
+	}
+
+	return checkpoint, nil
 }
 
 func (s *Service) insert(ctx context.Context, checkpoint Checkpoint) error {

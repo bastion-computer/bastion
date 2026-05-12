@@ -9,9 +9,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// Retries is the number of ID generation attempts for unique inserts.
-const Retries = 5
-
 // New returns a prefixed UUID v4 identifier.
 func New(prefix string) (string, error) {
 	if strings.TrimSpace(prefix) == "" {

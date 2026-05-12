@@ -68,29 +68,21 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Secret, error)
 		return Secret{}, fmt.Errorf("%w: at least one allowed host is required", failure.ErrInvalid)
 	}
 
-	for attempt := range id.Retries {
-		secretID, err := id.New("sec")
-		if err != nil {
-			return Secret{}, err
-		}
-
-		secret := Secret{ID: secretID, Key: req.Key, Env: req.Env, AllowHosts: allowHosts, CreatedAt: now()}
-		if err := s.insert(ctx, secret); err != nil {
-			if database.IsConstraint(err) {
-				if attempt == id.Retries-1 {
-					return Secret{}, fmt.Errorf("%w: secret already exists", failure.ErrConflict)
-				}
-
-				continue
-			}
-
-			return Secret{}, err
-		}
-
-		return secret, nil
+	secretID, err := id.New("sec")
+	if err != nil {
+		return Secret{}, err
 	}
 
-	return Secret{}, fmt.Errorf("%w: unable to generate unique secret id", failure.ErrConflict)
+	secret := Secret{ID: secretID, Key: req.Key, Env: req.Env, AllowHosts: allowHosts, CreatedAt: now()}
+	if err := s.insert(ctx, secret); err != nil {
+		if database.IsConstraint(err) {
+			return Secret{}, fmt.Errorf("%w: secret already exists", failure.ErrConflict)
+		}
+
+		return Secret{}, err
+	}
+
+	return secret, nil
 }
 
 func (s *Service) insert(ctx context.Context, secret Secret) error {
