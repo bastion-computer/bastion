@@ -1,0 +1,18 @@
+{
+  "name": "@bastion/dev-db",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "drizzle-kit studio --port 3149",
+    "format:check": "prettier --check '**'",
+    "format:write": "prettier --write '**'"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.1"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^12.9.0",
+    "drizzle-kit": "^0.31.10",
+    "prettier": "^3.8.1"
+  }
+}

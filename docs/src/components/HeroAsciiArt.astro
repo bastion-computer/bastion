@@ -1,0 +1,61 @@
+---
+
+---
+
+<style is:global>
+  main .hero {
+    position: relative;
+    min-height: clamp(18rem, 28vw, 22rem);
+    padding-right: min(60vw, 50rem);
+  }
+
+  main .hero::after {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    content: "                                  |>>>" "\A"
+      "                                  |" "\A"
+      "                    |>>>      _  _|_  _         |>>>" "\A"
+      "                    |        |;| |;| |;|        |" "\A"
+      "                _  _|_  _    \\\\.    .  /    _  _|_  _" "\A"
+      "               |;|_|;|_|;|    \\\\:. ,  /    |;|_|;|_|;|" "\A"
+      "               \\\\..      /    ||;   . |    \\\\.    .  /" "\A"
+      "                \\\\.  ,  /     ||:  .  |     \\\\:  .  /" "\A"
+      "                 ||:   |_   _ ||_ . _ | _   _||:   |" "\A"
+      "                 ||:  .|||_|;|_|;|_|;|_|;|_|;||:.  |" "\A"
+      "                 ||:   ||.    .     .      . ||:  .|" "\A"
+      "                 ||: . || .     . .   .  ,   ||:   |       \\,/" "\A"
+      "                 ||:   ||:  ,  _______   .   ||: , |            /`\\"
+      "\A" "                 ||:   || .   /+++++++\\    . ||:   |" "\A"
+      "                 ||:   ||.    |+++++++| .    ||: . |" "\A"
+      "              __ ||: . ||: ,  |+++++++|.  . _||_   |" "\A"
+      "     ____--`~    '--~~__|.    |+++++__|----~    ~`---,              ___"
+      "\A"
+      "-~--~                   ~---__|,--~'                  ~~----_____-~'   `~----~~";
+    transform: translateY(-50%);
+    color: color-mix(in srgb, var(--sl-color-text-accent), white 20%);
+    font-family:
+      var(--__sl-font-mono), "Geist Mono", ui-monospace, SFMono-Regular, Menlo,
+      Monaco, Consolas, monospace;
+    font-size: clamp(0.56rem, 1.08vw, 0.92rem);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    white-space: pre;
+    opacity: 0.7;
+    pointer-events: none;
+    text-shadow: 0 0 22px
+      color-mix(in srgb, var(--sl-color-text-accent), transparent 52%);
+  }
+
+  @media (max-width: 900px) {
+    main .hero {
+      min-height: unset;
+      padding-right: 0;
+    }
+
+    main .hero::after {
+      content: none;
+    }
+  }
+</style>

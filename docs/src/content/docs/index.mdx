@@ -1,0 +1,70 @@
+---
+title: Bastion
+description: A platform to scale virtual computers for AI agents.
+head:
+  - tag: title
+    content: Bastion Computer
+template: splash
+editUrl: false
+hero:
+  tagline: A platform to scale virtual computers for AI agents.
+  actions:
+    - text: Docs
+      link: /introduction/
+      icon: right-arrow
+    - text: Star on GitHub
+      link: https://github.com/bastion-computer/bastion
+      icon: github
+      variant: minimal
+      attrs:
+        target: _blank
+        rel: noopener noreferrer
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+import { ContainerSection } from "starlight-theme-black/components";
+import AgentIsolationHero from "../../components/AgentIsolationHero.astro";
+import HeroAsciiArt from "../../components/HeroAsciiArt.astro";
+
+<HeroAsciiArt />
+
+<ContainerSection>
+
+<AgentIsolationHero />
+
+```sh
+curl -fsSL https://bastion.computer/install.sh | bash
+```
+
+</ContainerSection>
+
+<ContainerSection>
+
+<CardGrid stagger>
+  <Card title="Run Agents in Isolated Linux VMs" icon="laptop">
+    Give every agent its own Firecracker microVM with a guest kernel, full Linux
+    environment, and a hard isolation boundary from the host.
+  </Card>
+  <Card title="Define Environments as JSON" icon="seti:json">
+    Capture resources, environment variables, network rules, and startup actions
+    in reusable templates validated by a public schema.
+  </Card>
+  <Card title="Keep Secrets Out of Sandboxes" icon="seti:lock">
+    Use obfuscated secrets and proxy-layer resolution to let agents access
+    credentials without exposing raw values inside their runtime.
+  </Card>
+  <Card title="Scale Parallel Agent Sessions" icon="rocket">
+    Create sandboxes from templates, run many sessions side by side, and manage
+    lifecycle state through Bastion's CLI and public API.
+  </Card>
+  <Card title="Branch Workflows from Checkpoints" icon="add-document">
+    Create a checkpoint from a deployed sandbox and fork it into parallel
+    sessions or resume work from a previous state.
+  </Card>
+  <Card title="Self-Host on Your Infrastructure" icon="linux">
+    Run Bastion on Linux systems with KVM support, from a local workstation to
+    cloud instances like AWS EC2.
+  </Card>
+</CardGrid>
+
+</ContainerSection>

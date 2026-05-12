@@ -1,0 +1,33 @@
+{
+  "name": "@bastion/docs",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "lint": "eslint ./src",
+    "format:check": "prettier --check '**'",
+    "format:write": "prettier --write '**'",
+    "typecheck": "astro check"
+  },
+  "dependencies": {
+    "@bastion/spec": "workspace:*",
+    "@astrojs/starlight": "^0.38.4",
+    "@fontsource/geist-mono": "^5.2.5",
+    "@fontsource/geist-sans": "^5.2.5",
+    "astro": "^6.1.9",
+    "lottie-web": "^5.13.0",
+    "sharp": "^0.34.5",
+    "starlight-theme-black": "^0.6.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.1.0",
+    "prettier": "^3.8.1",
+    "prettier-plugin-astro": "^0.14.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.57.2"
+  }
+}

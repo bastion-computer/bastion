@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  MISE_EXPERIMENTAL: "1"
+
 on:
   push:
     branches: [main]
@@ -12,36 +15,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run lint
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+      - run: mise run lint
 
-  prettier:
-    name: Prettier
+  format:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run prettier
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+      - run: mise run format:check
 
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: jdx/mise-action@v2
         with:
-          node-version: 24
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
+          install: true
+      - run: mise run typecheck
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+      - run: mise run build
 
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+      - run: mise run test

@@ -4,17 +4,17 @@
 
 IMPORTANT:
 
-- Treat this file and the [docs](docs) directory as an up to date source of truth.
+- Treat this file and the [.agents/docs](.agents/docs) directory as an up to date source of truth.
 - If you find any discrepancies or introduce changing patterns, you MUST suggest a relevant update to prevent staleness.
 
 ## Table of Contents
 
-- [Codebase](docs/codebase/)
-  - [Runtime](docs/codebase/runtime.md) - Bun runtime conventions and APIs
-  - [New Packages](docs/codebase/new-packages.md) - Requirements for creating new monorepo packages
-  - [Testing](docs/codebase/testing.md) - Linting, formatting, and typechecking commands
-- [Packages](docs/packages/)
-  - [Core](docs/packages/core.md) - Core business logic and database
-  - [Spec](docs/packages/spec.md) - JSON Schema data type artifacts
-  - [Server](docs/packages/server.md) - Hono API server
-  - [Docs](docs/packages/docs.md) - Astro Starlight documentation site
+- [Codebase](.agents/docs/codebase/)
+  - [Runtime](.agents/docs/codebase/runtime.md) - Runtime conventions and APIs
+  - [New Packages](.agents/docs/codebase/new-packages.md) - Requirements for creating new monorepo packages
+  - [Testing](.agents/docs/codebase/testing.md) - Linting, formatting, and typechecking commands
+- [Packages](.agents/docs/packages/)
+  - [Core](.agents/docs/packages/core.md) - Go host API service and CLI
+  - [Dev DB](.agents/docs/packages/dev-db.md) - Development-only database debugging tools
+  - [Spec](.agents/docs/packages/spec.md) - JSON Schema data type artifacts
+  - [Docs](.agents/docs/packages/docs.md) - Astro Starlight documentation site

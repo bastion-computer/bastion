@@ -1,0 +1,29 @@
+[tasks.dev]
+description = "Run Drizzle Studio for local SQLite debugging"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+db_path="../.bastion/sqlite.db"
+timeout=60
+waited=0
+
+while [ ! -f "$db_path" ]; do
+  sleep 1
+  waited=$((waited + 1))
+  if [ "$waited" -ge "$timeout" ]; then
+    printf 'Timeout waiting for %s\n' "$db_path" >&2
+    exit 1
+  fi
+done
+
+bun run dev
+'''
+
+[tasks."format:check"]
+description = "Check dev tooling package formatting"
+run = "bun run format:check"
+
+[tasks."format:write"]
+description = "Format dev tooling package files"
+run = "bun run format:write"

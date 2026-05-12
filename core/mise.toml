@@ -1,0 +1,43 @@
+[tasks.lint]
+description = "Run Go linters"
+run = "golangci-lint run ./..."
+
+[tasks."format:check"]
+description = "Check Go formatting"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+files="$(gofmt -l .)"
+if [ -n "$files" ]; then
+  printf '%s\n' "$files"
+  exit 1
+fi
+'''
+
+[tasks."format:write"]
+description = "Format Go files"
+run = "gofmt -w ."
+
+[tasks.build]
+description = "Build the Bastion CLI"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p tmp
+ldflags=""
+if [ -n "${BASTION_VERSION:-}" ]; then
+  ldflags="-X github.com/bastion-computer/bastion/core/internal/config.Version=${BASTION_VERSION}"
+fi
+
+go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
+'''
+
+[tasks.test]
+description = "Run Go tests"
+run = "go test ./..."
+
+[tasks.dev]
+description = "Run the host API with Air live reload"
+run = "air -c .air.toml"
