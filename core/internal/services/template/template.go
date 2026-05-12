@@ -111,24 +111,6 @@ func (s *Service) Get(ctx context.Context, templateID, key string) (Template, er
 
 	where, value := services.LookupClause(templateID, key, "id", "key")
 
-	return s.getWhere(ctx, where, value)
-}
-
-// Remove deletes a template by ID or key and returns the removed record.
-func (s *Service) Remove(ctx context.Context, templateID, key string) (Template, error) {
-	template, err := s.Get(ctx, templateID, key)
-	if err != nil {
-		return Template{}, err
-	}
-
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM templates WHERE id = ?`, template.ID); err != nil {
-		return Template{}, fmt.Errorf("remove template: %w", err)
-	}
-
-	return template, nil
-}
-
-func (s *Service) getWhere(ctx context.Context, where string, value any) (Template, error) {
 	var (
 		template Template
 		config   string
@@ -144,6 +126,20 @@ func (s *Service) getWhere(ctx context.Context, where string, value any) (Templa
 	}
 
 	template.Config = json.RawMessage(config)
+
+	return template, nil
+}
+
+// Remove deletes a template by ID or key and returns the removed record.
+func (s *Service) Remove(ctx context.Context, templateID, key string) (Template, error) {
+	template, err := s.Get(ctx, templateID, key)
+	if err != nil {
+		return Template{}, err
+	}
+
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM templates WHERE id = ?`, template.ID); err != nil {
+		return Template{}, fmt.Errorf("remove template: %w", err)
+	}
 
 	return template, nil
 }

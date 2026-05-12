@@ -154,20 +154,6 @@ func (s *Service) Get(ctx context.Context, secretID, key string) (Secret, error)
 
 	where, value := services.LookupClause(secretID, key, "id", "key")
 
-	secret, err := s.getWhere(ctx, where, value)
-	if err != nil {
-		return Secret{}, err
-	}
-
-	secret.AllowHosts, err = s.allowedHosts(ctx, secret.ID)
-	if err != nil {
-		return Secret{}, err
-	}
-
-	return secret, nil
-}
-
-func (s *Service) getWhere(ctx context.Context, where string, value any) (Secret, error) {
 	var secret Secret
 
 	err := s.db.QueryRowContext(ctx, `SELECT id, key, env, created_at FROM secrets WHERE `+where, value).Scan(&secret.ID, &secret.Key, &secret.Env, &secret.CreatedAt)
@@ -177,6 +163,11 @@ func (s *Service) getWhere(ctx context.Context, where string, value any) (Secret
 
 	if err != nil {
 		return Secret{}, fmt.Errorf("get secret: %w", err)
+	}
+
+	secret.AllowHosts, err = s.allowedHosts(ctx, secret.ID)
+	if err != nil {
+		return Secret{}, err
 	}
 
 	return secret, nil
