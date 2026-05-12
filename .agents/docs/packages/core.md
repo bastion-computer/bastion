@@ -24,7 +24,7 @@ The core package lives in `core/` and builds the `bastion` binary. That binary i
 | `internal/services/template` | Template request/response types and persistence service. |
 | `internal/services/sandbox` | Sandbox request/response types and persistence service. |
 | `internal/services/checkpoint` | Checkpoint request/response types and persistence service. |
-| `migrations` | Embedded SQL migrations applied by core. |
+| `internal/migrations` | Embedded SQL migrations applied by core. |
 
 Implementation packages should stay under `internal/` unless another Go module has a concrete need to import them.
 
@@ -62,7 +62,7 @@ Core stores persistent data in SQLite at `<data-dir>/sqlite.db`.
 - The development data directory is `.bastion` via the Air configuration.
 - Tests use `:memory:` and run the same migrations as local development.
 
-SQL migrations live in `core/migrations` and are embedded into the Go binary. `internal/database.Open()` runs pending migrations automatically before the API starts serving. If migrations fail, startup fails rather than serving against a partially migrated schema.
+SQL migrations live in `core/internal/migrations` and are embedded into the Go binary. `internal/database.Open()` runs pending migrations automatically before the API starts serving. If migrations fail, startup fails rather than serving against a partially migrated schema.
 
 The core migrations are the schema source of truth. Development tools such as Drizzle Studio may inspect `.bastion/sqlite.db`, but they do not own or generate core migrations.
 

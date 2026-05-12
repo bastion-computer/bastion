@@ -12,4 +12,4 @@ The dev-db package lives in `dev-db/` and is included in the root `mise run dev:
 | `format:check` | `prettier --check '**'` | Check formatting without writing files. |
 | `format:write` | `prettier --write '**'` | Rewrite formatting locally. |
 
-`dev-db` does not own the database schema. Core migrations in `core/migrations` are the source of truth. The dev task waits for `.bastion/sqlite.db` to exist before launching Drizzle Studio.
+`dev-db` does not own the database schema. Core migrations in `core/internal/migrations` are the source of truth. The dev task waits for `.bastion/sqlite.db` to exist before launching Drizzle Studio.

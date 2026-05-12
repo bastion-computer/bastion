@@ -15,7 +15,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	sqlite "github.com/mattn/go-sqlite3"
 
-	"github.com/bastion-computer/bastion/core/migrations"
+	"github.com/bastion-computer/bastion/core/internal/migrations"
 )
 
 // Client wraps a SQLite database connection.
