@@ -1,5 +1,5 @@
-// Package httputil provides shared HTTP helpers for Bastion handlers.
-package httputil
+// Package handlers contains shared HTTP handler helpers.
+package handlers
 
 import (
 	"errors"

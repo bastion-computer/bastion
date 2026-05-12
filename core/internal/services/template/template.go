@@ -8,12 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	"github.com/bastion-computer/bastion/core/internal/id"
-	"github.com/bastion-computer/bastion/core/internal/page"
+	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
 // Template contains a sandbox template and its JSON configuration.
@@ -57,12 +55,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 		return Metadata{}, fmt.Errorf("%w: template config must be valid JSON", failure.ErrInvalid)
 	}
 
-	templateID, err := id.New("tpl")
+	templateID, err := services.GenerateID("tpl")
 	if err != nil {
 		return Metadata{}, err
 	}
 
-	template := Template{ID: templateID, Key: req.Key, Config: append([]byte(nil), req.Config...), CreatedAt: now()}
+	template := Template{ID: templateID, Key: req.Key, Config: append([]byte(nil), req.Config...), CreatedAt: services.Now()}
 
 	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, created_at) VALUES (?, ?, ?, ?)`, template.ID, template.Key, string(template.Config), template.CreatedAt)
 	if err != nil {
@@ -77,12 +75,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 }
 
 // List returns template metadata ordered by creation time.
-func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page[Metadata], error) {
-	limit = page.NormalizeLimit(limit)
+func (s *Service) List(ctx context.Context, limit int, cursor string) (services.Page[Metadata], error) {
+	limit = services.NormalizeLimit(limit)
 
-	rows, err := queryPage(ctx, s.db, `SELECT id, key, created_at FROM templates`, limit, cursor)
+	rows, err := services.QueryPage(ctx, s.db, `SELECT id, key, created_at FROM templates`, limit, cursor)
 	if err != nil {
-		return page.Page[Metadata]{}, fmt.Errorf("list templates: %w", err)
+		return services.Page[Metadata]{}, fmt.Errorf("list templates: %w", err)
 	}
 
 	defer func() { _ = rows.Close() }()
@@ -92,26 +90,26 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page
 	for rows.Next() {
 		var template Metadata
 		if err := rows.Scan(&template.ID, &template.Key, &template.CreatedAt); err != nil {
-			return page.Page[Metadata]{}, fmt.Errorf("scan template: %w", err)
+			return services.Page[Metadata]{}, fmt.Errorf("scan template: %w", err)
 		}
 
 		entries = append(entries, template)
 	}
 
 	if err := rows.Err(); err != nil {
-		return page.Page[Metadata]{}, fmt.Errorf("iterate templates: %w", err)
+		return services.Page[Metadata]{}, fmt.Errorf("iterate templates: %w", err)
 	}
 
-	return page.FromEntries(entries, limit, func(template Metadata) string { return template.CreatedAt }), nil
+	return services.FromEntries(entries, limit, func(template Metadata) string { return template.CreatedAt }), nil
 }
 
 // Get returns a template by ID or key.
 func (s *Service) Get(ctx context.Context, templateID, key string) (Template, error) {
-	if err := requireIDOrKey(templateID, key); err != nil {
+	if err := services.RequireIDOrKey(templateID, key); err != nil {
 		return Template{}, err
 	}
 
-	where, value := lookupClause(templateID, key, "id", "key")
+	where, value := services.LookupClause(templateID, key, "id", "key")
 
 	return s.getWhere(ctx, where, value)
 }
@@ -153,32 +151,4 @@ func (s *Service) getWhere(ctx context.Context, where string, value any) (Templa
 // Metadata returns the template's metadata view.
 func (t Template) Metadata() Metadata {
 	return Metadata{ID: t.ID, Key: t.Key, CreatedAt: t.CreatedAt}
-}
-
-func requireIDOrKey(id, key string) error {
-	if (id == "") == (key == "") {
-		return fmt.Errorf("%w: specify exactly one of id or key", failure.ErrInvalid)
-	}
-
-	return nil
-}
-
-func lookupClause(id, key, idColumn, keyColumn string) (string, any) {
-	if id != "" {
-		return idColumn + " = ?", id
-	}
-
-	return keyColumn + " = ?", key
-}
-
-func queryPage(ctx context.Context, db *database.Client, query string, limit int, cursor string) (*sql.Rows, error) {
-	if cursor == "" {
-		return db.QueryContext(ctx, query+` ORDER BY created_at LIMIT ?`, limit+1)
-	}
-
-	return db.QueryContext(ctx, query+` WHERE created_at > ? ORDER BY created_at LIMIT ?`, cursor, limit+1)
-}
-
-func now() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
 }

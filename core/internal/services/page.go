@@ -1,5 +1,4 @@
-// Package page provides cursor pagination helpers.
-package page
+package services
 
 // Page contains a page of entries and an optional next cursor.
 type Page[T any] struct {

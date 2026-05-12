@@ -12,7 +12,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/api"
 	"github.com/bastion-computer/bastion/core/internal/database"
-	"github.com/bastion-computer/bastion/core/internal/page"
+	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/checkpoint"
 	"github.com/bastion-computer/bastion/core/internal/services/sandbox"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
@@ -221,7 +221,7 @@ func assertList[T any](t *testing.T, handler http.Handler, path string, entries 
 		t.Fatalf("list %s status = %d, want %d", path, res.Code, http.StatusOK)
 	}
 
-	var got page.Page[T]
+	var got services.Page[T]
 	decode(t, res, &got)
 
 	if len(got.Entries) != entries {

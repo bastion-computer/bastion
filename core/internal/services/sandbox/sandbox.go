@@ -6,12 +6,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	"github.com/bastion-computer/bastion/core/internal/id"
-	"github.com/bastion-computer/bastion/core/internal/page"
+	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
 // Source identifies the template or checkpoint used to create a sandbox.
@@ -63,7 +61,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Sandbox, error
 		return Sandbox{}, fmt.Errorf("%w: source must be template or checkpoint", failure.ErrInvalid)
 	}
 
-	if err := requireIDOrKey(req.ID, req.Key); err != nil {
+	if err := services.RequireIDOrKey(req.ID, req.Key); err != nil {
 		return Sandbox{}, err
 	}
 
@@ -72,12 +70,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Sandbox, error
 		return Sandbox{}, err
 	}
 
-	sandboxID, err := id.New("sbx")
+	sandboxID, err := services.GenerateID("sbx")
 	if err != nil {
 		return Sandbox{}, err
 	}
 
-	sandbox := Sandbox{ID: sandboxID, Status: "pending", Source: Source{Type: req.From, ID: sourceID}, CreatedAt: now()}
+	sandbox := Sandbox{ID: sandboxID, Status: "pending", Source: Source{Type: req.From, ID: sourceID}, CreatedAt: services.Now()}
 
 	_, err = s.db.ExecContext(ctx, `INSERT INTO sandboxes (id, status, source_type, source_id, created_at) VALUES (?, ?, ?, ?, ?)`, sandbox.ID, sandbox.Status, sandbox.Source.Type, sandbox.Source.ID, sandbox.CreatedAt)
 	if err != nil {
@@ -92,12 +90,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Sandbox, error
 }
 
 // List returns sandboxes ordered by creation time.
-func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page[Sandbox], error) {
-	limit = page.NormalizeLimit(limit)
+func (s *Service) List(ctx context.Context, limit int, cursor string) (services.Page[Sandbox], error) {
+	limit = services.NormalizeLimit(limit)
 
-	rows, err := queryPage(ctx, s.db, `SELECT id, status, source_type, source_id, created_at FROM sandboxes`, limit, cursor)
+	rows, err := services.QueryPage(ctx, s.db, `SELECT id, status, source_type, source_id, created_at FROM sandboxes`, limit, cursor)
 	if err != nil {
-		return page.Page[Sandbox]{}, fmt.Errorf("list sandboxes: %w", err)
+		return services.Page[Sandbox]{}, fmt.Errorf("list sandboxes: %w", err)
 	}
 
 	defer func() { _ = rows.Close() }()
@@ -107,17 +105,17 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page
 	for rows.Next() {
 		var sandbox Sandbox
 		if err := rows.Scan(&sandbox.ID, &sandbox.Status, &sandbox.Source.Type, &sandbox.Source.ID, &sandbox.CreatedAt); err != nil {
-			return page.Page[Sandbox]{}, fmt.Errorf("scan sandbox: %w", err)
+			return services.Page[Sandbox]{}, fmt.Errorf("scan sandbox: %w", err)
 		}
 
 		entries = append(entries, sandbox)
 	}
 
 	if err := rows.Err(); err != nil {
-		return page.Page[Sandbox]{}, fmt.Errorf("iterate sandboxes: %w", err)
+		return services.Page[Sandbox]{}, fmt.Errorf("iterate sandboxes: %w", err)
 	}
 
-	return page.FromEntries(entries, limit, func(sandbox Sandbox) string { return sandbox.CreatedAt }), nil
+	return services.FromEntries(entries, limit, func(sandbox Sandbox) string { return sandbox.CreatedAt }), nil
 }
 
 // Pause marks a sandbox as paused.
@@ -190,7 +188,7 @@ func (s *Service) resolveSourceID(ctx context.Context, sourceType, sourceID, key
 }
 
 func (s *Service) resolveTemplateID(ctx context.Context, templateID, key string) (string, error) {
-	where, value := lookupClause(templateID, key, "id", "key")
+	where, value := services.LookupClause(templateID, key, "id", "key")
 
 	var id string
 
@@ -207,7 +205,7 @@ func (s *Service) resolveTemplateID(ctx context.Context, templateID, key string)
 }
 
 func (s *Service) resolveCheckpointID(ctx context.Context, checkpointID, key string) (string, error) {
-	where, value := lookupClause(checkpointID, key, "id", "key")
+	where, value := services.LookupClause(checkpointID, key, "id", "key")
 
 	var id string
 
@@ -221,32 +219,4 @@ func (s *Service) resolveCheckpointID(ctx context.Context, checkpointID, key str
 	}
 
 	return id, nil
-}
-
-func requireIDOrKey(id, key string) error {
-	if (id == "") == (key == "") {
-		return fmt.Errorf("%w: specify exactly one of id or key", failure.ErrInvalid)
-	}
-
-	return nil
-}
-
-func lookupClause(id, key, idColumn, keyColumn string) (string, any) {
-	if id != "" {
-		return idColumn + " = ?", id
-	}
-
-	return keyColumn + " = ?", key
-}
-
-func queryPage(ctx context.Context, db *database.Client, query string, limit int, cursor string) (*sql.Rows, error) {
-	if cursor == "" {
-		return db.QueryContext(ctx, query+` ORDER BY created_at LIMIT ?`, limit+1)
-	}
-
-	return db.QueryContext(ctx, query+` WHERE created_at > ? ORDER BY created_at LIMIT ?`, cursor, limit+1)
-}
-
-func now() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
 }

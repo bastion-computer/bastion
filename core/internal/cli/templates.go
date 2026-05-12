@@ -41,6 +41,7 @@ func newTemplatesCreateCommand(opts *rootOptions) *cobra.Command {
 			}
 
 			contents := json.RawMessage(configValue)
+
 			if file != "" {
 				fileContents, err := os.ReadFile(file) //nolint:gosec // CLI user explicitly chooses the template file path.
 				if err != nil {

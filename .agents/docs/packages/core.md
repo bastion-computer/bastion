@@ -18,10 +18,8 @@ The core package lives in `core/` and builds the `bastion` binary. That binary i
 | `internal/config` | Environment defaults and local path handling. |
 | `internal/database` | SQLite client setup, query helpers, transactions, and migration handling. |
 | `internal/failure` | Shared domain error sentinels mapped by the API layer. |
-| `internal/handlers` | HTTP route handlers grouped by domain. Handlers adapt Gin requests to services. |
-| `internal/httputil` | Shared HTTP helpers for JSON binding, error responses, and pagination query parsing. |
-| `internal/id` | Public ID generation for domain resources. |
-| `internal/page` | Shared cursor pagination response helpers. |
+| `internal/handlers` | HTTP route handlers grouped by domain, plus shared handler helpers. Handlers adapt Gin requests to services. |
+| `internal/services` | Shared service-layer helpers and response types. |
 | `internal/services/secret` | Secret request/response types and persistence service. |
 | `internal/services/template` | Template request/response types and persistence service. |
 | `internal/services/sandbox` | Sandbox request/response types and persistence service. |

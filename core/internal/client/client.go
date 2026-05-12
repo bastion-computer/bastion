@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bastion-computer/bastion/core/internal/page"
+	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/checkpoint"
 	"github.com/bastion-computer/bastion/core/internal/services/sandbox"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
@@ -44,8 +44,8 @@ func (c *Client) CreateSecret(ctx context.Context, req secret.CreateRequest) (se
 }
 
 // ListSecrets returns secret references.
-func (c *Client) ListSecrets(ctx context.Context, limit int, cursor string) (page.Page[secret.Secret], error) {
-	var out page.Page[secret.Secret]
+func (c *Client) ListSecrets(ctx context.Context, limit int, cursor string) (services.Page[secret.Secret], error) {
+	var out services.Page[secret.Secret]
 	return out, c.do(ctx, http.MethodGet, listPath("/v1/secrets", limit, cursor), nil, &out)
 }
 
@@ -89,8 +89,8 @@ func (c *Client) CreateTemplate(ctx context.Context, req template.CreateRequest)
 }
 
 // ListTemplates returns template metadata.
-func (c *Client) ListTemplates(ctx context.Context, limit int, cursor string) (page.Page[template.Metadata], error) {
-	var out page.Page[template.Metadata]
+func (c *Client) ListTemplates(ctx context.Context, limit int, cursor string) (services.Page[template.Metadata], error) {
+	var out services.Page[template.Metadata]
 	return out, c.do(ctx, http.MethodGet, listPath("/v1/templates", limit, cursor), nil, &out)
 }
 
@@ -125,8 +125,8 @@ func (c *Client) CreateSandbox(ctx context.Context, req sandbox.CreateRequest) (
 }
 
 // ListSandboxes returns sandboxes.
-func (c *Client) ListSandboxes(ctx context.Context, limit int, cursor string) (page.Page[sandbox.Sandbox], error) {
-	var out page.Page[sandbox.Sandbox]
+func (c *Client) ListSandboxes(ctx context.Context, limit int, cursor string) (services.Page[sandbox.Sandbox], error) {
+	var out services.Page[sandbox.Sandbox]
 	return out, c.do(ctx, http.MethodGet, listPath("/v1/sandboxes", limit, cursor), nil, &out)
 }
 
@@ -164,8 +164,8 @@ func (c *Client) CreateCheckpoint(ctx context.Context, req checkpoint.CreateRequ
 }
 
 // ListCheckpoints returns checkpoints.
-func (c *Client) ListCheckpoints(ctx context.Context, limit int, cursor string) (page.Page[checkpoint.Checkpoint], error) {
-	var out page.Page[checkpoint.Checkpoint]
+func (c *Client) ListCheckpoints(ctx context.Context, limit int, cursor string) (services.Page[checkpoint.Checkpoint], error) {
+	var out services.Page[checkpoint.Checkpoint]
 	return out, c.do(ctx, http.MethodGet, listPath("/v1/checkpoints", limit, cursor), nil, &out)
 }
 

@@ -8,12 +8,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	"github.com/bastion-computer/bastion/core/internal/id"
-	"github.com/bastion-computer/bastion/core/internal/page"
+	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
 // Secret describes a host environment variable reference.
@@ -68,12 +66,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Secret, error)
 		return Secret{}, fmt.Errorf("%w: at least one allowed host is required", failure.ErrInvalid)
 	}
 
-	secretID, err := id.New("sec")
+	secretID, err := services.GenerateID("sec")
 	if err != nil {
 		return Secret{}, err
 	}
 
-	secret := Secret{ID: secretID, Key: req.Key, Env: req.Env, AllowHosts: allowHosts, CreatedAt: now()}
+	secret := Secret{ID: secretID, Key: req.Key, Env: req.Env, AllowHosts: allowHosts, CreatedAt: services.Now()}
 	if err := s.insert(ctx, secret); err != nil {
 		if database.IsConstraint(err) {
 			return Secret{}, fmt.Errorf("%w: secret already exists", failure.ErrConflict)
@@ -111,12 +109,12 @@ func (s *Service) insert(ctx context.Context, secret Secret) error {
 }
 
 // List returns secret references ordered by creation time.
-func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page[Secret], error) {
-	limit = page.NormalizeLimit(limit)
+func (s *Service) List(ctx context.Context, limit int, cursor string) (services.Page[Secret], error) {
+	limit = services.NormalizeLimit(limit)
 
-	rows, err := queryPage(ctx, s.db, `SELECT id, key, env, created_at FROM secrets`, limit, cursor)
+	rows, err := services.QueryPage(ctx, s.db, `SELECT id, key, env, created_at FROM secrets`, limit, cursor)
 	if err != nil {
-		return page.Page[Secret]{}, fmt.Errorf("list secrets: %w", err)
+		return services.Page[Secret]{}, fmt.Errorf("list secrets: %w", err)
 	}
 
 	defer func() { _ = rows.Close() }()
@@ -126,35 +124,35 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page
 	for rows.Next() {
 		var secret Secret
 		if err := rows.Scan(&secret.ID, &secret.Key, &secret.Env, &secret.CreatedAt); err != nil {
-			return page.Page[Secret]{}, fmt.Errorf("scan secret: %w", err)
+			return services.Page[Secret]{}, fmt.Errorf("scan secret: %w", err)
 		}
 
 		entries = append(entries, secret)
 	}
 
 	if err := rows.Err(); err != nil {
-		return page.Page[Secret]{}, fmt.Errorf("iterate secrets: %w", err)
+		return services.Page[Secret]{}, fmt.Errorf("iterate secrets: %w", err)
 	}
 
 	for i := range entries {
 		hosts, err := s.allowedHosts(ctx, entries[i].ID)
 		if err != nil {
-			return page.Page[Secret]{}, err
+			return services.Page[Secret]{}, err
 		}
 
 		entries[i].AllowHosts = hosts
 	}
 
-	return page.FromEntries(entries, limit, func(secret Secret) string { return secret.CreatedAt }), nil
+	return services.FromEntries(entries, limit, func(secret Secret) string { return secret.CreatedAt }), nil
 }
 
 // Get returns a secret reference by ID or key.
 func (s *Service) Get(ctx context.Context, secretID, key string) (Secret, error) {
-	if err := requireIDOrKey(secretID, key); err != nil {
+	if err := services.RequireIDOrKey(secretID, key); err != nil {
 		return Secret{}, err
 	}
 
-	where, value := lookupClause(secretID, key, "id", "key")
+	where, value := services.LookupClause(secretID, key, "id", "key")
 
 	secret, err := s.getWhere(ctx, where, value)
 	if err != nil {
@@ -252,32 +250,4 @@ func uniqueStrings(values []string) []string {
 	}
 
 	return result
-}
-
-func requireIDOrKey(id, key string) error {
-	if (id == "") == (key == "") {
-		return fmt.Errorf("%w: specify exactly one of id or key", failure.ErrInvalid)
-	}
-
-	return nil
-}
-
-func lookupClause(id, key, idColumn, keyColumn string) (string, any) {
-	if id != "" {
-		return idColumn + " = ?", id
-	}
-
-	return keyColumn + " = ?", key
-}
-
-func queryPage(ctx context.Context, db *database.Client, query string, limit int, cursor string) (*sql.Rows, error) {
-	if cursor == "" {
-		return db.QueryContext(ctx, query+` ORDER BY created_at LIMIT ?`, limit+1)
-	}
-
-	return db.QueryContext(ctx, query+` WHERE created_at > ? ORDER BY created_at LIMIT ?`, cursor, limit+1)
-}
-
-func now() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
 }

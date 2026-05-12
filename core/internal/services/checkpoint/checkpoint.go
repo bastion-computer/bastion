@@ -7,12 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	"github.com/bastion-computer/bastion/core/internal/id"
-	"github.com/bastion-computer/bastion/core/internal/page"
+	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
 // Source identifies the sandbox used to create a checkpoint.
@@ -56,12 +54,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Checkpoint, er
 		return Checkpoint{}, fmt.Errorf("%w: sandbox id is required", failure.ErrInvalid)
 	}
 
-	checkpointID, err := id.New("chk")
+	checkpointID, err := services.GenerateID("chk")
 	if err != nil {
 		return Checkpoint{}, err
 	}
 
-	checkpoint := Checkpoint{ID: checkpointID, Key: req.Key, Source: Source{Type: "sandbox", ID: req.SandboxID}, Status: "pending", CreatedAt: now()}
+	checkpoint := Checkpoint{ID: checkpointID, Key: req.Key, Source: Source{Type: "sandbox", ID: req.SandboxID}, Status: "pending", CreatedAt: services.Now()}
 	if err := s.insert(ctx, checkpoint); err != nil {
 		if database.IsConstraint(err) {
 			return Checkpoint{}, fmt.Errorf("%w: checkpoint already exists", failure.ErrConflict)
@@ -108,12 +106,12 @@ func (s *Service) insert(ctx context.Context, checkpoint Checkpoint) error {
 }
 
 // List returns checkpoints ordered by creation time.
-func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page[Checkpoint], error) {
-	limit = page.NormalizeLimit(limit)
+func (s *Service) List(ctx context.Context, limit int, cursor string) (services.Page[Checkpoint], error) {
+	limit = services.NormalizeLimit(limit)
 
-	rows, err := queryPage(ctx, s.db, `SELECT id, key, source_sandbox_id, status, created_at FROM checkpoints`, limit, cursor)
+	rows, err := services.QueryPage(ctx, s.db, `SELECT id, key, source_sandbox_id, status, created_at FROM checkpoints`, limit, cursor)
 	if err != nil {
-		return page.Page[Checkpoint]{}, fmt.Errorf("list checkpoints: %w", err)
+		return services.Page[Checkpoint]{}, fmt.Errorf("list checkpoints: %w", err)
 	}
 
 	defer func() { _ = rows.Close() }()
@@ -125,17 +123,17 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (page.Page
 
 		checkpoint.Source.Type = "sandbox"
 		if err := rows.Scan(&checkpoint.ID, &checkpoint.Key, &checkpoint.Source.ID, &checkpoint.Status, &checkpoint.CreatedAt); err != nil {
-			return page.Page[Checkpoint]{}, fmt.Errorf("scan checkpoint: %w", err)
+			return services.Page[Checkpoint]{}, fmt.Errorf("scan checkpoint: %w", err)
 		}
 
 		entries = append(entries, checkpoint)
 	}
 
 	if err := rows.Err(); err != nil {
-		return page.Page[Checkpoint]{}, fmt.Errorf("iterate checkpoints: %w", err)
+		return services.Page[Checkpoint]{}, fmt.Errorf("iterate checkpoints: %w", err)
 	}
 
-	return page.FromEntries(entries, limit, func(checkpoint Checkpoint) string { return checkpoint.CreatedAt }), nil
+	return services.FromEntries(entries, limit, func(checkpoint Checkpoint) string { return checkpoint.CreatedAt }), nil
 }
 
 // Remove deletes a checkpoint by ID or key and returns the removed record.
@@ -154,11 +152,11 @@ func (s *Service) Remove(ctx context.Context, checkpointID, key string) (Checkpo
 
 // Get returns a checkpoint by ID or key.
 func (s *Service) Get(ctx context.Context, checkpointID, key string) (Checkpoint, error) {
-	if err := requireIDOrKey(checkpointID, key); err != nil {
+	if err := services.RequireIDOrKey(checkpointID, key); err != nil {
 		return Checkpoint{}, err
 	}
 
-	where, value := lookupClause(checkpointID, key, "id", "key")
+	where, value := services.LookupClause(checkpointID, key, "id", "key")
 
 	var checkpoint Checkpoint
 
@@ -174,32 +172,4 @@ func (s *Service) Get(ctx context.Context, checkpointID, key string) (Checkpoint
 	}
 
 	return checkpoint, nil
-}
-
-func requireIDOrKey(id, key string) error {
-	if (id == "") == (key == "") {
-		return fmt.Errorf("%w: specify exactly one of id or key", failure.ErrInvalid)
-	}
-
-	return nil
-}
-
-func lookupClause(id, key, idColumn, keyColumn string) (string, any) {
-	if id != "" {
-		return idColumn + " = ?", id
-	}
-
-	return keyColumn + " = ?", key
-}
-
-func queryPage(ctx context.Context, db *database.Client, query string, limit int, cursor string) (*sql.Rows, error) {
-	if cursor == "" {
-		return db.QueryContext(ctx, query+` ORDER BY created_at LIMIT ?`, limit+1)
-	}
-
-	return db.QueryContext(ctx, query+` WHERE created_at > ? ORDER BY created_at LIMIT ?`, cursor, limit+1)
-}
-
-func now() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
 }

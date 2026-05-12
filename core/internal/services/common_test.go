@@ -1,4 +1,4 @@
-package id_test
+package services_test
 
 import (
 	"strings"
@@ -6,15 +6,15 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/bastion-computer/bastion/core/internal/id"
+	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
-func TestNewReturnsPrefixedUUID(t *testing.T) {
+func TestGenerateIDReturnsPrefixedUUID(t *testing.T) {
 	t.Parallel()
 
-	value, err := id.New("sec")
+	value, err := services.GenerateID("sec")
 	if err != nil {
-		t.Fatalf("new id: %v", err)
+		t.Fatalf("generate id: %v", err)
 	}
 
 	const prefix = "sec_"
@@ -32,10 +32,10 @@ func TestNewReturnsPrefixedUUID(t *testing.T) {
 	}
 }
 
-func TestNewRequiresPrefix(t *testing.T) {
+func TestGenerateIDRequiresPrefix(t *testing.T) {
 	t.Parallel()
 
-	if _, err := id.New(" "); err == nil {
-		t.Fatal("new id with empty prefix error = nil, want error")
+	if _, err := services.GenerateID(" "); err == nil {
+		t.Fatal("generate id with empty prefix error = nil, want error")
 	}
 }
