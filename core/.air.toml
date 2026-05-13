@@ -3,7 +3,7 @@ tmp_dir = "tmp"
 
 [build]
 cmd = "go build -o ./tmp/bastion ./cmd/bastion"
-entrypoint = ["./tmp/bastion", "start", "--addr", "localhost:3148", "--data-dir", "../.bastion"]
+entrypoint = ["./tmp/bastion", "start", "--addr", "localhost:3148", "--data-dir", "../.bastion", "--log-format", "text"]
 include_dir = ["cmd", "internal"]
 include_ext = ["go"]
 exclude_dir = ["tmp"]

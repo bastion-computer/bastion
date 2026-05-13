@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -64,6 +65,12 @@ func TestDeleteRoutes(t *testing.T) {
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 
+	return newTestRouterWithLogger(t, slog.New(slog.DiscardHandler))
+}
+
+func newTestRouterWithLogger(t *testing.T, logger *slog.Logger) http.Handler {
+	t.Helper()
+
 	db, err := database.Open(":memory:")
 	if err != nil {
 		t.Fatalf("open database: %v", err)
@@ -71,7 +78,7 @@ func newTestRouter(t *testing.T) http.Handler {
 
 	t.Cleanup(func() { _ = db.Close() })
 
-	return api.NewRouter(db)
+	return api.NewRouter(db, logger)
 }
 
 func createTemplate(t *testing.T, handler http.Handler, key string) template.Metadata {

@@ -49,6 +49,8 @@ Local builds report `dev` from `internal/config.Version`. Release builds can inj
 
 - `--addr`: listen address. Defaults to `localhost:3148` and can be set with `BASTION_ADDR`.
 - `--data-dir`: persistent data directory. Defaults to `~/.bastion` and can be set with `BASTION_DATA_DIR`.
+- `--log-format`: log handler format. Defaults to `json` and can be set with `BASTION_LOG_FORMAT`; supported values are `json` and `text`.
+- `--log-level`: minimum log level. Defaults to `info` and can be set with `BASTION_LOG_LEVEL`; supported values are `debug`, `info`, `warn`, and `error`.
 
 The service uses Gin and wraps it in `http.Server` so timeouts and graceful shutdown remain explicit. `internal/api/server.go` owns route registration. Domain-specific handler packages under `internal/handlers` expose `NewHandler(service)` constructors and handler methods used by those routes.
 
@@ -75,4 +77,4 @@ Supported command groups are intentionally limited to the current product scope:
 - `bastion templates ...`
 - `bastion env ...`
 
-Logs and diagnostics go to stderr. JSON command output goes to stdout.
+Logs and diagnostics go to stderr. Host API logs are structured and include fields such as `request_id`, `method`, `route`, `status`, `duration`, `client_ip`, and `body_size`. The default format is JSON for machine parsing; the Air dev entrypoint uses `--log-format text` for readable local logs. API responses echo or generate `X-Request-ID` so request logs can be correlated with callers. JSON command output goes to stdout.
