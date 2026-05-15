@@ -15,7 +15,7 @@ func TestRouterLogsStructuredRequest(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	router := newTestRouterWithLogger(t, testLogger(&logs))
+	router := newTestRouter(t, testLogger(&logs))
 
 	res := request(t, router, http.MethodGet, "/v1/health", nil)
 	if res.Code != http.StatusOK {
@@ -68,7 +68,7 @@ func TestRouterPropagatesRequestID(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	router := newTestRouterWithLogger(t, testLogger(&logs))
+	router := newTestRouter(t, testLogger(&logs))
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/health", nil)
 	res := httptest.NewRecorder()
 
@@ -91,7 +91,7 @@ func TestRouterLogsInvalidJSONAtWarnLevel(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	router := newTestRouterWithLogger(t, testLogger(&logs))
+	router := newTestRouter(t, testLogger(&logs))
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/templates", bytes.NewBufferString("{"))
 	res := httptest.NewRecorder()
 
