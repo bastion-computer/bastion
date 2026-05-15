@@ -1,0 +1,100 @@
+package environment_test
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/bastion-computer/bastion/core/internal/database"
+	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
+)
+
+func TestServiceCreatesListsGetsAndRemovesEnvironment(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	service := environment.NewService(db)
+	ctx := context.Background()
+
+	created := createEnvironmentFromTemplate(ctx, t, templates, service)
+	assertEnvironmentList(ctx, t, service)
+	assertEnvironmentGet(ctx, t, service, created)
+	assertEnvironmentRemove(ctx, t, service, created.ID)
+}
+
+func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates *template.Service, service *environment.Service) environment.Environment {
+	t.Helper()
+
+	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
+		Key:    "dev-env",
+		Config: json.RawMessage(`{"actions":{"init":[]}}`),
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	created, err := service.Create(ctx, environment.CreateRequest{TemplateKey: "dev-env"})
+	if err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+
+	if created.ID == "" || created.Status != "pending" || created.TemplateID != createdTemplate.ID {
+		t.Fatalf("unexpected created environment: %#v", created)
+	}
+
+	return created
+}
+
+func assertEnvironmentList(ctx context.Context, t *testing.T, service *environment.Service) {
+	t.Helper()
+
+	page, err := service.List(ctx, 20, "")
+	if err != nil {
+		t.Fatalf("list environments: %v", err)
+	}
+
+	if len(page.Entries) != 1 || page.Cursor != nil {
+		t.Fatalf("unexpected environments page: %#v", page)
+	}
+}
+
+func assertEnvironmentGet(ctx context.Context, t *testing.T, service *environment.Service, want environment.Environment) {
+	t.Helper()
+
+	got, err := service.Get(ctx, want.ID)
+	if err != nil {
+		t.Fatalf("get environment: %v", err)
+	}
+
+	if got.ID != want.ID || got.TemplateID != want.TemplateID {
+		t.Fatalf("unexpected environment: %#v", got)
+	}
+}
+
+func assertEnvironmentRemove(ctx context.Context, t *testing.T, service *environment.Service, id string) {
+	t.Helper()
+
+	removed, err := service.Remove(ctx, id)
+	if err != nil {
+		t.Fatalf("remove environment: %v", err)
+	}
+
+	if removed.ID != id {
+		t.Fatalf("removed environment id = %q, want %q", removed.ID, id)
+	}
+}
+
+func openDB(t *testing.T) *database.Client {
+	t.Helper()
+
+	db, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+
+	t.Cleanup(func() { _ = db.Close() })
+
+	return db
+}

@@ -13,7 +13,7 @@ import (
 func newTemplatesCommand(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "templates",
-		Short: "Manage sandbox templates",
+		Short: "Manage environment templates",
 	}
 	cmd.AddCommand(
 		newTemplatesCreateCommand(opts),
@@ -33,7 +33,7 @@ func newTemplatesCreateCommand(opts *rootOptions) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "create KEY (--config JSON | --file PATH)",
-		Short: "Create a sandbox template",
+		Short: "Create an environment template",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if (configValue == "") == (file == "") {

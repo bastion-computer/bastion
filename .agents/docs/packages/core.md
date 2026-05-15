@@ -7,6 +7,8 @@ The core package lives in `core/` and builds the `bastion` binary. That binary i
 - `bastion start` runs the local host API service on `localhost:3148` by default.
 - The remaining `bastion` CLI commands call the host API service and print JSON responses.
 
+Core is intentionally narrow while the runtime is under development: it stores reusable templates and manages environment records. Connection, attach, terminal, exec, secret proxy, checkpoint, and Firecracker runtime behavior are not implemented yet.
+
 ## Layout
 
 | Path | Purpose |
@@ -20,10 +22,8 @@ The core package lives in `core/` and builds the `bastion` binary. That binary i
 | `internal/failure` | Shared domain error sentinels mapped by the API layer. |
 | `internal/handlers` | HTTP route handlers grouped by domain, plus shared handler helpers. Handlers adapt Gin requests to services. |
 | `internal/services` | Shared service-layer helpers and response types. |
-| `internal/services/secret` | Secret request/response types and persistence service. |
 | `internal/services/template` | Template request/response types and persistence service. |
-| `internal/services/sandbox` | Sandbox request/response types and persistence service. |
-| `internal/services/checkpoint` | Checkpoint request/response types and persistence service. |
+| `internal/services/environment` | Environment request/response types and persistence service. |
 | `internal/migrations` | Embedded SQL migrations applied by core. |
 
 Implementation packages should stay under `internal/` unless another Go module has a concrete need to import them.
@@ -72,12 +72,9 @@ The core migrations are the schema source of truth. Development tools such as Dr
 
 CLI commands call the host API configured by `--api-url` or `BASTION_API_URL`. The default is `http://localhost:3148`.
 
-Supported command groups mirror the product docs:
+Supported command groups are intentionally limited to the current product scope:
 
-- `bastion secrets ...`
 - `bastion templates ...`
-- `bastion sandbox ...`
-- `bastion checkpoints ...`
-- `bastion exec ...`
+- `bastion env ...`
 
 Logs and diagnostics go to stderr. JSON command output goes to stdout.

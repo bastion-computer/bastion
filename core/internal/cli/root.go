@@ -27,18 +27,15 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:           "bastion",
-		Short:         "A platform to scale virtual computers for AI agents.",
+		Short:         "An orchestration platform to run many opencode agents in isolated and reproducible dev environments.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 	cmd.PersistentFlags().StringVar(&opts.apiURL, "api-url", opts.apiURL, "host API URL")
 	cmd.AddCommand(
 		newStartCommand(),
-		newSecretsCommand(opts),
 		newTemplatesCommand(opts),
-		newSandboxCommand(opts),
-		newCheckpointsCommand(opts),
-		newExecCommand(opts),
+		newEnvironmentCommand(opts),
 		newVersionCommand(),
 	)
 

@@ -12,7 +12,6 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "@bastion/spec": "workspace:*",
     "@astrojs/starlight": "^0.38.4",
     "@fontsource/geist-mono": "^5.2.5",
     "@fontsource/geist-sans": "^5.2.5",

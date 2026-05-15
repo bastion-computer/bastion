@@ -1,3 +1,4 @@
+// Package cli builds the Bastion command-line interface.
 package cli
 
 import (

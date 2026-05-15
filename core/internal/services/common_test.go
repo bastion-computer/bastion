@@ -12,12 +12,12 @@ import (
 func TestGenerateIDReturnsPrefixedUUID(t *testing.T) {
 	t.Parallel()
 
-	value, err := services.GenerateID("sec")
+	value, err := services.GenerateID("env")
 	if err != nil {
 		t.Fatalf("generate id: %v", err)
 	}
 
-	const prefix = "sec_"
+	const prefix = "env_"
 	if !strings.HasPrefix(value, prefix) {
 		t.Fatalf("id = %q, want prefix %q", value, prefix)
 	}

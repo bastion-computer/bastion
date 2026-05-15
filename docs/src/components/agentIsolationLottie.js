@@ -869,8 +869,8 @@ export function createAgentIsolationAnimationData(palette = {}) {
 
   layers.push(
     ...popup(
-      "database",
-      "database dropped",
+      "process",
+      "process terminated",
       leftX(218),
       195,
       270,
@@ -891,8 +891,8 @@ export function createAgentIsolationAnimationData(palette = {}) {
   );
   layers.push(
     ...popup(
-      "merge",
-      "data leaked",
+      "state",
+      "state missing",
       leftX(375),
       305,
       218,

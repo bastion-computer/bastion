@@ -15,9 +15,7 @@ import (
 	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/services"
-	"github.com/bastion-computer/bastion/core/internal/services/checkpoint"
-	"github.com/bastion-computer/bastion/core/internal/services/sandbox"
-	"github.com/bastion-computer/bastion/core/internal/services/secret"
+	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
@@ -37,52 +35,7 @@ func New(baseURL string) *Client {
 	}
 }
 
-// CreateSecret binds a secret reference.
-func (c *Client) CreateSecret(ctx context.Context, req secret.CreateRequest) (secret.Secret, error) {
-	var out secret.Secret
-	return out, c.do(ctx, http.MethodPost, "/v1/secrets", req, &out)
-}
-
-// ListSecrets returns secret references.
-func (c *Client) ListSecrets(ctx context.Context, limit int, cursor string) (services.Page[secret.Secret], error) {
-	var out services.Page[secret.Secret]
-	return out, c.do(ctx, http.MethodGet, listPath("/v1/secrets", limit, cursor), nil, &out)
-}
-
-// GetSecret returns a secret reference by ID or key.
-func (c *Client) GetSecret(ctx context.Context, id, key string) (secret.Secret, error) {
-	var out secret.Secret
-
-	path, err := resourcePath("/v1/secrets", id, key)
-	if err != nil {
-		return out, err
-	}
-
-	return out, c.do(ctx, http.MethodGet, path, nil, &out)
-}
-
-// ResolveSecret returns the host environment value for a secret reference.
-func (c *Client) ResolveSecret(ctx context.Context, id, key string) (secret.Value, error) {
-	var out secret.Value
-
-	req := secret.ResolveRequest{ID: id, Key: key}
-
-	return out, c.do(ctx, http.MethodPost, "/v1/secrets/resolve", req, &out)
-}
-
-// RemoveSecret deletes a secret reference.
-func (c *Client) RemoveSecret(ctx context.Context, id, key string) (secret.Secret, error) {
-	var out secret.Secret
-
-	path, err := resourcePath("/v1/secrets", id, key)
-	if err != nil {
-		return out, err
-	}
-
-	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
-}
-
-// CreateTemplate stores a sandbox template.
+// CreateTemplate stores a template.
 func (c *Client) CreateTemplate(ctx context.Context, req template.CreateRequest) (template.Metadata, error) {
 	var out template.Metadata
 	return out, c.do(ctx, http.MethodPost, "/v1/templates", req, &out)
@@ -118,79 +71,28 @@ func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (template.T
 	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
 }
 
-// CreateSandbox creates a sandbox from a template or checkpoint.
-func (c *Client) CreateSandbox(ctx context.Context, req sandbox.CreateRequest) (sandbox.Sandbox, error) {
-	var out sandbox.Sandbox
-	return out, c.do(ctx, http.MethodPost, "/v1/sandboxes", req, &out)
+// CreateEnvironment creates an environment from a template.
+func (c *Client) CreateEnvironment(ctx context.Context, req environment.CreateRequest) (environment.Environment, error) {
+	var out environment.Environment
+	return out, c.do(ctx, http.MethodPost, "/v1/environments", req, &out)
 }
 
-// ListSandboxes returns sandboxes.
-func (c *Client) ListSandboxes(ctx context.Context, limit int, cursor string) (services.Page[sandbox.Sandbox], error) {
-	var out services.Page[sandbox.Sandbox]
-	return out, c.do(ctx, http.MethodGet, listPath("/v1/sandboxes", limit, cursor), nil, &out)
+// ListEnvironments returns environments.
+func (c *Client) ListEnvironments(ctx context.Context, limit int, cursor string) (services.Page[environment.Environment], error) {
+	var out services.Page[environment.Environment]
+	return out, c.do(ctx, http.MethodGet, listPath("/v1/environments", limit, cursor), nil, &out)
 }
 
-// GetSandbox returns a sandbox by ID.
-func (c *Client) GetSandbox(ctx context.Context, id string) (sandbox.Sandbox, error) {
-	var out sandbox.Sandbox
-	return out, c.do(ctx, http.MethodGet, "/v1/sandboxes/"+url.PathEscape(id), nil, &out)
+// GetEnvironment returns an environment by ID.
+func (c *Client) GetEnvironment(ctx context.Context, id string) (environment.Environment, error) {
+	var out environment.Environment
+	return out, c.do(ctx, http.MethodGet, "/v1/environments/"+url.PathEscape(id), nil, &out)
 }
 
-// PauseSandbox marks a sandbox as paused.
-func (c *Client) PauseSandbox(ctx context.Context, id string) (sandbox.Sandbox, error) {
-	var out sandbox.Sandbox
-	return out, c.do(ctx, http.MethodPost, "/v1/sandboxes/"+url.PathEscape(id)+"/pause", nil, &out)
-}
-
-// RemoveSandbox deletes a sandbox.
-func (c *Client) RemoveSandbox(ctx context.Context, id string) (sandbox.Sandbox, error) {
-	var out sandbox.Sandbox
-	return out, c.do(ctx, http.MethodDelete, "/v1/sandboxes/"+url.PathEscape(id), nil, &out)
-}
-
-// ExecSandbox requests command execution in a sandbox.
-func (c *Client) ExecSandbox(ctx context.Context, id string, command []string) (sandbox.ExecResponse, error) {
-	var out sandbox.ExecResponse
-
-	req := sandbox.ExecRequest{Command: command}
-
-	return out, c.do(ctx, http.MethodPost, "/v1/sandboxes/"+url.PathEscape(id)+"/exec", req, &out)
-}
-
-// CreateCheckpoint creates a checkpoint from a paused sandbox.
-func (c *Client) CreateCheckpoint(ctx context.Context, req checkpoint.CreateRequest) (checkpoint.Checkpoint, error) {
-	var out checkpoint.Checkpoint
-	return out, c.do(ctx, http.MethodPost, "/v1/checkpoints", req, &out)
-}
-
-// ListCheckpoints returns checkpoints.
-func (c *Client) ListCheckpoints(ctx context.Context, limit int, cursor string) (services.Page[checkpoint.Checkpoint], error) {
-	var out services.Page[checkpoint.Checkpoint]
-	return out, c.do(ctx, http.MethodGet, listPath("/v1/checkpoints", limit, cursor), nil, &out)
-}
-
-// GetCheckpoint returns a checkpoint by ID or key.
-func (c *Client) GetCheckpoint(ctx context.Context, id, key string) (checkpoint.Checkpoint, error) {
-	var out checkpoint.Checkpoint
-
-	path, err := resourcePath("/v1/checkpoints", id, key)
-	if err != nil {
-		return out, err
-	}
-
-	return out, c.do(ctx, http.MethodGet, path, nil, &out)
-}
-
-// RemoveCheckpoint deletes a checkpoint.
-func (c *Client) RemoveCheckpoint(ctx context.Context, id, key string) (checkpoint.Checkpoint, error) {
-	var out checkpoint.Checkpoint
-
-	path, err := resourcePath("/v1/checkpoints", id, key)
-	if err != nil {
-		return out, err
-	}
-
-	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
+// RemoveEnvironment deletes an environment.
+func (c *Client) RemoveEnvironment(ctx context.Context, id string) (environment.Environment, error) {
+	var out environment.Environment
+	return out, c.do(ctx, http.MethodDelete, "/v1/environments/"+url.PathEscape(id), nil, &out)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {

@@ -1,6 +1,6 @@
 # bastion
 
-Bastion is a platform to scale virtual computers for AI agents.
+Bastion is an orchestration platform to run many opencode agents in isolated and reproducible dev environments.
 
 **See the full documentation at [bastion.computer](https://bastion.computer).**
 
