@@ -4,6 +4,8 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -21,10 +23,10 @@ func init() {
 }
 
 // NewServer returns an HTTP server configured for the Bastion API.
-func NewServer(addr string, db *database.Client) *http.Server {
+func NewServer(addr string, db *database.Client, logger *slog.Logger) *http.Server {
 	return &http.Server{
 		Addr:              addr,
-		Handler:           NewRouter(db),
+		Handler:           NewRouter(db, logger),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -33,9 +35,9 @@ func NewServer(addr string, db *database.Client) *http.Server {
 }
 
 // NewRouter builds the Bastion API router.
-func NewRouter(db *database.Client) *gin.Engine {
+func NewRouter(db *database.Client, logger *slog.Logger) *gin.Engine {
 	router := gin.New()
-	router.Use(gin.Recovery())
+	router.Use(requestIDMiddleware(), slogMiddleware(logger), recoveryMiddleware(logger))
 
 	v1 := router.Group("/v1")
 	v1.GET("/health", func(c *gin.Context) {
@@ -62,8 +64,8 @@ func NewRouter(db *database.Client) *gin.Engine {
 }
 
 // Run starts the Bastion API server and shuts it down when ctx is cancelled.
-func Run(ctx context.Context, addr string, db *database.Client) error {
-	server := NewServer(addr, db)
+func Run(ctx context.Context, addr string, db *database.Client, logger *slog.Logger) error {
+	server := NewServer(addr, db, logger)
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -77,15 +79,27 @@ func Run(ctx context.Context, addr string, db *database.Client) error {
 
 	select {
 	case err := <-errCh:
+		if err != nil {
+			logger.ErrorContext(ctx, "host API failed", slog.String("error", err.Error()))
+		}
+
 		return err
 	case <-ctx.Done():
+		logger.InfoContext(context.Background(), "host API shutting down", slog.String("addr", addr))
+
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("shutdown host API: %w", err)
+		}
+
+		if err := <-errCh; err != nil {
 			return err
 		}
 
-		return <-errCh
+		logger.InfoContext(context.Background(), "host API stopped", slog.String("addr", addr))
+
+		return nil
 	}
 }

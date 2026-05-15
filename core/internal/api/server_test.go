@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,7 +19,7 @@ import (
 func TestListRoutes(t *testing.T) {
 	t.Parallel()
 
-	router := newTestRouter(t)
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
 
 	templateOne := createTemplate(t, router, "template-list-1")
 	templateTwo := createTemplate(t, router, "template-list-2")
@@ -33,7 +34,7 @@ func TestListRoutes(t *testing.T) {
 func TestGetRoutes(t *testing.T) {
 	t.Parallel()
 
-	router := newTestRouter(t)
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
 
 	templateByID := createTemplate(t, router, "template-get-id")
 	assertGet(t, router, "/v1/templates/"+templateByID.ID, templateByID.ID)
@@ -48,7 +49,7 @@ func TestGetRoutes(t *testing.T) {
 func TestDeleteRoutes(t *testing.T) {
 	t.Parallel()
 
-	router := newTestRouter(t)
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
 
 	templateByID := createTemplate(t, router, "template-delete-id")
 	assertDelete(t, router, "/v1/templates/"+templateByID.ID)
@@ -61,7 +62,7 @@ func TestDeleteRoutes(t *testing.T) {
 	assertDelete(t, router, "/v1/environments/"+env.ID)
 }
 
-func newTestRouter(t *testing.T) http.Handler {
+func newTestRouter(t *testing.T, logger *slog.Logger) http.Handler {
 	t.Helper()
 
 	db, err := database.Open(":memory:")
@@ -71,7 +72,7 @@ func newTestRouter(t *testing.T) http.Handler {
 
 	t.Cleanup(func() { _ = db.Close() })
 
-	return api.NewRouter(db)
+	return api.NewRouter(db, logger)
 }
 
 func createTemplate(t *testing.T, handler http.Handler, key string) template.Metadata {
@@ -189,7 +190,7 @@ func decode(t *testing.T, res *httptest.ResponseRecorder, value any) {
 func TestHealthRoute(t *testing.T) {
 	t.Parallel()
 
-	router := newTestRouter(t)
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
 	res := request(t, router, http.MethodGet, "/v1/health", nil)
 
 	if res.Code != http.StatusOK {

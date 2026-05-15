@@ -14,7 +14,9 @@ import (
 // BindJSON parses a JSON request body and writes a 400 response on failure.
 func BindJSON(c *gin.Context, dst any) bool {
 	if err := c.ShouldBindJSON(dst); err != nil {
+		_ = c.Error(err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
+
 		return false
 	}
 
@@ -24,7 +26,9 @@ func BindJSON(c *gin.Context, dst any) bool {
 // Respond writes a successful JSON response or maps a domain error to HTTP.
 func Respond(c *gin.Context, value any, err error, okStatus int) {
 	if err != nil {
+		_ = c.Error(err)
 		respondError(c, err)
+
 		return
 	}
 

@@ -1,24 +1,32 @@
 package cli
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bastion-computer/bastion/core/internal/api"
 	"github.com/bastion-computer/bastion/core/internal/config"
 	"github.com/bastion-computer/bastion/core/internal/database"
+	"github.com/bastion-computer/bastion/core/internal/logging"
 )
 
 func newStartCommand() *cobra.Command {
 	addr := config.EnvDefault("BASTION_ADDR", config.DefaultAddr)
 	dataDir := config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir())
+	logFormat := config.EnvDefault("BASTION_LOG_FORMAT", logging.DefaultFormat)
+	logLevel := config.EnvDefault("BASTION_LOG_LEVEL", logging.DefaultLevel)
 
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the Bastion host API service",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger, err := logging.New(cmd.ErrOrStderr(), logFormat, logLevel)
+			if err != nil {
+				return err
+			}
+
 			resolvedDataDir, err := config.ExpandPath(dataDir)
 			if err != nil {
 				return err
@@ -31,15 +39,20 @@ func newStartCommand() *cobra.Command {
 
 			defer func() { _ = db.Close() }()
 
-			if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "bastion host API listening on http://%s\n", addr); err != nil {
-				return fmt.Errorf("write startup message: %w", err)
-			}
+			logger.InfoContext(cmd.Context(), "host API listening",
+				slog.String("addr", addr),
+				slog.String("data_dir", resolvedDataDir),
+				slog.String("log_format", logFormat),
+				slog.String("log_level", logLevel),
+			)
 
-			return api.Run(cmd.Context(), addr, db)
+			return api.Run(cmd.Context(), addr, db, logger)
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", addr, "host API listen address")
 	cmd.Flags().StringVar(&dataDir, "data-dir", dataDir, "directory for persistent data")
+	cmd.Flags().StringVar(&logFormat, "log-format", logFormat, "log format: json or text")
+	cmd.Flags().StringVar(&logLevel, "log-level", logLevel, "minimum log level: debug, info, warn, or error")
 
 	return cmd
 }
