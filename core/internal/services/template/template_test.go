@@ -8,6 +8,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
+	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
@@ -59,6 +60,35 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 
 	if _, err := service.Get(ctx, created.ID, ""); !errors.Is(err, failure.ErrNotFound) {
 		t.Fatalf("get removed template error = %v, want not found", err)
+	}
+}
+
+func TestServiceRejectsRemovingTemplateInUseByEnvironment(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	environments := environment.NewService(db)
+	ctx := context.Background()
+
+	created, err := templates.Create(ctx, template.CreateRequest{
+		Key:    "dev-env",
+		Config: json.RawMessage(`{"actions":{"init":[]}}`),
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	if _, err := environments.Create(ctx, environment.CreateRequest{TemplateID: created.ID}); err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+
+	if _, err := templates.Remove(ctx, created.ID, ""); !errors.Is(err, failure.ErrConflict) {
+		t.Fatalf("remove template error = %v, want conflict", err)
+	}
+
+	if _, err := templates.Get(ctx, created.ID, ""); err != nil {
+		t.Fatalf("get template after rejected remove: %v", err)
 	}
 }
 

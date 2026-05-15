@@ -25,40 +25,7 @@ export default defineConfig({
         light: "./src/assets/logo-light.png",
         dark: "./src/assets/logo-dark.png",
       },
-      sidebar: [
-        { label: "Introduction", slug: "introduction" },
-        { label: "Quick Start", slug: "quick-start" },
-        {
-          label: "Guides",
-          items: [
-            { label: "Secrets", slug: "guides/secrets" },
-            { label: "Templates", slug: "guides/templates" },
-            { label: "Sandboxes", slug: "guides/sandboxes" },
-            { label: "Checkpoints", slug: "guides/checkpoints" },
-          ],
-        },
-        {
-          label: "Ecosystem",
-          items: [
-            { label: "Custom Actions", slug: "ecosystem/custom-actions" },
-          ],
-        },
-        {
-          label: "Schemas",
-          items: [
-            {
-              label: "Template",
-              link: "/schemas/template.json",
-              attrs: { target: "_blank", rel: "noopener noreferrer" },
-            },
-            {
-              label: "Action",
-              link: "/schemas/action.json",
-              attrs: { target: "_blank", rel: "noopener noreferrer" },
-            },
-          ],
-        },
-      ],
+      sidebar: [{ label: "Introduction", slug: "introduction" }],
     }),
   ],
 });

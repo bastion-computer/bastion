@@ -26,7 +26,6 @@
       "name": "@bastion/docs",
       "dependencies": {
         "@astrojs/starlight": "^0.38.4",
-        "@bastion/spec": "workspace:*",
         "@fontsource/geist-mono": "^5.2.5",
         "@fontsource/geist-sans": "^5.2.5",
         "astro": "^6.1.9",
@@ -42,12 +41,6 @@
         "prettier-plugin-astro": "^0.14.1",
         "typescript": "^6.0.2",
         "typescript-eslint": "^8.57.2",
-      },
-    },
-    "spec": {
-      "name": "@bastion/spec",
-      "devDependencies": {
-        "prettier": "^3.8.1",
       },
     },
   },
@@ -87,8 +80,6 @@
     "@bastion/dev-db": ["@bastion/dev-db@workspace:dev-db"],
 
     "@bastion/docs": ["@bastion/docs@workspace:docs"],
-
-    "@bastion/spec": ["@bastion/spec@workspace:spec"],
 
     "@capsizecss/unpack": ["@capsizecss/unpack@4.0.0", "", { "dependencies": { "fontkitten": "^1.0.0" } }, "sha512-VERIM64vtTP1C4mxQ5thVT9fK0apjPFobqybMtA1UdUujWka24ERHbRHFGmpbbhp73MhV+KSsHQH9C6uOTdEQA=="],
 

@@ -5,8 +5,7 @@
   "private": true,
   "workspaces": [
     "dev-db",
-    "docs",
-    "spec"
+    "docs"
   ],
   "devDependencies": {
     "@types/bun": "latest"

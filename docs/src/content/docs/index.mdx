@@ -1,13 +1,13 @@
 ---
 title: Bastion
-description: A platform to scale virtual computers for AI agents.
+description: An orchestration platform to run many opencode agents in isolated and reproducible dev environments.
 head:
   - tag: title
     content: Bastion Computer
 template: splash
 editUrl: false
 hero:
-  tagline: A platform to scale virtual computers for AI agents.
+  tagline: An orchestration platform to run many opencode agents in isolated and reproducible dev environments.
   actions:
     - text: Docs
       link: /introduction/
@@ -41,30 +41,64 @@ curl -fsSL https://bastion.computer/install.sh | bash
 <ContainerSection>
 
 <CardGrid stagger>
-  <Card title="Run Agents in Isolated Linux VMs" icon="laptop">
-    Give every agent its own Firecracker microVM with a guest kernel, full Linux
-    environment, and a hard isolation boundary from the host.
-  </Card>
-  <Card title="Define Environments as JSON" icon="seti:json">
-    Capture resources, environment variables, network rules, and startup actions
-    in reusable templates validated by a public schema.
-  </Card>
-  <Card title="Keep Secrets Out of Sandboxes" icon="seti:lock">
-    Use obfuscated secrets and proxy-layer resolution to let agents access
-    credentials without exposing raw values inside their runtime.
-  </Card>
-  <Card title="Scale Parallel Agent Sessions" icon="rocket">
-    Create sandboxes from templates, run many sessions side by side, and manage
-    lifecycle state through Bastion's CLI and public API.
-  </Card>
-  <Card title="Branch Workflows from Checkpoints" icon="add-document">
-    Create a checkpoint from a deployed sandbox and fork it into parallel
-    sessions or resume work from a previous state.
-  </Card>
-  <Card title="Self-Host on Your Infrastructure" icon="linux">
-    Run Bastion on Linux systems with KVM support, from a local workstation to
-    cloud instances like AWS EC2.
-  </Card>
+
+<Card title="Scale parallel opencode environments" icon="rocket">
+  Run multiple opencode instances at the same time with zero runtime conflicts
+  from other agents working in parallel.
+</Card>
+
+<Card title="Run opencode environments in isolation" icon="laptop">
+  Every opencode instance runs in a separate microVM, giving agents complete
+  control of its dev environment from file systems to background processes.
+</Card>
+
+<Card title="Define environments as JSON" icon="seti:json">
+  All opencode instances are initialized with schema validated JSON templates
+  rather than manually configured.
+</Card>
+
+<Card title="Self-host on your infrastructure" icon="linux">
+  Run Bastion on Linux systems with KVM support, from a local workstation to
+  cloud instances like AWS EC2.
+</Card>
+
 </CardGrid>
+
+</ContainerSection>
+
+<ContainerSection>
+
+## FAQ
+
+<details open>
+  <summary>What is the difference between bastion and opencode?</summary>
+  <p>
+    Opencode is the primitive for running an AI coding agent in your dev
+    environment. Bastion is a layer built on top of opencode to replicate your
+    AI coding agent and dev environment into many isolated instances that can
+    operate in parallel.
+  </p>
+</details>
+
+<details open>
+  <summary>Why microVMs and not just use git worktrees?</summary>
+  <p>
+    Git worktrees isolate source code. They do not isolate everything an agent
+    touches while working: ports, background processes, package installs,
+    databases, temporary files, credentials, and local services. Bastion gives
+    each opencode agent its own runtime so agents can build, test, and modify
+    code without colliding with one another.
+  </p>
+</details>
+
+<details open>
+  <summary>Can I use this with other coding agents?</summary>
+  <p>
+    Bastion is built for opencode. On top of being a top tier harness, opencode
+    also has an excellent developer ecosystem that allows for powerful open
+    source extensions. This allows bastion to focus efforts on being the best in
+    class orchestration platform for the open source community.
+  </p>
+</details>
 
 </ContainerSection>

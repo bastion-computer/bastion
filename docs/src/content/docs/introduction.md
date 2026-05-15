@@ -1,40 +1,27 @@
 ---
-title: What is bastion?
-description: A solution to scaling parallel agents.
+title: Introduction
+description: Under development.
 ---
 
-Bastion is an open source platform that makes it easy to run multiple agents on your own infrastructure.
+```text
+                                  |>>>
+                                  |
+                    |>>>      _  _|_  _         |>>>
+                    |        |;| |;| |;|        |
+                _  _|_  _    \\.    .  /    _  _|_  _
+               |;|_|;|_|;|    \\:. ,  /    |;|_|;|_|;|
+               \\..      /    ||;   . |    \\.    .  /
+                \\.  ,  /     ||:  .  |     \\:  .  /
+                 ||:   |_   _ ||_ . _ | _   _||:   |
+                 ||:  .|||_|;|_|;|_|;|_|;|_|;||:.  |
+                 ||:   ||.    .     .      . ||:  .|
+                 ||: . || .     . .   .  ,   ||:   |       \,/
+                 ||:   ||:  ,  _______   .   ||: , |            /`\
+                 ||:   || .   /+++++++\    . ||:   |
+                 ||:   ||.    |+++++++| .    ||: . |
+              __ ||: . ||: ,  |+++++++|.  . _||_   |
+     ____--`~    '--~~__|.    |+++++__|----~    ~`---,              ___
+-~--~                   ~---__|,--~'                  ~~----_____-~'   `~----~~
+```
 
-## Architecture
-
-![High level architecture](../../assets/high-level-architecture.png)
-
-At a high level, the bastion architecture is fairly simple and optimizes for an outcome where we can scale agents in a secure and reliable way.
-
-Everything within the bounded box is operating within a single Linux machine. The green components (secrets, template, checkpoint, and proxy) are on the host while the red sandboxes are isolated to virtual machines with their own guest kernel. Any interaction with bastion by downstream clients should occur via its public API.
-
-## Sandbox
-
-The sandbox is the core component of the bastion platform. It is a [Firecracker microVM](https://firecracker-microvm.github.io/) where agents can operate with full access to a Linux environment while securely isolated from the host.
-
-In production, it is typical to have many sandboxes running in parallel. All other components in the system are built to support the orchestration and security challenges in managing a cluster of these sandboxes.
-
-## Templates
-
-Templates provide a system for configuring new sandboxes using a declarative schema. It allows developers to define components such as actions, resources, environment variables, network rules, and secrets that must be instrumented within the sandbox for their agents to operate.
-
-## Checkpoints
-
-Sandboxes can also be started from a saved state (including memory, CPU, and disk) of another sandbox rather than from a template. This can enable use cases like branching workflows from a point in time or restoring a long running session from a previous checkpoint.
-
-## Secrets
-
-The secret system prevents sensitive environment variables from entering the sandbox and exposing them to exfiltration risk. Environment variables can be mapped to a reference and used in templates.
-
-When initializing a new sandbox, the template will substitute the environment variable with a placeholder value that is sent into the VM. The sandbox will operate under the assumption that these placeholder values are the actual secrets.
-
-## Proxy
-
-Placeholder values alone are not enough if the real secret can't be used at some point. This is where the proxy comes in. All egress calls that exit the sandbox go through a transparent proxy which handles TLS interception in order to replace the placeholder with the actual secret before sending the packet to its original destination (e.g. an external API service).
-
-Secret references can also be configured with allow lists which are enforced at the proxy to ensure secrets are only resolved for legitimate calls.
+Under development.

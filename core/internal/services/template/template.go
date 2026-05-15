@@ -1,4 +1,4 @@
-// Package template manages sandbox templates.
+// Package template manages environment templates.
 package template
 
 import (
@@ -14,7 +14,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
-// Template contains a sandbox template and its JSON configuration.
+// Template contains an environment template and its JSON configuration.
 type Template struct {
 	ID        string          `json:"id"`
 	Key       string          `json:"key"`
@@ -35,7 +35,7 @@ type CreateRequest struct {
 	Config json.RawMessage `json:"config"`
 }
 
-// Service manages sandbox templates.
+// Service manages environment templates.
 type Service struct {
 	db *database.Client
 }
@@ -138,6 +138,10 @@ func (s *Service) Remove(ctx context.Context, templateID, key string) (Template,
 	}
 
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM templates WHERE id = ?`, template.ID); err != nil {
+		if database.IsConstraint(err) {
+			return Template{}, fmt.Errorf("%w: template is in use", failure.ErrConflict)
+		}
+
 		return Template{}, fmt.Errorf("remove template: %w", err)
 	}
 

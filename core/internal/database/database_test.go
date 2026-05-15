@@ -49,12 +49,12 @@ func TestOpenMemoryDatabaseRunsMigrations(t *testing.T) {
 
 	var tableName string
 
-	err = db.QueryRowContext(context.Background(), `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'secrets'`).Scan(&tableName)
+	err = db.QueryRowContext(context.Background(), `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'environments'`).Scan(&tableName)
 	if err != nil {
 		t.Fatalf("query migrated table: %v", err)
 	}
 
-	if tableName != "secrets" {
-		t.Fatalf("table name = %q, want secrets", tableName)
+	if tableName != "environments" {
+		t.Fatalf("table name = %q, want environments", tableName)
 	}
 }

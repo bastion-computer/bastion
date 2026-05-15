@@ -22,8 +22,6 @@ Note: This package uses `astro check` for typechecking instead of `tsc --noEmit`
 
 Documentation pages are authored as Markdown (`.md`) or MDX (`.mdx`) files under `src/content/docs/`. Starlight uses file-based routing — each file becomes a page on the site.
 
-Raw JSON schemas are exposed from `src/pages/schemas/[schema].json.ts`, which imports JSON artifacts directly from `@bastion/spec/data-types/*.json`.
-
 ### Content collection
 
 The content collection is configured in `src/content.config.ts` using Starlight's `docsLoader()` and `docsSchema()`.
