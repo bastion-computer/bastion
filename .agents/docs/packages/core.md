@@ -7,8 +7,6 @@ The core package lives in `core/` and builds the `bastion` binary. That binary i
 - `bastion start` runs the local host API service on `localhost:3148` by default.
 - The remaining `bastion` CLI commands call the host API service and print JSON responses.
 
-Core is intentionally narrow while the runtime is under development: it stores reusable templates and manages environment records. Connection, attach, terminal, exec, secret proxy, checkpoint, and Firecracker runtime behavior are not implemented yet.
-
 ## Layout
 
 | Path | Purpose |
