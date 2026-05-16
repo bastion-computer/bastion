@@ -35,12 +35,12 @@ dev_up() {
   fi
 
   core_pane="$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n dev -c "$root" 'mise run //core:dev')"
-  drizzle_pane="$(tmux split-window -d -h -P -F '#{pane_id}' -t "$core_pane" -c "$root" 'mise run //dev-db:dev')"
+  drizzle_pane="$(tmux split-window -d -h -P -F '#{pane_id}' -t "$core_pane" -c "$root" 'mise run //.dev/drizzle:dev')"
   docs_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$core_pane" -c "$root" 'mise run //docs:dev')"
   shell_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$drizzle_pane" -c "$root" 'mise exec -- bash -l')"
 
   tmux select-pane -t "$core_pane" -T 'core'
-  tmux select-pane -t "$drizzle_pane" -T 'dev-db'
+  tmux select-pane -t "$drizzle_pane" -T 'drizzle'
   tmux select-pane -t "$docs_pane" -T 'docs'
   tmux select-pane -t "$shell_pane" -T 'shell'
 

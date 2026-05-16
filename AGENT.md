@@ -13,8 +13,9 @@ IMPORTANT:
   - [Runtime](.agents/docs/codebase/runtime.md) - Runtime conventions and APIs
   - [New Packages](.agents/docs/codebase/new-packages.md) - Requirements for creating new monorepo packages
   - [Testing](.agents/docs/codebase/testing.md) - Linting, formatting, and typechecking commands
+- [Dev](.agents/docs/dev/)
+  - [Drizzle](.agents/docs/dev/drizzle.md) - Development-only database debugging tools
 - [Packages](.agents/docs/packages/)
   - [Core](.agents/docs/packages/core.md) - Go host API service and CLI
-  - [Dev DB](.agents/docs/packages/dev-db.md) - Development-only database debugging tools
   - [Spec](.agents/docs/packages/spec.md) - JSON Schema data type artifacts
   - [Docs](.agents/docs/packages/docs.md) - Astro Starlight documentation site

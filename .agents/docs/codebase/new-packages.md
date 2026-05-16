@@ -1,6 +1,7 @@
 Assume the following requirements when creating a new package in this monorepo:
 
-- New packages MUST be created as top-level directories, alongside packages such as `core`, `dev-db`, `docs`, and `spec`.
+- New application packages MUST be created as top-level directories, alongside packages such as `core`, `docs`, and `spec`.
+- Development-only tooling packages live under `.dev/`, such as `.dev/drizzle`, and their agent docs live under `.agents/docs/dev/`.
 - All active packages MUST define package-level mise tasks for the operations they support.
   - `lint` runs language-specific linting, such as `eslint ./src` for TypeScript packages or `golangci-lint run ./...` for Go packages.
   - `format:check` checks formatting without writing files.
