@@ -4,7 +4,7 @@ run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 
-db_path="../.bastion/sqlite.db"
+db_path="../../.bastion/sqlite.db"
 timeout=60
 waited=0
 

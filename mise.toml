@@ -22,7 +22,7 @@ zig = "0.15.2"
 [monorepo]
 config_roots = [
   "core",
-  "dev-db",
+  ".dev/drizzle",
   "docs",
 ]
 
@@ -32,11 +32,11 @@ run = [{ tasks = ["//core:lint", "//docs:lint"] }]
 
 [tasks."format:check"]
 description = "Check formatting across all active packages"
-run = [{ tasks = ["//core:format:check", "//dev-db:format:check", "//docs:format:check"] }]
+run = [{ tasks = ["//core:format:check", "//.dev/drizzle:format:check", "//docs:format:check"] }]
 
 [tasks."format:write"]
 description = "Format all active packages"
-run = [{ tasks = ["//core:format:write", "//dev-db:format:write", "//docs:format:write"] }]
+run = [{ tasks = ["//core:format:write", "//.dev/drizzle:format:write", "//docs:format:write"] }]
 
 [tasks.build]
 description = "Run build tasks across all active packages"

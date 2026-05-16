@@ -1,5 +1,5 @@
 {
-  "name": "@bastion/dev-db",
+  "name": "@bastion/dev/drizzle",
   "type": "module",
   "private": true,
   "scripts": {
