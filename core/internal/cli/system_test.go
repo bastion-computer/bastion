@@ -15,7 +15,8 @@ func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 
 	var out bytes.Buffer
 
-	cmd := newSystemCommandWithActions(t.TempDir(), systemActions{
+	cmd := newSystemCommandWithOptions(systemOptions{
+		dataDir: t.TempDir(),
 		newRegistry: func(string) systemRegistry {
 			return fakeSystemRegistry{
 				resolve: func(context.Context) system.Node {
@@ -48,7 +49,8 @@ func TestSystemAddFirecrackerCommandPassesYesAndDataDir(t *testing.T) {
 	)
 
 	dataDir := t.TempDir()
-	cmd := newSystemCommandWithActions("unused", systemActions{
+	cmd := newSystemCommandWithOptions(systemOptions{
+		dataDir: "unused",
 		newRegistry: func(dataDir string) systemRegistry {
 			gotDataDir = dataDir
 
@@ -93,7 +95,8 @@ func TestSystemRemoveFirecrackerCommandPrintsUtilityNote(t *testing.T) {
 	)
 
 	dataDir := t.TempDir()
-	cmd := newSystemCommandWithActions("unused", systemActions{
+	cmd := newSystemCommandWithOptions(systemOptions{
+		dataDir: "unused",
 		newRegistry: func(dataDir string) systemRegistry {
 			removedDataDir = dataDir
 
