@@ -34,6 +34,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.apiURL, "api-url", opts.apiURL, "host API URL")
 	cmd.AddCommand(
 		newStartCommand(),
+		newSystemCommand(),
 		newTemplatesCommand(opts),
 		newEnvironmentCommand(opts),
 		newVersionCommand(),
