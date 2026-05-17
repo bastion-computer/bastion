@@ -40,7 +40,7 @@ func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 	}
 }
 
-func TestSystemAddFirecrackerCommandPassesYesAndDataDir(t *testing.T) {
+func TestSystemAddFirecrackerCommandPassesWithUtilitiesAndDataDir(t *testing.T) {
 	t.Parallel()
 
 	var (
