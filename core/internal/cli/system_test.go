@@ -66,7 +66,7 @@ func TestSystemAddFirecrackerCommandPassesYesAndDataDir(t *testing.T) {
 	})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--data-dir", dataDir, "add", firecrackerDependency, "-y"})
+	cmd.SetArgs([]string{"--data-dir", dataDir, "add", firecrackerDependency, "--with-utilities"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

@@ -100,7 +100,7 @@ func newSystemAddCommand(opts *systemOptions) *cobra.Command {
 }
 
 func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
-	var yes bool
+	var withUtilities bool
 
 	cmd := &cobra.Command{
 		Use:   firecrackerDependency,
@@ -113,7 +113,7 @@ func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
 			}
 
 			result, err := registry.Add(cmd.Context(), firecrackerDependency, system.AddOptions{
-				Yes: yes,
+				Yes: withUtilities,
 				In:  cmd.InOrStdin(),
 				Out: cmd.OutOrStdout(),
 			})
@@ -128,7 +128,7 @@ func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
 			return writeNotes(cmd.OutOrStdout(), result.Notes)
 		},
 	}
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "assume yes for non-interactive setup")
+	cmd.Flags().BoolVar(&withUtilities, "with-utilities", false, "install missing system utilities without prompting")
 
 	return cmd
 }
