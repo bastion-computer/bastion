@@ -51,7 +51,7 @@ func TestDownloadFileShowsProgressBar(t *testing.T) {
 	}
 
 	progress := out.String()
-	for _, want := range []string{"firecracker: asset.bin [", "100%", "2.0 KiB/2.0 KiB"} {
+	for _, want := range []string{"bastion: asset.bin [", "100%", "2.0 KiB/2.0 KiB"} {
 		if !strings.Contains(progress, want) {
 			t.Fatalf("progress output missing %q:\n%s", want, progress)
 		}

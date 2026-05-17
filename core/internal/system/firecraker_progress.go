@@ -14,7 +14,7 @@ func logFirecrackerProgress(w io.Writer, format string, args ...any) error {
 		return nil
 	}
 
-	_, err := fmt.Fprintf(w, "firecracker: "+format+"\n", args...)
+	_, err := fmt.Fprintf(w, "bastion: "+format+"\n", args...)
 
 	return err
 }
@@ -71,7 +71,7 @@ func (p *firecrackerDownloadProgress) render(done bool) error {
 	p.lastRender = time.Now()
 
 	if p.total <= 0 {
-		_, err := fmt.Fprintf(p.out, "\rfirecracker: %s downloaded %s", p.name, formatBytes(p.downloaded))
+		_, err := fmt.Fprintf(p.out, "\rbastion: %s downloaded %s", p.name, formatBytes(p.downloaded))
 
 		return err
 	}
@@ -87,7 +87,7 @@ func (p *firecrackerDownloadProgress) render(done bool) error {
 
 	_, err := fmt.Fprintf(
 		p.out,
-		"\rfirecracker: %s [%s] %3.0f%% %s/%s",
+		"\rbastion: %s [%s] %3.0f%% %s/%s",
 		p.name,
 		downloadBar(percent),
 		percent*100,

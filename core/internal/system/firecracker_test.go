@@ -78,11 +78,11 @@ func TestAddFirecrackerInstallsMissingUtilitiesWithFlag(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"firecracker: checking host requirements",
-		"firecracker: checking required utilities",
-		"firecracker: installing missing utilities: unsquashfs",
-		"firecracker: creating data directory",
-		"firecracker: writing manifest",
+		"bastion: checking host requirements",
+		"bastion: checking required utilities",
+		"bastion: installing missing utilities: unsquashfs",
+		"bastion: creating data directory",
+		"bastion: writing manifest",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("add output missing %q:\n%s", want, out.String())
@@ -192,12 +192,12 @@ func TestFirecrackerExt4BuilderRunsRootfsCommands(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"firecracker: extracting squashfs rootfs",
-		"firecracker: generating SSH key",
-		"firecracker: adding SSH key to rootfs",
-		"firecracker: setting rootfs ownership",
-		"firecracker: creating ext4 rootfs image",
-		"firecracker: validating ext4 rootfs image",
+		"bastion: extracting squashfs rootfs",
+		"bastion: generating SSH key",
+		"bastion: adding SSH key to rootfs",
+		"bastion: setting rootfs ownership",
+		"bastion: creating ext4 rootfs image",
+		"bastion: validating ext4 rootfs image",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("rootfs output missing %q:\n%s", want, out.String())
