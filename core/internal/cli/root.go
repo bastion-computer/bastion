@@ -36,6 +36,7 @@ func NewRootCommand() *cobra.Command {
 		newStartCommand(),
 		newTemplatesCommand(opts),
 		newEnvironmentCommand(opts),
+		newSystemCommand(),
 		newVersionCommand(),
 	)
 
