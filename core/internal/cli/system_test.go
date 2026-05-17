@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/system"
+	"github.com/bastion-computer/bastion/core/internal/system/command"
 )
 
 func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
@@ -18,7 +18,7 @@ func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: t.TempDir(),
-		newRegistryFunc: func(string, io.Writer, io.Writer) systemRegistry {
+		newRegistryFunc: func(string, command.Runner) systemRegistry {
 			return fakeSystemRegistry{
 				resolve: func(context.Context) system.Node {
 					return system.Node{Name: "bastion", Children: []system.Node{{Name: firecrackerDependency, OK: false}}}
@@ -52,7 +52,7 @@ func TestSystemAddFirecrackerCommandPassesYesAndDataDir(t *testing.T) {
 	dataDir := t.TempDir()
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: "unused",
-		newRegistryFunc: func(dataDir string, _, _ io.Writer) systemRegistry {
+		newRegistryFunc: func(dataDir string, _ command.Runner) systemRegistry {
 			gotDataDir = dataDir
 
 			return fakeSystemRegistry{
@@ -98,7 +98,7 @@ func TestSystemRemoveFirecrackerCommandPrintsUtilityNote(t *testing.T) {
 	dataDir := t.TempDir()
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: "unused",
-		newRegistryFunc: func(dataDir string, _, _ io.Writer) systemRegistry {
+		newRegistryFunc: func(dataDir string, _ command.Runner) systemRegistry {
 			removedDataDir = dataDir
 
 			return fakeSystemRegistry{

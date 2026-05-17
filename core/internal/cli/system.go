@@ -9,12 +9,13 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/config"
 	"github.com/bastion-computer/bastion/core/internal/system"
+	"github.com/bastion-computer/bastion/core/internal/system/command"
 )
 
 const firecrackerDependency = "firecracker"
 
-func defaultNewRegistryFunc(dataDir string, out, errOut io.Writer) systemRegistry {
-	return system.NewRegistryWithOutput(dataDir, out, errOut)
+func defaultNewRegistryFunc(dataDir string, runner command.Runner) systemRegistry {
+	return system.NewRegistry(dataDir, runner)
 }
 
 type systemRegistry interface {
@@ -25,7 +26,7 @@ type systemRegistry interface {
 
 type systemOptions struct {
 	dataDir         string
-	newRegistryFunc func(string, io.Writer, io.Writer) systemRegistry
+	newRegistryFunc func(string, command.Runner) systemRegistry
 }
 
 func (o *systemOptions) newRegistry(out, errOut io.Writer) (systemRegistry, error) {
@@ -34,7 +35,9 @@ func (o *systemOptions) newRegistry(out, errOut io.Writer) (systemRegistry, erro
 		return nil, err
 	}
 
-	return o.newRegistryFunc(dataDir, out, errOut), nil
+	runner := command.NewExecRunner(out, errOut)
+
+	return o.newRegistryFunc(dataDir, runner), nil
 }
 
 func newSystemCommand() *cobra.Command {
