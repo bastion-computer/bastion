@@ -4,8 +4,8 @@ package command
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
-	"strings"
 )
 
 // Runner executes host commands needed for system setup.
@@ -16,19 +16,15 @@ type Runner interface {
 // ExecRunner executes host commands through os/exec.
 type ExecRunner struct{}
 
-// Run executes name with args and returns combined output on failure.
+// Run executes name with args and streams command output to stderr.
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // System setup intentionally runs selected host utilities.
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
 
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		return nil
-	}
-
-	details := strings.TrimSpace(string(output))
-	if details == "" {
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s failed: %w", name, err)
 	}
 
-	return fmt.Errorf("%s failed: %w: %s", name, err, details)
+	return nil
 }
