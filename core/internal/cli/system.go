@@ -13,8 +13,8 @@ import (
 
 const firecrackerDependency = "firecracker"
 
-func defaultNewRegistryFunc(dataDir string) systemRegistry {
-	return system.NewRegistry(dataDir)
+func defaultNewRegistryFunc(dataDir string, out, errOut io.Writer) systemRegistry {
+	return system.NewRegistryWithOutput(dataDir, out, errOut)
 }
 
 type systemRegistry interface {
@@ -25,16 +25,16 @@ type systemRegistry interface {
 
 type systemOptions struct {
 	dataDir         string
-	newRegistryFunc func(string) systemRegistry
+	newRegistryFunc func(string, io.Writer, io.Writer) systemRegistry
 }
 
-func (o *systemOptions) newRegistry() (systemRegistry, error) {
+func (o *systemOptions) newRegistry(out, errOut io.Writer) (systemRegistry, error) {
 	dataDir, err := config.ExpandPath(o.dataDir)
 	if err != nil {
 		return nil, err
 	}
 
-	return o.newRegistryFunc(dataDir), nil
+	return o.newRegistryFunc(dataDir, out, errOut), nil
 }
 
 func newSystemCommand() *cobra.Command {
@@ -70,7 +70,7 @@ func newSystemCheckCommand(opts *systemOptions) *cobra.Command {
 		Short: "Check host system dependencies",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			registry, err := opts.newRegistry()
+			registry, err := opts.newRegistry(cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -107,7 +107,7 @@ func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
 		Short: "Install Firecracker system assets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			registry, err := opts.newRegistry()
+			registry, err := opts.newRegistry(cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -149,7 +149,7 @@ func newSystemRemoveFirecrackerCommand(opts *systemOptions) *cobra.Command {
 		Short: "Remove Firecracker system assets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			registry, err := opts.newRegistry()
+			registry, err := opts.newRegistry(cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}

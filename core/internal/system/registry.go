@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/bastion-computer/bastion/core/internal/system/dependencies"
 	"github.com/bastion-computer/bastion/core/internal/system/firecracker"
@@ -18,7 +19,12 @@ type Registry struct {
 
 // NewRegistry returns a system dependency registry rooted in dataDir.
 func NewRegistry(dataDir string) Registry {
-	firecrackerDep := firecracker.NewDependency(dataDir)
+	return NewRegistryWithOutput(dataDir, nil, nil)
+}
+
+// NewRegistryWithOutput returns a registry that streams dependency command output to out and errOut.
+func NewRegistryWithOutput(dataDir string, out, errOut io.Writer) Registry {
+	firecrackerDep := firecracker.NewDependencyWithOutput(dataDir, out, errOut)
 
 	return NewRegistryWithDependencies(firecrackerDep)
 }

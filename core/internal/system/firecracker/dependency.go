@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/bastion-computer/bastion/core/internal/system/command"
@@ -64,8 +65,13 @@ type Dependency struct {
 
 // NewDependency returns a Firecracker system dependency rooted in dataDir.
 func NewDependency(dataDir string) Dependency {
+	return NewDependencyWithOutput(dataDir, nil, nil)
+}
+
+// NewDependencyWithOutput returns a Firecracker system dependency that streams command output to out and errOut.
+func NewDependencyWithOutput(dataDir string, out, errOut io.Writer) Dependency {
 	probe := host.NewProbe(dataDir)
-	runner := command.ExecRunner{}
+	runner := command.ExecRunner{Out: out, Err: errOut}
 
 	return Dependency{
 		Host: probe,

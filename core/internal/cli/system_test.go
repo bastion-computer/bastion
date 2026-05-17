@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -17,7 +18,7 @@ func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: t.TempDir(),
-		newRegistryFunc: func(string) systemRegistry {
+		newRegistryFunc: func(string, io.Writer, io.Writer) systemRegistry {
 			return fakeSystemRegistry{
 				resolve: func(context.Context) system.Node {
 					return system.Node{Name: "bastion", Children: []system.Node{{Name: firecrackerDependency, OK: false}}}
@@ -51,7 +52,7 @@ func TestSystemAddFirecrackerCommandPassesYesAndDataDir(t *testing.T) {
 	dataDir := t.TempDir()
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: "unused",
-		newRegistryFunc: func(dataDir string) systemRegistry {
+		newRegistryFunc: func(dataDir string, _, _ io.Writer) systemRegistry {
 			gotDataDir = dataDir
 
 			return fakeSystemRegistry{
@@ -97,7 +98,7 @@ func TestSystemRemoveFirecrackerCommandPrintsUtilityNote(t *testing.T) {
 	dataDir := t.TempDir()
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: "unused",
-		newRegistryFunc: func(dataDir string) systemRegistry {
+		newRegistryFunc: func(dataDir string, _, _ io.Writer) systemRegistry {
 			removedDataDir = dataDir
 
 			return fakeSystemRegistry{
