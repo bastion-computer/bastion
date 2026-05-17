@@ -113,9 +113,9 @@ func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
 			}
 
 			result, err := registry.Add(cmd.Context(), firecrackerDependency, system.AddOptions{
-				Yes: withUtilities,
-				In:  cmd.InOrStdin(),
-				Out: cmd.OutOrStdout(),
+				WithUtils: withUtilities,
+				In:        cmd.InOrStdin(),
+				Out:       cmd.OutOrStdout(),
 			})
 			if err != nil {
 				return err

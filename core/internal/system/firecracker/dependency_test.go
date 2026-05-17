@@ -117,8 +117,8 @@ func TestDependencyRemoveOnlyRemovesFirecrackerData(t *testing.T) {
 	}
 }
 
-func addOptions(yes bool, out *bytes.Buffer) dependencies.AddOptions {
-	return dependencies.AddOptions{Yes: yes, In: strings.NewReader("n\n"), Out: out}
+func addOptions(withUtils bool, out *bytes.Buffer) dependencies.AddOptions {
+	return dependencies.AddOptions{WithUtils: withUtils, In: strings.NewReader("n\n"), Out: out}
 }
 
 func testDependency(dataDir string, available *utilitySet) Dependency {

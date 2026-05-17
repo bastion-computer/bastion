@@ -196,7 +196,7 @@ func (d Dependency) ensureUtilities(ctx context.Context, opts dependencies.AddOp
 		return nil
 	}
 
-	confirmed, err := (utilities.Prompt{Yes: opts.Yes, In: opts.In, Out: opts.Out}).ConfirmInstall(missing)
+	confirmed, err := (utilities.Prompt{Yes: opts.WithUtils, In: opts.In, Out: opts.Out}).ConfirmInstall(missing)
 	if err != nil {
 		return err
 	}

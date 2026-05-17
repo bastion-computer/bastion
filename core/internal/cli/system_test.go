@@ -43,9 +43,9 @@ func TestSystemAddFirecrackerCommandPassesYesAndDataDir(t *testing.T) {
 	t.Parallel()
 
 	var (
-		gotYes     bool
-		gotDataDir string
-		gotName    string
+		gotWithUtils bool
+		gotDataDir   string
+		gotName      string
 	)
 
 	dataDir := t.TempDir()
@@ -57,7 +57,7 @@ func TestSystemAddFirecrackerCommandPassesYesAndDataDir(t *testing.T) {
 			return fakeSystemRegistry{
 				add: func(_ context.Context, name string, opts system.AddOptions) (system.AddResult, error) {
 					gotName = name
-					gotYes = opts.Yes
+					gotWithUtils = opts.WithUtils
 
 					return system.AddResult{Path: dataDir + "/firecracker"}, nil
 				},
@@ -72,8 +72,8 @@ func TestSystemAddFirecrackerCommandPassesYesAndDataDir(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	if !gotYes {
-		t.Fatal("yes = false, want true")
+	if !gotWithUtils {
+		t.Fatal("with utils = false, want true")
 	}
 
 	if gotDataDir != dataDir {
