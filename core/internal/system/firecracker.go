@@ -74,6 +74,10 @@ func AddFirecracker(ctx context.Context, opts AddFirecrackerOptions) (Result, er
 		return Result{}, errors.New("data dir is required")
 	}
 
+	if err := logFirecrackerProgress(opts.Out, "checking host requirements"); err != nil {
+		return Result{}, err
+	}
+
 	if !firecrackerHostNode(opts.probe).Available() {
 		return Result{}, errors.New("firecracker host requirements are not satisfied")
 	}
@@ -83,6 +87,10 @@ func AddFirecracker(ctx context.Context, opts AddFirecrackerOptions) (Result, er
 	}
 
 	store := newFirecrackerStore(opts.DataDir)
+	if err := logFirecrackerProgress(opts.Out, "creating data directory %s", store.dir); err != nil {
+		return Result{}, err
+	}
+
 	if err := store.ensure(); err != nil {
 		return Result{}, err
 	}
@@ -94,6 +102,10 @@ func AddFirecracker(ctx context.Context, opts AddFirecrackerOptions) (Result, er
 
 	manifest, err = opts.rootFSBuilder.build(ctx, store, manifest)
 	if err != nil {
+		return Result{}, err
+	}
+
+	if err := logFirecrackerProgress(opts.Out, "writing manifest"); err != nil {
 		return Result{}, err
 	}
 
@@ -135,11 +147,11 @@ func (o AddFirecrackerOptions) withDefaults() AddFirecrackerOptions {
 	}
 
 	if o.downloader == nil {
-		o.downloader = firecrackerHTTPDownloader{}
+		o.downloader = firecrackerHTTPDownloader{out: o.Out}
 	}
 
 	if o.rootFSBuilder == nil {
-		o.rootFSBuilder = firecrackerExt4Builder{runner: o.Runner}
+		o.rootFSBuilder = firecrackerExt4Builder{runner: o.Runner, out: o.Out}
 	}
 
 	return o

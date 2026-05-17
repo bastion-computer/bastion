@@ -24,11 +24,12 @@ const (
 	firecrackerReleasesURL = "https://api.github.com/repos/firecracker-microvm/firecracker/releases/latest"
 	firecrackerS3ListURL   = "http://spec.ccfc.min.s3.amazonaws.com/?prefix=firecracker-ci/%s/%s/&list-type=2"
 	firecrackerS3ObjectURL = "https://s3.amazonaws.com/spec.ccfc.min/%s"
-	downloadTimeout        = 30 * time.Second
+	metadataTimeout        = 30 * time.Second
 )
 
 type firecrackerHTTPDownloader struct {
 	client *http.Client
+	out    io.Writer
 }
 
 type githubRelease struct {
@@ -52,6 +53,10 @@ type s3Object struct {
 
 func (d firecrackerHTTPDownloader) download(ctx context.Context, store firecrackerStore, arch string) (firecrackerManifest, error) {
 	d = d.withDefaults()
+
+	if err := logFirecrackerProgress(d.out, "fetching latest release metadata"); err != nil {
+		return firecrackerManifest{}, err
+	}
 
 	release, err := d.latestRelease(ctx)
 	if err != nil {
@@ -77,7 +82,7 @@ func (d firecrackerHTTPDownloader) download(ctx context.Context, store firecrack
 
 func (d firecrackerHTTPDownloader) withDefaults() firecrackerHTTPDownloader {
 	if d.client == nil {
-		d.client = &http.Client{Timeout: downloadTimeout}
+		d.client = http.DefaultClient
 	}
 
 	return d
@@ -111,7 +116,15 @@ func (d firecrackerHTTPDownloader) downloadReleaseAssets(
 	}
 
 	archivePath := filepath.Join(store.dir, archiveName)
+	if err := logFirecrackerProgress(d.out, "downloading release archive %s", archiveName); err != nil {
+		return err
+	}
+
 	if err := d.downloadFile(ctx, archive.BrowserDownloadURL, archivePath); err != nil {
+		return err
+	}
+
+	if err := logFirecrackerProgress(d.out, "verifying release checksum"); err != nil {
 		return err
 	}
 
@@ -124,6 +137,10 @@ func (d firecrackerHTTPDownloader) downloadReleaseAssets(
 		if err := verifySHA256(archivePath, checksum); err != nil {
 			return err
 		}
+	}
+
+	if err := logFirecrackerProgress(d.out, "extracting firecracker and jailer"); err != nil {
+		return err
 	}
 
 	if err := extractFirecrackerArchive(archivePath, store.dir, release.TagName, arch); err != nil {
@@ -147,6 +164,10 @@ func (d firecrackerHTTPDownloader) downloadGuestAssets(
 ) error {
 	version := ciVersion(tag)
 
+	if err := logFirecrackerProgress(d.out, "listing guest assets for %s/%s", version, arch); err != nil {
+		return err
+	}
+
 	keys, err := d.ciKeys(ctx, version, arch)
 	if err != nil {
 		return err
@@ -167,7 +188,15 @@ func (d firecrackerHTTPDownloader) downloadGuestAssets(
 	manifest.KernelSource = kernelKey
 	manifest.RootFSSource = rootfsKey
 
+	if err := logFirecrackerProgress(d.out, "downloading guest kernel %s", manifest.Kernel); err != nil {
+		return err
+	}
+
 	if err := d.downloadFile(ctx, fmt.Sprintf(firecrackerS3ObjectURL, kernelKey), filepath.Join(store.dir, manifest.Kernel)); err != nil {
+		return err
+	}
+
+	if err := logFirecrackerProgress(d.out, "downloading guest rootfs %s", manifest.RootFSSquashfs); err != nil {
 		return err
 	}
 
@@ -225,6 +254,9 @@ func (d firecrackerHTTPDownloader) getJSON(ctx context.Context, target string, o
 }
 
 func (d firecrackerHTTPDownloader) getString(ctx context.Context, target string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, metadataTimeout)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
@@ -273,7 +305,15 @@ func (d firecrackerHTTPDownloader) downloadFile(ctx context.Context, source, des
 	}
 	defer func() { _ = file.Close() }()
 
-	if _, err := io.Copy(file, res.Body); err != nil {
+	progress := newFirecrackerDownloadProgress(d.out, filepath.Base(destination), res.ContentLength)
+	reader := io.TeeReader(res.Body, progress)
+
+	_, err = io.Copy(file, reader)
+	if finishErr := progress.finish(err == nil); finishErr != nil && err == nil {
+		return finishErr
+	}
+
+	if err != nil {
 		return fmt.Errorf("write %s: %w", destination, err)
 	}
 

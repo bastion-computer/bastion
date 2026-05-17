@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,6 +15,7 @@ const defaultRootfsSize int64 = 1 << 30
 
 type firecrackerExt4Builder struct {
 	runner Runner
+	out    io.Writer
 	size   int64
 }
 
@@ -38,7 +40,15 @@ func (b firecrackerExt4Builder) build(
 		return manifest, err
 	}
 
+	if err := logFirecrackerProgress(b.out, "extracting squashfs rootfs"); err != nil {
+		return manifest, err
+	}
+
 	if err := b.runner.Run(ctx, utilityUnsquashfs, "-d", workDir, squashfsPath); err != nil {
+		return manifest, err
+	}
+
+	if err := logFirecrackerProgress(b.out, "generating SSH key"); err != nil {
 		return manifest, err
 	}
 
@@ -46,7 +56,15 @@ func (b firecrackerExt4Builder) build(
 		return manifest, err
 	}
 
+	if err := logFirecrackerProgress(b.out, "adding SSH key to rootfs"); err != nil {
+		return manifest, err
+	}
+
 	if err := authorizeSSHKey(workDir, keyPath+".pub"); err != nil {
+		return manifest, err
+	}
+
+	if err := logFirecrackerProgress(b.out, "setting rootfs ownership"); err != nil {
 		return manifest, err
 	}
 
@@ -128,6 +146,10 @@ func authorizeSSHKey(workDir, publicKeyPath string) error {
 //
 //nolint:gosec // The rootfs path is constrained to the Firecracker data directory.
 func (b firecrackerExt4Builder) createExt4(ctx context.Context, workDir, ext4Path string) error {
+	if err := logFirecrackerProgress(b.out, "creating ext4 rootfs image"); err != nil {
+		return err
+	}
+
 	file, err := os.OpenFile(ext4Path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
 	if err != nil {
 		return fmt.Errorf("create ext4 rootfs: %w", err)
@@ -144,6 +166,10 @@ func (b firecrackerExt4Builder) createExt4(ctx context.Context, workDir, ext4Pat
 	}
 
 	if err := b.runner.Run(ctx, utilitySudo, utilityMkfsExt4, "-d", workDir, "-F", ext4Path); err != nil {
+		return err
+	}
+
+	if err := logFirecrackerProgress(b.out, "validating ext4 rootfs image"); err != nil {
 		return err
 	}
 

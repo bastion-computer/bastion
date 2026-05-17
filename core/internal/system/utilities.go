@@ -85,6 +85,10 @@ func firecrackerUtilitiesNode(lookPath func(string) (string, error)) Node {
 }
 
 func ensureFirecrackerUtilities(ctx context.Context, opts AddFirecrackerOptions) error {
+	if err := logFirecrackerProgress(opts.Out, "checking required utilities"); err != nil {
+		return err
+	}
+
 	missing := missingFirecrackerUtilities(opts.probe.lookPath)
 	if len(missing) == 0 {
 		return nil
@@ -97,6 +101,10 @@ func ensureFirecrackerUtilities(ctx context.Context, opts AddFirecrackerOptions)
 
 	if !confirmed {
 		return fmt.Errorf("missing utilities: %s", strings.Join(missing, ", "))
+	}
+
+	if err := logFirecrackerProgress(opts.Out, "installing missing utilities: %s", strings.Join(missing, ", ")); err != nil {
+		return err
 	}
 
 	if err := installUtilities(ctx, opts.Runner, opts.probe.lookPath, opts.euid, missing); err != nil {
