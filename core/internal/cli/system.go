@@ -24,20 +24,20 @@ type systemRegistry interface {
 }
 
 type systemOptions struct {
-	dataDir     string
-	newRegistry func(string) systemRegistry
+	dataDir         string
+	newRegistryFunc func(string) systemRegistry
 }
 
 func newSystemCommand() *cobra.Command {
 	return newSystemCommandWithOptions(systemOptions{
-		dataDir:     config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
-		newRegistry: defaultNewRegistryFunc,
+		dataDir:         config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
+		newRegistryFunc: defaultNewRegistryFunc,
 	})
 }
 
 func newSystemCommandWithOptions(opts systemOptions) *cobra.Command {
-	if opts.newRegistry == nil {
-		opts.newRegistry = defaultNewRegistryFunc
+	if opts.newRegistryFunc == nil {
+		opts.newRegistryFunc = defaultNewRegistryFunc
 	}
 
 	cmdOpts := &opts
@@ -61,12 +61,10 @@ func newSystemCheckCommand(opts *systemOptions) *cobra.Command {
 		Short: "Check host system dependencies",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dataDir, err := opts.resolvedDataDir()
+			registry, err := opts.newRegistry()
 			if err != nil {
 				return err
 			}
-
-			registry := opts.newRegistry(dataDir)
 
 			tree := registry.ResolveDependencies(cmd.Context())
 			if err := tree.Render(cmd.OutOrStdout()); err != nil {
@@ -100,12 +98,10 @@ func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
 		Short: "Install Firecracker system assets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dataDir, err := opts.resolvedDataDir()
+			registry, err := opts.newRegistry()
 			if err != nil {
 				return err
 			}
-
-			registry := opts.newRegistry(dataDir)
 
 			result, err := registry.Add(cmd.Context(), firecrackerDependency, system.AddOptions{
 				Yes: yes,
@@ -144,12 +140,10 @@ func newSystemRemoveFirecrackerCommand(opts *systemOptions) *cobra.Command {
 		Short: "Remove Firecracker system assets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dataDir, err := opts.resolvedDataDir()
+			registry, err := opts.newRegistry()
 			if err != nil {
 				return err
 			}
-
-			registry := opts.newRegistry(dataDir)
 
 			result, err := registry.Remove(cmd.Context(), firecrackerDependency)
 			if err != nil {
@@ -165,8 +159,13 @@ func newSystemRemoveFirecrackerCommand(opts *systemOptions) *cobra.Command {
 	}
 }
 
-func (o *systemOptions) resolvedDataDir() (string, error) {
-	return config.ExpandPath(o.dataDir)
+func (o *systemOptions) newRegistry() (systemRegistry, error) {
+	dataDir, err := config.ExpandPath(o.dataDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return o.newRegistryFunc(dataDir), nil
 }
 
 func writeNotes(w io.Writer, notes []string) error {
