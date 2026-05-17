@@ -28,6 +28,15 @@ type systemOptions struct {
 	newRegistryFunc func(string) systemRegistry
 }
 
+func (o *systemOptions) newRegistry() (systemRegistry, error) {
+	dataDir, err := config.ExpandPath(o.dataDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return o.newRegistryFunc(dataDir), nil
+}
+
 func newSystemCommand() *cobra.Command {
 	return newSystemCommandWithOptions(systemOptions{
 		dataDir:         config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
@@ -157,15 +166,6 @@ func newSystemRemoveFirecrackerCommand(opts *systemOptions) *cobra.Command {
 			return writeNotes(cmd.OutOrStdout(), result.Notes)
 		},
 	}
-}
-
-func (o *systemOptions) newRegistry() (systemRegistry, error) {
-	dataDir, err := config.ExpandPath(o.dataDir)
-	if err != nil {
-		return nil, err
-	}
-
-	return o.newRegistryFunc(dataDir), nil
 }
 
 func writeNotes(w io.Writer, notes []string) error {
