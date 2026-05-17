@@ -91,7 +91,7 @@ func (i Installer) Install(ctx context.Context, missing []Utility) error {
 
 func (i Installer) withDefaults() Installer {
 	if i.Runner == nil {
-		i.Runner = command.ExecRunner{}
+		i.Runner = command.NewExecRunner(nil, nil)
 	}
 
 	if i.LookPath == nil {

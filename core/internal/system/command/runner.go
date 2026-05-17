@@ -20,10 +20,21 @@ type ExecRunner struct {
 	Err io.Writer
 }
 
+// NewExecRunner returns an ExecRunner with default output writers applied.
+func NewExecRunner(out, errOut io.Writer) ExecRunner {
+	if out == nil {
+		out = os.Stdout
+	}
+
+	if errOut == nil {
+		errOut = os.Stderr
+	}
+
+	return ExecRunner{Out: out, Err: errOut}
+}
+
 // Run executes name with args and streams command output to configured writers.
 func (r ExecRunner) Run(ctx context.Context, name string, args ...string) error {
-	r = r.withDefaults()
-
 	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // System setup intentionally runs selected host utilities.
 	cmd.Stdout = r.Out
 	cmd.Stderr = r.Err
@@ -33,16 +44,4 @@ func (r ExecRunner) Run(ctx context.Context, name string, args ...string) error 
 	}
 
 	return nil
-}
-
-func (r ExecRunner) withDefaults() ExecRunner {
-	if r.Out == nil {
-		r.Out = os.Stdout
-	}
-
-	if r.Err == nil {
-		r.Err = os.Stderr
-	}
-
-	return r
 }

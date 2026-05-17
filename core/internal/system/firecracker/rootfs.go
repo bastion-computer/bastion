@@ -70,7 +70,7 @@ func (b RootFSBuilder) Build(ctx context.Context, store Store, manifest Manifest
 
 func (b RootFSBuilder) withDefaults() RootFSBuilder {
 	if b.Runner == nil {
-		b.Runner = command.ExecRunner{}
+		b.Runner = command.NewExecRunner(nil, nil)
 	}
 
 	if b.Size == 0 {

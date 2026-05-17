@@ -71,7 +71,7 @@ func NewDependency(dataDir string) Dependency {
 // NewDependencyWithOutput returns a Firecracker system dependency that streams command output to out and errOut.
 func NewDependencyWithOutput(dataDir string, out, errOut io.Writer) Dependency {
 	probe := host.NewProbe(dataDir)
-	runner := command.ExecRunner{Out: out, Err: errOut}
+	runner := command.NewExecRunner(out, errOut)
 
 	return Dependency{
 		Host: probe,
@@ -164,7 +164,7 @@ func (d Dependency) withDefaults() Dependency {
 	}
 
 	if d.UtilityInstaller == nil {
-		d.UtilityInstaller = utilities.Installer{Runner: command.ExecRunner{}, LookPath: d.Host.LookPath}
+		d.UtilityInstaller = utilities.Installer{Runner: command.NewExecRunner(nil, nil), LookPath: d.Host.LookPath}
 	}
 
 	if d.Store.Dir == "" {
@@ -178,7 +178,7 @@ func (d Dependency) withDefaults() Dependency {
 	}
 
 	if d.RootFSBuilder == nil {
-		d.RootFSBuilder = RootFSBuilder{Runner: command.ExecRunner{}}
+		d.RootFSBuilder = RootFSBuilder{Runner: command.NewExecRunner(nil, nil)}
 	}
 
 	return d
