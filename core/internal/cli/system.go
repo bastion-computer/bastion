@@ -13,6 +13,10 @@ import (
 
 const firecrackerDependency = "firecracker"
 
+func defaultNewRegistryFunc(dataDir string) systemRegistry {
+	return system.NewRegistry(dataDir)
+}
+
 type systemRegistry interface {
 	ResolveDependencies(context.Context) system.Node
 	Add(context.Context, string, system.AddOptions) (system.AddResult, error)
@@ -26,18 +30,14 @@ type systemOptions struct {
 
 func newSystemCommand() *cobra.Command {
 	return newSystemCommandWithOptions(systemOptions{
-		dataDir: config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
-		newRegistry: func(dataDir string) systemRegistry {
-			return system.NewRegistry(dataDir)
-		},
+		dataDir:     config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
+		newRegistry: defaultNewRegistryFunc,
 	})
 }
 
 func newSystemCommandWithOptions(opts systemOptions) *cobra.Command {
 	if opts.newRegistry == nil {
-		opts.newRegistry = func(dataDir string) systemRegistry {
-			return system.NewRegistry(dataDir)
-		}
+		opts.newRegistry = defaultNewRegistryFunc
 	}
 
 	cmdOpts := &opts
