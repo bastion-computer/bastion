@@ -15,6 +15,9 @@ const DefaultAddr = "localhost:3148"
 // DefaultAPIURL is the local Bastion API endpoint used by the CLI.
 const DefaultAPIURL = "http://" + DefaultAddr
 
+// DefaultBastiondSocket is the Unix socket used by the privileged daemon.
+const DefaultBastiondSocket = "/run/bastion/bastiond.sock"
+
 // Version is the Bastion CLI version.
 var Version = "dev"
 

@@ -103,8 +103,8 @@ func createEnvironment(t *testing.T, handler http.Handler, templateKey string) e
 	var created environment.Environment
 	decode(t, res, &created)
 
-	if created.Status != "pending" {
-		t.Fatalf("created environment status = %q, want pending", created.Status)
+	if created.Status != "running" {
+		t.Fatalf("created environment status = %q, want running", created.Status)
 	}
 
 	return created

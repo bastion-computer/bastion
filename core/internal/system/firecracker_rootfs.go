@@ -64,6 +64,10 @@ func (b firecrackerExt4Builder) build(
 		return manifest, err
 	}
 
+	if err := configureRootfsDNS(workDir); err != nil {
+		return manifest, err
+	}
+
 	if err := logFirecrackerProgress(b.out, "setting rootfs ownership"); err != nil {
 		return manifest, err
 	}
@@ -137,6 +141,26 @@ func authorizeSSHKey(workDir, publicKeyPath string) error {
 	authorizedKeys := filepath.Join(sshDir, "authorized_keys")
 	if err := os.WriteFile(authorizedKeys, publicKey, 0o600); err != nil {
 		return fmt.Errorf("write authorized keys: %w", err)
+	}
+
+	return nil
+}
+
+// configureRootfsDNS points glibc resolver config at the kernel autoconfig nameservers.
+func configureRootfsDNS(workDir string) error {
+	etcDir := filepath.Join(workDir, "etc")
+	//nolint:gosec // /etc inside the guest rootfs must stay world-readable.
+	if err := os.MkdirAll(etcDir, 0o755); err != nil {
+		return fmt.Errorf("create rootfs etc directory: %w", err)
+	}
+
+	resolvConf := filepath.Join(etcDir, "resolv.conf")
+	if err := os.Remove(resolvConf); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove rootfs resolv.conf: %w", err)
+	}
+
+	if err := os.Symlink("/proc/net/pnp", resolvConf); err != nil {
+		return fmt.Errorf("link rootfs resolv.conf: %w", err)
 	}
 
 	return nil

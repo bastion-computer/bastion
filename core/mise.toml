@@ -20,7 +20,7 @@ description = "Format Go files"
 run = "gofmt -w ."
 
 [tasks.build]
-description = "Build the Bastion CLI"
+description = "Build the Bastion CLI and daemon"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
@@ -32,12 +32,17 @@ if [ -n "${BASTION_VERSION:-}" ]; then
 fi
 
 go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
+go build -ldflags "$ldflags" -o ./tmp/bastiond ./cmd/bastiond
 '''
 
 [tasks.test]
 description = "Run Go tests"
 run = "go test ./..."
 
-[tasks.dev]
+[tasks."dev:api"]
 description = "Run the host API with Air live reload"
-run = "air -c .air.toml"
+run = "air -c .air.api.toml"
+
+[tasks."dev:daemon"]
+description = "Run bastiond with Air live reload"
+run = "air -c .air.daemon.toml"

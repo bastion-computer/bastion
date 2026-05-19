@@ -8,12 +8,14 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/api"
 	"github.com/bastion-computer/bastion/core/internal/config"
 	"github.com/bastion-computer/bastion/core/internal/database"
+	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/logging"
 )
 
 func newStartCommand() *cobra.Command {
 	addr := config.EnvDefault("BASTION_ADDR", config.DefaultAddr)
 	dataDir := config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir())
+	bastiondSocket := config.EnvDefault("BASTIOND_SOCKET", config.DefaultBastiondSocket)
 	logFormat := config.EnvDefault("BASTION_LOG_FORMAT", logging.DefaultFormat)
 	logLevel := config.EnvDefault("BASTION_LOG_LEVEL", logging.DefaultLevel)
 
@@ -42,15 +44,17 @@ func newStartCommand() *cobra.Command {
 			logger.InfoContext(cmd.Context(), "host API listening",
 				slog.String("addr", addr),
 				slog.String("data_dir", resolvedDataDir),
+				slog.String("bastiond_socket", bastiondSocket),
 				slog.String("log_format", logFormat),
 				slog.String("log_level", logLevel),
 			)
 
-			return api.Run(cmd.Context(), addr, db, logger)
+			return api.Run(cmd.Context(), addr, db, logger, api.WithEnvironmentOrchestrator(fc.NewClient(bastiondSocket)))
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", addr, "host API listen address")
 	cmd.Flags().StringVar(&dataDir, "data-dir", dataDir, "directory for persistent data")
+	cmd.Flags().StringVar(&bastiondSocket, "bastiond-socket", bastiondSocket, "bastiond Unix socket path")
 	cmd.Flags().StringVar(&logFormat, "log-format", logFormat, "log format: json or text")
 	cmd.Flags().StringVar(&logLevel, "log-level", logLevel, "minimum log level: debug, info, warn, or error")
 
