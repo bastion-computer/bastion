@@ -274,7 +274,7 @@ func (s *Service) reconcile(ctx context.Context, environment Environment) (Envir
 	}
 
 	if vm.State == "" {
-		return environment, nil
+		return Environment{}, fmt.Errorf("reconcile environment vm: empty runtime state for environment %s", environment.ID)
 	}
 
 	if vm.State == fc.StateStopped {

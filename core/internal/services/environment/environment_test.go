@@ -3,6 +3,7 @@ package environment_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
@@ -27,6 +28,24 @@ func TestServiceCreatesListsGetsAndRemovesEnvironment(t *testing.T) {
 
 	if orchestrator.launches != 1 || orchestrator.removes != 1 {
 		t.Fatalf("orchestration launches/removes = %d/%d, want 1/1", orchestrator.launches, orchestrator.removes)
+	}
+}
+
+func TestServiceReconcileRejectsEmptyRuntimeState(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	orchestrator := newFakeOrchestrator()
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	created := createEnvironmentFromTemplate(ctx, t, templates, service)
+	orchestrator.vms[created.ID] = fc.VM{EnvironmentID: created.ID}
+
+	_, err := service.Get(ctx, created.ID)
+	if err == nil || !strings.Contains(err.Error(), "empty runtime state") {
+		t.Fatalf("get environment error = %v, want empty runtime state error", err)
 	}
 }
 
