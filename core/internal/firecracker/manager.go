@@ -19,7 +19,6 @@ import (
 
 	fc "github.com/firecracker-microvm/firecracker-go-sdk"
 	models "github.com/firecracker-microvm/firecracker-go-sdk/client/models"
-	logrus "github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 )
 
@@ -200,7 +199,7 @@ func (m Manager) State(ctx context.Context, environmentID string) (VM, error) {
 		return VM{EnvironmentID: environmentID, State: StateStopped, EnvDir: dir, UpdatedAt: now()}, nil
 	}
 
-	client := fc.NewClient(vm.SocketPath, logrus.NewEntry(logrus.New()), false)
+	client := fc.NewClient(vm.SocketPath, nil, false)
 
 	info, clientErr := client.GetInstanceInfo(ctx)
 	if clientErr == nil {
@@ -334,7 +333,7 @@ func (m Manager) startMachine(
 		_ = os.Setenv(sdkInitTimeoutEnv, sdkInitTimeoutValue)
 	}
 
-	machine, err := fc.NewMachine(context.Background(), cfg, fc.WithLogger(logrus.NewEntry(logrus.New())))
+	machine, err := fc.NewMachine(context.Background(), cfg)
 	if err != nil {
 		_ = os.Remove(runtimeBase)
 
