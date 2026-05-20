@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
@@ -60,6 +61,45 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 
 	if _, err := service.Get(ctx, created.ID, ""); !errors.Is(err, failure.ErrNotFound) {
 		t.Fatalf("get removed template error = %v, want not found", err)
+	}
+}
+
+func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	service := template.NewService(db)
+	ctx := context.Background()
+
+	cases := []struct {
+		name   string
+		config json.RawMessage
+	}{
+		{name: "invalid json", config: json.RawMessage(`{`)},
+		{name: "missing actions", config: json.RawMessage(`{}`)},
+		{name: "removed delegate commands", config: json.RawMessage(`{"actions":{"init":[]},"delegateCommands":{}}`)},
+		{name: "removed network rules", config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`)},
+		{name: "invalid action", config: json.RawMessage(`{"actions":{"init":[{"run":"echo hi","use":"example/action"}]}}`)},
+		{name: "non string env", config: json.RawMessage(`{"actions":{"init":[]},"env":{"PORT":3000}}`)},
+	}
+
+	for i, tc := range cases {
+		_, err := service.Create(ctx, template.CreateRequest{
+			Key:    fmt.Sprintf("dev-env-%d", i),
+			Config: tc.config,
+		})
+		if !errors.Is(err, failure.ErrInvalid) {
+			t.Fatalf("%s: create template error = %v, want invalid", tc.name, err)
+		}
+	}
+
+	page, err := service.List(ctx, 20, "")
+	if err != nil {
+		t.Fatalf("list templates: %v", err)
+	}
+
+	if len(page.Entries) != 0 {
+		t.Fatalf("template count = %d, want 0", len(page.Entries))
 	}
 }
 

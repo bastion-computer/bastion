@@ -11,6 +11,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
+	"github.com/bastion-computer/bastion/core/internal/schema"
 	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
@@ -53,6 +54,10 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 
 	if len(req.Config) == 0 || !json.Valid(req.Config) {
 		return Metadata{}, fmt.Errorf("%w: template config must be valid JSON", failure.ErrInvalid)
+	}
+
+	if err := schema.ValidateTemplateConfig(req.Config); err != nil {
+		return Metadata{}, fmt.Errorf("%w: template config does not match schema: %w", failure.ErrInvalid, err)
 	}
 
 	templateID, err := services.GenerateID("tpl")
