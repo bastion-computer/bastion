@@ -16,18 +16,16 @@ import (
 
 // Environment describes a managed opencode environment.
 type Environment struct {
-	ID           string `json:"id"`
-	Status       string `json:"status"`
-	TemplateID   string `json:"templateId"`
-	CreatedAt    string `json:"createdAt"`
-	UpdatedAt    string `json:"updatedAt"`
-	LastError    string `json:"lastError,omitempty"`
-	VMID         string `json:"vmId,omitempty"`
-	SSHHost      string `json:"sshHost,omitempty"`
-	SSHPort      int    `json:"sshPort,omitempty"`
-	SSHUser      string `json:"sshUser,omitempty"`
-	SSHKeyPath   string `json:"sshKeyPath,omitempty"`
-	RuntimeState string `json:"runtimeState,omitempty"`
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	TemplateID string `json:"templateId"`
+	CreatedAt  string `json:"createdAt"`
+	UpdatedAt  string `json:"updatedAt"`
+	LastError  string `json:"lastError,omitempty"`
+	SSHHost    string `json:"sshHost,omitempty"`
+	SSHPort    int    `json:"sshPort,omitempty"`
+	SSHUser    string `json:"sshUser,omitempty"`
+	SSHKeyPath string `json:"sshKeyPath,omitempty"`
 }
 
 // CreateRequest contains the fields needed to create an environment.
@@ -352,7 +350,7 @@ func environmentSelectQuery() string {
 	return `
 SELECT
   e.id, e.status, e.template_id, e.created_at, e.updated_at, e.last_error,
-  v.vm_id, v.state, v.guest_ip, v.ssh_port, v.ssh_user, v.ssh_key_path, v.last_error
+  v.guest_ip, v.ssh_port, v.ssh_user, v.ssh_key_path, v.last_error
 FROM environments e
 LEFT JOIN environment_vms v ON v.environment_id = e.id`
 }
@@ -363,14 +361,12 @@ type rowScanner interface {
 
 func scanEnvironment(row rowScanner) (Environment, error) {
 	var (
-		environment  Environment
-		vmID         sql.NullString
-		runtimeState sql.NullString
-		sshHost      sql.NullString
-		sshPort      sql.NullInt64
-		sshUser      sql.NullString
-		sshKeyPath   sql.NullString
-		vmLastError  sql.NullString
+		environment Environment
+		sshHost     sql.NullString
+		sshPort     sql.NullInt64
+		sshUser     sql.NullString
+		sshKeyPath  sql.NullString
+		vmLastError sql.NullString
 	)
 
 	if err := row.Scan(
@@ -380,8 +376,6 @@ func scanEnvironment(row rowScanner) (Environment, error) {
 		&environment.CreatedAt,
 		&environment.UpdatedAt,
 		&environment.LastError,
-		&vmID,
-		&runtimeState,
 		&sshHost,
 		&sshPort,
 		&sshUser,
@@ -391,8 +385,6 @@ func scanEnvironment(row rowScanner) (Environment, error) {
 		return Environment{}, err
 	}
 
-	environment.VMID = nullString(vmID)
-	environment.RuntimeState = nullString(runtimeState)
 	environment.SSHHost = nullString(sshHost)
 	environment.SSHPort = int(sshPort.Int64)
 	environment.SSHUser = nullString(sshUser)

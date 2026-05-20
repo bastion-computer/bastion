@@ -69,6 +69,15 @@ func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates 
 		t.Fatalf("unexpected created environment: %#v", created)
 	}
 
+	encoded, err := json.Marshal(created)
+	if err != nil {
+		t.Fatalf("marshal created environment: %v", err)
+	}
+
+	if strings.Contains(string(encoded), "vmId") || strings.Contains(string(encoded), "runtimeState") {
+		t.Fatalf("created environment exposes internal runtime fields: %s", encoded)
+	}
+
 	return created
 }
 
@@ -106,7 +115,7 @@ func assertEnvironmentRemove(ctx context.Context, t *testing.T, service *environ
 		t.Fatalf("remove environment: %v", err)
 	}
 
-	if removed.ID != id || removed.Status != "removed" || removed.RuntimeState != "" || removed.SSHHost != "" || removed.VMID != "" {
+	if removed.ID != id || removed.Status != "removed" || removed.SSHHost != "" {
 		t.Fatalf("unexpected removed environment: %#v", removed)
 	}
 }
