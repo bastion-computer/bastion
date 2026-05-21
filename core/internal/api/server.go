@@ -23,19 +23,38 @@ func init() {
 }
 
 // NewServer returns an HTTP server configured for the Bastion API.
-func NewServer(addr string, db *database.Client, logger *slog.Logger) *http.Server {
+func NewServer(addr string, db *database.Client, logger *slog.Logger, opts ...RouterOption) *http.Server {
 	return &http.Server{
 		Addr:              addr,
-		Handler:           NewRouter(db, logger),
+		Handler:           NewRouter(db, logger, opts...),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		WriteTimeout:      300 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 }
 
+type routerConfig struct {
+	environmentOrchestrator environment.Orchestrator
+}
+
+// RouterOption configures the Bastion API router.
+type RouterOption func(*routerConfig)
+
+// WithEnvironmentOrchestrator configures the VM orchestrator for environment routes.
+func WithEnvironmentOrchestrator(orchestrator environment.Orchestrator) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.environmentOrchestrator = orchestrator
+	}
+}
+
 // NewRouter builds the Bastion API router.
-func NewRouter(db *database.Client, logger *slog.Logger) *gin.Engine {
+func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *gin.Engine {
+	cfg := routerConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	router := gin.New()
 	router.Use(requestIDMiddleware(), slogMiddleware(logger), recoveryMiddleware(logger))
 
@@ -53,7 +72,7 @@ func NewRouter(db *database.Client, logger *slog.Logger) *gin.Engine {
 	templateRoutes.DELETE("/:id", templateHandler.RemoveByID)
 	templateRoutes.DELETE("/by-key/:key", templateHandler.RemoveByKey)
 
-	environmentHandler := environments.NewHandler(environment.NewService(db))
+	environmentHandler := environments.NewHandler(environment.NewService(db, environment.WithOrchestrator(cfg.environmentOrchestrator)))
 	environmentRoutes := v1.Group("/environments")
 	environmentRoutes.POST("", environmentHandler.Create)
 	environmentRoutes.GET("", environmentHandler.List)
@@ -64,8 +83,8 @@ func NewRouter(db *database.Client, logger *slog.Logger) *gin.Engine {
 }
 
 // Run starts the Bastion API server and shuts it down when ctx is cancelled.
-func Run(ctx context.Context, addr string, db *database.Client, logger *slog.Logger) error {
-	server := NewServer(addr, db, logger)
+func Run(ctx context.Context, addr string, db *database.Client, logger *slog.Logger, opts ...RouterOption) error {
+	server := NewServer(addr, db, logger, opts...)
 	errCh := make(chan error, 1)
 
 	go func() {

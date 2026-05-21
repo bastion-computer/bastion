@@ -34,12 +34,14 @@ dev_up() {
     return
   fi
 
-  core_pane="$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n dev -c "$root" 'mise run //core:dev')"
-  drizzle_pane="$(tmux split-window -d -h -P -F '#{pane_id}' -t "$core_pane" -c "$root" 'mise run //.dev/drizzle:dev')"
-  docs_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$core_pane" -c "$root" 'mise run //docs:dev')"
+  api_pane="$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n dev -c "$root" 'mise run //core:dev:api')"
+  bastiond_pane="$(tmux split-window -d -h -P -F '#{pane_id}' -t "$api_pane" -c "$root" 'sudo -E mise run //core:dev:daemon')"
+  drizzle_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$bastiond_pane" -c "$root" 'mise run //.dev/drizzle:dev')"
+  docs_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$api_pane" -c "$root" 'mise run //docs:dev')"
   shell_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$drizzle_pane" -c "$root" 'mise exec -- bash -l')"
 
-  tmux select-pane -t "$core_pane" -T 'core'
+  tmux select-pane -t "$api_pane" -T 'api'
+  tmux select-pane -t "$bastiond_pane" -T 'bastiond'
   tmux select-pane -t "$drizzle_pane" -T 'drizzle'
   tmux select-pane -t "$docs_pane" -T 'docs'
   tmux select-pane -t "$shell_pane" -T 'shell'

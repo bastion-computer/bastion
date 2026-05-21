@@ -205,6 +205,27 @@ func TestFirecrackerExt4BuilderRunsRootfsCommands(t *testing.T) {
 	}
 }
 
+func TestConfigureRootfsDNSLinksResolvConfToKernelAutoconfig(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	resolvConf := filepath.Join(workDir, "etc", "resolv.conf")
+	writeTestFile(t, resolvConf, 0o644)
+
+	if err := configureRootfsDNS(workDir); err != nil {
+		t.Fatalf("configure rootfs DNS: %v", err)
+	}
+
+	target, err := os.Readlink(resolvConf)
+	if err != nil {
+		t.Fatalf("read rootfs resolv.conf link: %v", err)
+	}
+
+	if target != "/proc/net/pnp" {
+		t.Fatalf("rootfs resolv.conf target = %q, want /proc/net/pnp", target)
+	}
+}
+
 func testProbe(dataDir string, available *utilitySet) firecrackerProbe {
 	return firecrackerProbe{
 		dataDir:   dataDir,
