@@ -41,7 +41,6 @@ type Template struct {
 // LaunchRequest asks bastiond to launch a Firecracker VM for an environment.
 type LaunchRequest struct {
 	EnvironmentID string   `json:"environmentId"`
-	NetworkIndex  int      `json:"networkIndex"`
 	Template      Template `json:"template"`
 }
 
@@ -61,6 +60,7 @@ type VM struct {
 	GuestIP       string `json:"guestIp,omitempty"`
 	GuestCIDR     string `json:"guestCidr,omitempty"`
 	GuestMAC      string `json:"guestMac,omitempty"`
+	NetworkIndex  int    `json:"networkIndex"`
 	SSHUser       string `json:"sshUser,omitempty"`
 	SSHPort       int    `json:"sshPort,omitempty"`
 	SSHKeyPath    string `json:"sshKeyPath,omitempty"`

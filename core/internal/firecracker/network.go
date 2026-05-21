@@ -17,14 +17,15 @@ import (
 const bastionGuestCIDR = "10.241.%d.%d/30"
 
 type networkPlan struct {
-	tapName     string
-	hostIP      string
-	hostCIDR    string
-	guestIP     string
-	guestCIDR   string
-	guestMAC    string
-	networkCIDR string
-	hostIface   string
+	tapName      string
+	networkIndex int
+	hostIP       string
+	hostCIDR     string
+	guestIP      string
+	guestCIDR    string
+	guestMAC     string
+	networkCIDR  string
+	hostIface    string
 }
 
 func planNetwork(environmentID string, networkIndex int) (networkPlan, error) {
@@ -45,13 +46,14 @@ func planNetwork(environmentID string, networkIndex int) (networkPlan, error) {
 	guestIP := fmt.Sprintf("10.241.%d.%d", third, base+2)
 
 	return networkPlan{
-		tapName:     tapName,
-		hostIP:      hostIP,
-		hostCIDR:    hostIP + "/30",
-		guestIP:     guestIP,
-		guestCIDR:   guestIP + "/30",
-		guestMAC:    fmt.Sprintf("06:00:0A:F1:%02X:%02X", third, base+2),
-		networkCIDR: fmt.Sprintf(bastionGuestCIDR, third, base),
+		tapName:      tapName,
+		networkIndex: networkIndex,
+		hostIP:       hostIP,
+		hostCIDR:     hostIP + "/30",
+		guestIP:      guestIP,
+		guestCIDR:    guestIP + "/30",
+		guestMAC:     fmt.Sprintf("06:00:0A:F1:%02X:%02X", third, base+2),
+		networkCIDR:  fmt.Sprintf(bastionGuestCIDR, third, base),
 	}, nil
 }
 

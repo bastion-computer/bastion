@@ -66,7 +66,14 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	plan, err := planNetwork(req.EnvironmentID, req.NetworkIndex)
+	reservedVM, err := m.reserveNetwork(req.EnvironmentID, workspace.dir)
+	if err != nil {
+		_ = os.RemoveAll(workspace.dir)
+
+		return VM{}, err
+	}
+
+	plan, err := planNetwork(req.EnvironmentID, reservedVM.NetworkIndex)
 	if err != nil {
 		_ = os.RemoveAll(workspace.dir)
 
@@ -370,6 +377,7 @@ func (m Manager) startMachine(
 		GuestIP:       plan.guestIP,
 		GuestCIDR:     plan.guestCIDR,
 		GuestMAC:      plan.guestMAC,
+		NetworkIndex:  plan.networkIndex,
 		SSHUser:       SSHUser,
 		SSHPort:       SSHPort,
 		SSHKeyPath:    workspace.assets.sshKey,

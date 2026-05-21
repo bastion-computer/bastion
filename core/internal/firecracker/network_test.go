@@ -1,6 +1,9 @@
 package firecracker
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestPlanNetworkUsesAllocatedIndex(t *testing.T) {
 	t.Parallel()
@@ -38,4 +41,59 @@ func TestPlanNetworkRejectsOutOfRangeIndex(t *testing.T) {
 	if _, err := planNetwork("env_overflow", NetworkIndexLimit); err == nil {
 		t.Fatal("plan overflow network index succeeded")
 	}
+}
+
+func TestReserveNetworkAllocatesAndReusesIndices(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	manager := NewManager(dataDir, 0, 0, nil)
+
+	first := reserveNetworkForTest(t, manager, "env_first")
+	if first.NetworkIndex != 0 {
+		t.Fatalf("first network index = %d, want 0", first.NetworkIndex)
+	}
+
+	second := reserveNetworkForTest(t, manager, "env_second")
+	if second.NetworkIndex != 1 {
+		t.Fatalf("second network index = %d, want 1", second.NetworkIndex)
+	}
+
+	if err := os.RemoveAll(first.EnvDir); err != nil {
+		t.Fatalf("remove first env dir: %v", err)
+	}
+
+	third := reserveNetworkForTest(t, manager, "env_third")
+	if third.NetworkIndex != 0 {
+		t.Fatalf("third network index = %d, want reused 0", third.NetworkIndex)
+	}
+}
+
+func TestFirstFreeNetworkIndexReportsExhaustion(t *testing.T) {
+	t.Parallel()
+
+	used := make(map[int]struct{}, NetworkIndexLimit)
+	for networkIndex := range NetworkIndexLimit {
+		used[networkIndex] = struct{}{}
+	}
+
+	if _, ok := firstFreeNetworkIndex(used); ok {
+		t.Fatal("firstFreeNetworkIndex found index in exhausted pool")
+	}
+}
+
+func reserveNetworkForTest(t *testing.T, manager Manager, environmentID string) VM {
+	t.Helper()
+
+	dir := envDir(manager.DataDir, environmentID)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("create env dir: %v", err)
+	}
+
+	vm, err := manager.reserveNetwork(environmentID, dir)
+	if err != nil {
+		t.Fatalf("reserve network: %v", err)
+	}
+
+	return vm
 }

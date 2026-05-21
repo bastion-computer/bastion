@@ -3,7 +3,6 @@ package environment_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -49,57 +48,6 @@ func TestServiceReconcileRejectsEmptyRuntimeState(t *testing.T) {
 	_, err := service.Get(ctx, created.ID)
 	if err == nil || !strings.Contains(err.Error(), "empty runtime state") {
 		t.Fatalf("get environment error = %v, want empty runtime state error", err)
-	}
-}
-
-func TestServiceReusesReleasedNetworkAllocation(t *testing.T) {
-	t.Parallel()
-
-	db := openDB(t)
-	templates := template.NewService(db)
-	orchestrator := newFakeOrchestrator()
-	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
-	ctx := context.Background()
-
-	_, err := templates.Create(ctx, template.CreateRequest{
-		Key:    testTemplateKey,
-		Config: json.RawMessage(`{"actions":{"init":[]}}`),
-	})
-	if err != nil {
-		t.Fatalf("create template: %v", err)
-	}
-
-	first, err := service.Create(ctx, environment.CreateRequest{TemplateKey: testTemplateKey})
-	if err != nil {
-		t.Fatalf("create first environment: %v", err)
-	}
-
-	if _, err := service.Create(ctx, environment.CreateRequest{TemplateKey: testTemplateKey}); err != nil {
-		t.Fatalf("create second environment: %v", err)
-	}
-
-	delete(orchestrator.vms, first.ID)
-
-	stopped, err := service.Get(ctx, first.ID)
-	if err != nil {
-		t.Fatalf("reconcile stopped environment: %v", err)
-	}
-
-	if stopped.Status != fc.StateStopped {
-		t.Fatalf("stopped status = %q, want %q", stopped.Status, fc.StateStopped)
-	}
-
-	third, err := service.Create(ctx, environment.CreateRequest{TemplateKey: testTemplateKey})
-	if err != nil {
-		t.Fatalf("create third environment: %v", err)
-	}
-
-	if third.SSHHost != "10.241.0.2" {
-		t.Fatalf("third SSH host = %q, want reused first network", third.SSHHost)
-	}
-
-	if len(orchestrator.networkIndices) != 3 || orchestrator.networkIndices[0] != 0 || orchestrator.networkIndices[1] != 1 || orchestrator.networkIndices[2] != 0 {
-		t.Fatalf("network indices = %v, want [0 1 0]", orchestrator.networkIndices)
 	}
 }
 
@@ -188,10 +136,9 @@ func openDB(t *testing.T) *database.Client {
 }
 
 type fakeOrchestrator struct {
-	launches       int
-	removes        int
-	networkIndices []int
-	vms            map[string]fc.VM
+	launches int
+	removes  int
+	vms      map[string]fc.VM
 }
 
 func newFakeOrchestrator() *fakeOrchestrator {
@@ -200,12 +147,11 @@ func newFakeOrchestrator() *fakeOrchestrator {
 
 func (o *fakeOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
 	o.launches++
-	o.networkIndices = append(o.networkIndices, req.NetworkIndex)
 	vm := fc.VM{
 		EnvironmentID: req.EnvironmentID,
 		VMID:          "vm-" + req.EnvironmentID,
 		State:         fc.StateRunning,
-		GuestIP:       guestIP(req.NetworkIndex),
+		GuestIP:       "10.241.0.2",
 		SSHUser:       fc.SSHUser,
 		SSHPort:       fc.SSHPort,
 		SSHKeyPath:    "/tmp/test.id_rsa",
@@ -215,10 +161,6 @@ func (o *fakeOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.V
 	o.vms[req.EnvironmentID] = vm
 
 	return vm, nil
-}
-
-func guestIP(networkIndex int) string {
-	return fmt.Sprintf("10.241.%d.%d", networkIndex/64, (networkIndex%64)*4+2)
 }
 
 func (o *fakeOrchestrator) State(_ context.Context, environmentID string) (fc.VM, error) {
