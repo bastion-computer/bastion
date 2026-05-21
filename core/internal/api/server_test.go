@@ -31,6 +31,25 @@ func TestListRoutes(t *testing.T) {
 	assertList[environment.Environment](t, router, "/v1/environments", 2)
 }
 
+func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
+
+	res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{
+		Key:    "invalid-template",
+		Config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`),
+	})
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("create invalid template status = %d, want %d", res.Code, http.StatusBadRequest)
+	}
+
+	res = request(t, router, http.MethodGet, "/v1/templates/by-key/invalid-template", nil)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("get invalid template status = %d, want %d", res.Code, http.StatusNotFound)
+	}
+}
+
 func TestGetRoutes(t *testing.T) {
 	t.Parallel()
 

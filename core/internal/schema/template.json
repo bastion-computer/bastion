@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bastion.computer/schemas/template.json",
+  "$defs": {
+    "externalAction": {
+      "type": "object",
+      "properties": {
+        "use": {
+          "type": "string"
+        },
+        "with": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": ["string", "number", "boolean"]
+          }
+        }
+      },
+      "required": ["use"],
+      "additionalProperties": false
+    },
+    "runAction": {
+      "type": "object",
+      "properties": {
+        "run": {
+          "type": "string"
+        }
+      },
+      "required": ["run"],
+      "additionalProperties": false
+    },
+    "action": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/externalAction"
+        },
+        {
+          "$ref": "#/$defs/runAction"
+        }
+      ]
+    },
+    "actionList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    }
+  },
+  "type": "object",
+  "properties": {
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vcpu": {
+          "type": "number",
+          "minimum": 1
+        },
+        "memory": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "volume": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "actions": {
+      "type": "object",
+      "properties": {
+        "init": {
+          "$ref": "#/$defs/actionList"
+        },
+        "start": {
+          "$ref": "#/$defs/actionList"
+        }
+      },
+      "required": ["init"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["actions"],
+  "additionalProperties": false
+}
