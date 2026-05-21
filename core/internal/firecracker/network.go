@@ -27,18 +27,20 @@ type networkPlan struct {
 	hostIface   string
 }
 
-func planNetwork(environmentID string) (networkPlan, error) {
+func planNetwork(environmentID string, networkIndex int) (networkPlan, error) {
+	if networkIndex < 0 || networkIndex >= NetworkIndexLimit {
+		return networkPlan{}, fmt.Errorf("network index %d out of range", networkIndex)
+	}
+
 	hash := fnv.New32a()
 	_, _ = hash.Write([]byte(environmentID))
-	sum := hash.Sum32()
 
 	encoded := make([]byte, 4)
-	binary.BigEndian.PutUint32(encoded, sum)
+	binary.BigEndian.PutUint32(encoded, hash.Sum32())
 	tapName := "bt" + hex.EncodeToString(encoded)
 
-	index := int(sum % 16000)
-	third := index / 64
-	base := (index % 64) * 4
+	third := networkIndex / 64
+	base := (networkIndex % 64) * 4
 	hostIP := fmt.Sprintf("10.241.%d.%d", third, base+1)
 	guestIP := fmt.Sprintf("10.241.%d.%d", third, base+2)
 

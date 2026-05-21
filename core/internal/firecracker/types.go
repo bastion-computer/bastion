@@ -15,6 +15,8 @@ const (
 
 	// SSHPort is the default SSH port exposed by the guest.
 	SSHPort = 22
+	// NetworkIndexLimit is the number of /30 VM networks available in 10.241.0.0/16.
+	NetworkIndexLimit = 16000
 
 	// StateCreating means a VM is being launched.
 	StateCreating = "creating"
@@ -39,6 +41,7 @@ type Template struct {
 // LaunchRequest asks bastiond to launch a Firecracker VM for an environment.
 type LaunchRequest struct {
 	EnvironmentID string   `json:"environmentId"`
+	NetworkIndex  int      `json:"networkIndex"`
 	Template      Template `json:"template"`
 }
 

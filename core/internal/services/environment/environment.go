@@ -90,17 +90,14 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	now := services.Now()
 	environment := Environment{ID: environmentID, Status: fc.StateCreating, TemplateID: template.ID, CreatedAt: now, UpdatedAt: now}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO environments (id, status, template_id, created_at, updated_at, last_error) VALUES (?, ?, ?, ?, ?, ?)`, environment.ID, environment.Status, environment.TemplateID, environment.CreatedAt, environment.UpdatedAt, "")
+	networkIndex, err := s.createEnvironmentRecord(ctx, environment)
 	if err != nil {
-		if database.IsConstraint(err) {
-			return Environment{}, fmt.Errorf("%w: environment already exists", failure.ErrConflict)
-		}
-
-		return Environment{}, fmt.Errorf("create environment: %w", err)
+		return Environment{}, err
 	}
 
 	vm, err := s.orchestrator.Launch(ctx, fc.LaunchRequest{
 		EnvironmentID: environment.ID,
+		NetworkIndex:  networkIndex,
 		Template: fc.Template{
 			ID:     template.ID,
 			Key:    template.Key,
@@ -109,6 +106,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	})
 	if err != nil {
 		_ = s.updateStatus(ctx, environment.ID, fc.StateError, err.Error())
+		_ = s.releaseNetworkAllocation(context.Background(), environment.ID)
 
 		return Environment{}, fmt.Errorf("launch environment vm: %w", err)
 	}
@@ -116,12 +114,14 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	if err := s.saveVM(ctx, vm); err != nil {
 		_, _ = s.orchestrator.Remove(context.Background(), environment.ID)
 		_ = s.updateStatus(ctx, environment.ID, fc.StateError, err.Error())
+		_ = s.releaseNetworkAllocation(context.Background(), environment.ID)
 
 		return Environment{}, err
 	}
 
 	if err := s.updateStatus(ctx, environment.ID, statusFromVM(vm), vm.LastError); err != nil {
 		_, _ = s.orchestrator.Remove(context.Background(), environment.ID)
+		_ = s.releaseNetworkAllocation(context.Background(), environment.ID)
 
 		return Environment{}, err
 	}
@@ -255,6 +255,67 @@ func (s *Service) resolveTemplate(ctx context.Context, templateID, templateKey s
 	return template, nil
 }
 
+func (s *Service) createEnvironmentRecord(ctx context.Context, environment Environment) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin create environment: %w", err)
+	}
+
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO environments (id, status, template_id, created_at, updated_at, last_error) VALUES (?, ?, ?, ?, ?, ?)`, environment.ID, environment.Status, environment.TemplateID, environment.CreatedAt, environment.UpdatedAt, "")
+	if err != nil {
+		if database.IsConstraint(err) {
+			return 0, fmt.Errorf("%w: environment already exists", failure.ErrConflict)
+		}
+
+		return 0, fmt.Errorf("create environment: %w", err)
+	}
+
+	networkIndex, err := allocateNetworkIndex(ctx, tx, environment.ID, environment.CreatedAt)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit create environment: %w", err)
+	}
+
+	return networkIndex, nil
+}
+
+func allocateNetworkIndex(ctx context.Context, tx *sql.Tx, environmentID, createdAt string) (int, error) {
+	_, err := tx.ExecContext(ctx, `
+WITH RECURSIVE network_indices(network_index) AS (
+  SELECT 0
+  UNION ALL
+  SELECT network_index + 1 FROM network_indices WHERE network_index < ? - 1
+)
+INSERT INTO environment_network_allocations (environment_id, network_index, created_at)
+SELECT ?, network_index, ?
+FROM network_indices
+WHERE NOT EXISTS (
+  SELECT 1 FROM environment_network_allocations existing
+  WHERE existing.network_index = network_indices.network_index
+)
+ORDER BY network_index
+LIMIT 1`, fc.NetworkIndexLimit, environmentID, createdAt)
+	if err != nil {
+		return 0, fmt.Errorf("allocate environment network: %w", err)
+	}
+
+	var networkIndex int
+	if err := tx.QueryRowContext(ctx, `SELECT network_index FROM environment_network_allocations WHERE environment_id = ?`, environmentID).Scan(&networkIndex); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, errors.New("allocate environment network: no available network indices")
+		}
+
+		return 0, fmt.Errorf("read environment network allocation: %w", err)
+	}
+
+	return networkIndex, nil
+}
+
 func (s *Service) get(ctx context.Context, environmentID string) (Environment, error) {
 	row := s.db.QueryRowContext(ctx, environmentSelectQuery()+` WHERE e.id = ?`, environmentID)
 
@@ -279,7 +340,19 @@ func (s *Service) reconcile(ctx context.Context, environment Environment) (Envir
 		if err := s.deleteVM(ctx, environment.ID); err != nil {
 			return Environment{}, err
 		}
-	} else if err := s.saveVM(ctx, vm); err != nil {
+
+		if err := s.updateStatus(ctx, environment.ID, statusFromVM(vm), vm.LastError); err != nil {
+			return Environment{}, err
+		}
+
+		if err := s.releaseNetworkAllocation(ctx, environment.ID); err != nil {
+			return Environment{}, err
+		}
+
+		return s.get(ctx, environment.ID)
+	}
+
+	if err := s.saveVM(ctx, vm); err != nil {
 		return Environment{}, err
 	}
 
@@ -332,6 +405,15 @@ func (s *Service) deleteVM(ctx context.Context, environmentID string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM environment_vms WHERE environment_id = ?`, environmentID)
 	if err != nil {
 		return fmt.Errorf("delete environment vm: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) releaseNetworkAllocation(ctx context.Context, environmentID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM environment_network_allocations WHERE environment_id = ?`, environmentID)
+	if err != nil {
+		return fmt.Errorf("release environment network: %w", err)
 	}
 
 	return nil

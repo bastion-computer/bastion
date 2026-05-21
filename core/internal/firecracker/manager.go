@@ -66,7 +66,7 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	plan, err := planNetwork(req.EnvironmentID)
+	plan, err := planNetwork(req.EnvironmentID, req.NetworkIndex)
 	if err != nil {
 		_ = os.RemoveAll(workspace.dir)
 
