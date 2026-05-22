@@ -238,6 +238,10 @@ run_failure_case() {
     fail "environment $CREATED_ENV_ID unexpectedly succeeded for failing template"
   fi
 
+  if [[ "$output" != *"424 Failed Dependency"* ]]; then
+    fail "failed init action returned unexpected create error: $output"
+  fi
+
   failed_env_id="$(run_cli env list --limit 5000 | jq -r --arg template_id "$template_id" 'first(.entries[] | select(.templateId == $template_id and .status == "error") | .id) // ""')"
   if [ -z "$failed_env_id" ]; then
     fail "failed environment for template $template_id was not registered as error"
@@ -247,6 +251,10 @@ run_failure_case() {
   last_error="$(run_cli env get "$failed_env_id" | json_get '.lastError // ""')"
   if [[ "$last_error" != *"init action 2 failed"* ]] || [[ "$last_error" != *"intentional e2e failure"* ]]; then
     fail "failed environment lastError was unexpected: $last_error"
+  fi
+
+  if [[ "$last_error" == *"ssh -i"* ]] || [[ "$last_error" == *"root@"* ]]; then
+    fail "failed environment lastError leaked ssh wrapper details: $last_error"
   fi
 
   log "failure case passed for $failed_env_id"

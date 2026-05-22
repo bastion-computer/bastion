@@ -60,8 +60,35 @@ func TestRunInitActionsReportsFailingActionIndex(t *testing.T) {
 		t.Fatalf("run init actions error = %v, want action 2 failure", err)
 	}
 
+	if !errors.Is(err, ErrVMInitFailed) {
+		t.Fatalf("run init actions error = %v, want vm init failure", err)
+	}
+
 	if calls != 2 {
 		t.Fatalf("calls = %d, want 2", calls)
+	}
+}
+
+func TestRunInitActionsSanitizesSSHWrapperFailure(t *testing.T) {
+	t.Parallel()
+
+	manager := Manager{
+		run: func(_ context.Context, _ string, _ ...string) error {
+			return errors.New("ssh -i /secret/key -p 22 root@10.241.0.2 sh -c 'false' failed: exit status 1: intentional failure")
+		},
+	}
+
+	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"false"}]}}`))
+	if err == nil {
+		t.Fatal("run init actions error = nil, want failure")
+	}
+
+	if strings.Contains(err.Error(), "ssh -i") || strings.Contains(err.Error(), "/secret/key") {
+		t.Fatalf("run init actions error leaks ssh wrapper: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "init action 1 failed") || !strings.Contains(err.Error(), "exit status 1: intentional failure") {
+		t.Fatalf("run init actions error = %v, want sanitized failure detail", err)
 	}
 }
 

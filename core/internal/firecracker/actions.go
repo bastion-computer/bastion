@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// ErrVMInitFailed marks valid VM launches that failed during guest initialization.
+var ErrVMInitFailed = errors.New("vm init failed")
+
 type templateConfig struct {
 	Actions templateActions `json:"actions"`
 }
@@ -31,7 +34,7 @@ func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessa
 
 	for index, action := range actions {
 		if err := m.runGuestCommand(ctx, vm, action.Run); err != nil {
-			return fmt.Errorf("init action %d failed: %w", index+1, err)
+			return initActionError{index: index + 1, err: err}
 		}
 	}
 
@@ -57,7 +60,11 @@ func (m Manager) runGuestCommand(ctx context.Context, vm VM, command string) err
 		return err
 	}
 
-	return m.run(ctx, "ssh", args...)
+	if err := m.run(ctx, "ssh", args...); err != nil {
+		return sanitizeGuestCommandError(err)
+	}
+
+	return nil
 }
 
 func guestCommandArgs(vm VM, command string) ([]string, error) {
@@ -97,4 +104,48 @@ func shellQuote(value string) string {
 	}
 
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+type initActionError struct {
+	index int
+	err   error
+}
+
+func (e initActionError) Error() string {
+	return fmt.Sprintf("init action %d failed: %v", e.index, e.err)
+}
+
+func (e initActionError) Unwrap() error {
+	return e.err
+}
+
+func (e initActionError) Is(target error) bool {
+	return target == ErrVMInitFailed
+}
+
+type guestCommandError struct {
+	message string
+	err     error
+}
+
+func (e guestCommandError) Error() string {
+	return "guest command failed: " + e.message
+}
+
+func (e guestCommandError) Unwrap() error {
+	return e.err
+}
+
+func sanitizeGuestCommandError(err error) error {
+	message := err.Error()
+	if _, detail, ok := strings.Cut(message, " failed: "); ok {
+		message = detail
+	}
+
+	message = strings.TrimSpace(message)
+	if message == "" {
+		message = "unknown error"
+	}
+
+	return guestCommandError{message: message, err: err}
 }
