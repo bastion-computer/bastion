@@ -69,11 +69,7 @@ func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (template.T
 }
 
 // CreateEnvironment creates an environment from a template.
-func (c *Client) CreateEnvironment(ctx context.Context, req environment.CreateRequest) (environment.Environment, error) {
-	return c.createEnvironment(ctx, req)
-}
-
-func (c *Client) createEnvironment(ctx context.Context, createReq environment.CreateRequest) (environment.Environment, error) {
+func (c *Client) CreateEnvironment(ctx context.Context, createReq environment.CreateRequest) (environment.Environment, error) {
 	var out environment.Environment
 
 	contents, err := json.Marshal(createReq)

@@ -41,11 +41,7 @@ func NewClient(socketPath string) *Client {
 }
 
 // Launch asks bastiond to launch a VM.
-func (c *Client) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
-	return c.launch(ctx, req)
-}
-
-func (c *Client) launch(ctx context.Context, launchReq LaunchRequest) (VM, error) {
+func (c *Client) Launch(ctx context.Context, launchReq LaunchRequest) (VM, error) {
 	var vm VM
 
 	contents, err := json.Marshal(launchReq)
