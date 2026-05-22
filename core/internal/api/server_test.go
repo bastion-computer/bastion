@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/api"
 	"github.com/bastion-computer/bastion/core/internal/database"
+	"github.com/bastion-computer/bastion/core/internal/failure"
+	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
@@ -50,6 +53,18 @@ func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
+func TestCreateEnvironmentForwardsFailedDependency(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(failedDependencyOrchestrator{}))
+	template := createTemplate(t, router, "failed-dependency-template")
+
+	res := request(t, router, http.MethodPost, "/v1/environments", environment.CreateRequest{TemplateKey: template.Key})
+	if res.Code != http.StatusFailedDependency {
+		t.Fatalf("create environment status = %d, want %d", res.Code, http.StatusFailedDependency)
+	}
+}
+
 func TestGetRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -81,7 +96,7 @@ func TestDeleteRoutes(t *testing.T) {
 	assertDelete(t, router, "/v1/environments/"+env.ID)
 }
 
-func newTestRouter(t *testing.T, logger *slog.Logger) http.Handler {
+func newTestRouter(t *testing.T, logger *slog.Logger, opts ...api.RouterOption) http.Handler {
 	t.Helper()
 
 	db, err := database.Open(":memory:")
@@ -91,7 +106,7 @@ func newTestRouter(t *testing.T, logger *slog.Logger) http.Handler {
 
 	t.Cleanup(func() { _ = db.Close() })
 
-	return api.NewRouter(db, logger)
+	return api.NewRouter(db, logger, opts...)
 }
 
 func createTemplate(t *testing.T, handler http.Handler, key string) template.Metadata {
@@ -204,6 +219,25 @@ func decode(t *testing.T, res *httptest.ResponseRecorder, value any) {
 	if err := json.NewDecoder(res.Body).Decode(value); err != nil {
 		t.Fatalf("decode response %q: %v", res.Body.String(), err)
 	}
+}
+
+type failedDependencyOrchestrator struct{}
+
+func (failedDependencyOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
+	return fc.VM{
+		EnvironmentID: req.EnvironmentID,
+		VMID:          "vm-" + req.EnvironmentID,
+		State:         fc.StateError,
+		LastError:     "init action 2 failed",
+	}, fmt.Errorf("%w: bastiond returned 424 Failed Dependency: init action 2 failed", failure.ErrFailedDependency)
+}
+
+func (failedDependencyOrchestrator) State(_ context.Context, environmentID string) (fc.VM, error) {
+	return fc.VM{EnvironmentID: environmentID, State: fc.StateError, LastError: "init action 2 failed"}, nil
+}
+
+func (failedDependencyOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
+	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
 }
 
 func TestHealthRoute(t *testing.T) {

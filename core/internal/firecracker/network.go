@@ -65,6 +65,10 @@ func (m Manager) setupTap(ctx context.Context, plan networkPlan) (networkPlan, e
 
 	plan.hostIface = hostIface
 
+	if err := m.cleanupStaleTapCIDR(ctx, plan); err != nil {
+		return plan, err
+	}
+
 	_ = m.run(ctx, "ip", "link", "del", plan.tapName)
 	if err := m.run(ctx, "ip", "tuntap", "add", "dev", plan.tapName, "mode", "tap", "user", strconv.Itoa(m.UID), "group", strconv.Itoa(m.GID)); err != nil {
 		return plan, err
@@ -120,6 +124,47 @@ func (m Manager) ensureIPTables(ctx context.Context, plan networkPlan) error {
 	}
 
 	return m.ensureIPTableRule(ctx, "nat", "POSTROUTING", "-s", plan.networkCIDR, "-o", plan.hostIface, "-j", "MASQUERADE")
+}
+
+func (m Manager) cleanupStaleTapCIDR(ctx context.Context, plan networkPlan) error {
+	interfaces, err := m.tapInterfacesForCIDR(ctx, plan.hostCIDR)
+	if err != nil {
+		return err
+	}
+
+	for _, iface := range interfaces {
+		if iface == plan.tapName {
+			continue
+		}
+
+		m.removeIPTables(ctx, networkPlan{tapName: iface, networkCIDR: plan.networkCIDR, hostIface: plan.hostIface})
+		_ = m.run(ctx, "ip", "link", "del", iface)
+	}
+
+	return nil
+}
+
+func (m Manager) tapInterfacesForCIDR(ctx context.Context, cidr string) ([]string, error) {
+	output, err := m.output(ctx, "ip", "-o", "-4", "addr", "show")
+	if err != nil {
+		return nil, err
+	}
+
+	var interfaces []string
+
+	for line := range strings.SplitSeq(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[2] != "inet" || fields[3] != cidr {
+			continue
+		}
+
+		iface := strings.Split(fields[1], "@")[0]
+		if strings.HasPrefix(iface, "bt") {
+			interfaces = append(interfaces, iface)
+		}
+	}
+
+	return interfaces, nil
 }
 
 func (m Manager) removeIPTables(ctx context.Context, plan networkPlan) {

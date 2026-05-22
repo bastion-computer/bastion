@@ -58,6 +58,8 @@ func respondError(c *gin.Context, err error) {
 		status = http.StatusNotFound
 	case errors.Is(err, failure.ErrConflict):
 		status = http.StatusConflict
+	case errors.Is(err, failure.ErrFailedDependency):
+		status = http.StatusFailedDependency
 	}
 
 	c.JSON(status, gin.H{"error": err.Error()})

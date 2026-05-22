@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/bastion-computer/bastion/core/internal/failure"
 )
 
 // Client calls the privileged bastiond Firecracker runtime API over a Unix socket.
@@ -90,10 +92,10 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 			Error string `json:"error"`
 		}
 		if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil || strings.TrimSpace(apiErr.Error) == "" {
-			return fmt.Errorf("bastiond returned %s", res.Status)
+			return daemonStatusError(res.StatusCode, "bastiond returned %s", res.Status)
 		}
 
-		return fmt.Errorf("bastiond returned %s: %s", res.Status, apiErr.Error)
+		return daemonStatusError(res.StatusCode, "bastiond returned %s: %s", res.Status, apiErr.Error)
 	}
 
 	if out == nil {
@@ -105,4 +107,13 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	}
 
 	return nil
+}
+
+func daemonStatusError(statusCode int, format string, args ...any) error {
+	err := fmt.Errorf(format, args...)
+	if statusCode == http.StatusFailedDependency {
+		return fmt.Errorf("%w: %w", failure.ErrFailedDependency, err)
+	}
+
+	return err
 }

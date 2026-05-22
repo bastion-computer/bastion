@@ -108,7 +108,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 		},
 	})
 	if err != nil {
-		_ = s.updateStatus(ctx, environment.ID, fc.StateError, err.Error())
+		if recordErr := s.recordLaunchFailure(ctx, environment.ID, vm, err); recordErr != nil {
+			err = errors.Join(err, recordErr)
+		}
 
 		return Environment{}, fmt.Errorf("launch environment vm: %w", err)
 	}
@@ -334,6 +336,25 @@ ON CONFLICT(environment_id) DO UPDATE SET
 	}
 
 	return nil
+}
+
+func (s *Service) recordLaunchFailure(ctx context.Context, environmentID string, vm fc.VM, launchErr error) error {
+	if vm.EnvironmentID == "" {
+		return s.updateStatus(ctx, environmentID, fc.StateError, launchErr.Error())
+	}
+
+	if vm.State == "" {
+		vm.State = fc.StateError
+	}
+
+	if vm.LastError == "" {
+		vm.LastError = launchErr.Error()
+	}
+
+	return errors.Join(
+		s.saveVM(ctx, vm),
+		s.updateStatus(ctx, environmentID, statusFromVM(vm), vm.LastError),
+	)
 }
 
 func (s *Service) deleteVM(ctx context.Context, environmentID string) error {

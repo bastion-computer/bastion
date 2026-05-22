@@ -64,6 +64,29 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 	}
 }
 
+func TestServiceAcceptsRunActionTemplateConfig(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	service := template.NewService(db)
+	ctx := context.Background()
+	config := json.RawMessage(`{"actions":{"init":[{"run":"echo node setup"},{"run":"echo docker setup"}]}}`)
+
+	created, err := service.Create(ctx, template.CreateRequest{Key: "run-actions", Config: config})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	got, err := service.Get(ctx, created.ID, "")
+	if err != nil {
+		t.Fatalf("get template: %v", err)
+	}
+
+	if string(got.Config) != string(config) {
+		t.Fatalf("config = %s, want %s", got.Config, config)
+	}
+}
+
 func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 	t.Parallel()
 
@@ -79,6 +102,8 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 		{name: "missing actions", config: json.RawMessage(`{}`)},
 		{name: "removed delegate commands", config: json.RawMessage(`{"actions":{"init":[]},"delegateCommands":{}}`)},
 		{name: "removed network rules", config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`)},
+		{name: "removed external action", config: json.RawMessage(`{"actions":{"init":[{"use":"example/action"}]}}`)},
+		{name: "removed start action", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo hi"}]}}`)},
 		{name: "invalid action", config: json.RawMessage(`{"actions":{"init":[{"run":"echo hi","use":"example/action"}]}}`)},
 		{name: "non string env", config: json.RawMessage(`{"actions":{"init":[]},"env":{"PORT":3000}}`)},
 	}

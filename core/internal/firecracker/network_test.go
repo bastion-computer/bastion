@@ -1,7 +1,9 @@
 package firecracker
 
 import (
+	"context"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -79,6 +81,45 @@ func TestFirstFreeNetworkIndexReportsExhaustion(t *testing.T) {
 
 	if _, ok := firstFreeNetworkIndex(used); ok {
 		t.Fatal("firstFreeNetworkIndex found index in exhausted pool")
+	}
+}
+
+func TestCleanupStaleTapCIDRRemovesOnlyStaleBastionTaps(t *testing.T) {
+	t.Parallel()
+
+	var commands []string
+
+	manager := Manager{
+		run: func(_ context.Context, name string, args ...string) error {
+			commands = append(commands, commandString(name, args))
+
+			return nil
+		},
+		output: func(_ context.Context, name string, args ...string) (string, error) {
+			if got := commandString(name, args); got != "ip -o -4 addr show" {
+				t.Fatalf("output command = %q, want ip -o -4 addr show", got)
+			}
+
+			return "1: lo    inet 127.0.0.1/8 scope host lo\n" +
+				"60: btstale    inet 10.241.0.1/30 scope global btstale\n" +
+				"61: eth0    inet 10.241.0.1/30 scope global eth0\n" +
+				"62: btother    inet 10.241.0.5/30 scope global btother\n", nil
+		},
+	}
+
+	plan := networkPlan{tapName: "btnew", hostCIDR: "10.241.0.1/30", networkCIDR: "10.241.0.0/30", hostIface: "eth0"}
+	if err := manager.cleanupStaleTapCIDR(context.Background(), plan); err != nil {
+		t.Fatalf("cleanup stale tap cidr: %v", err)
+	}
+
+	want := []string{
+		"iptables -D FORWARD -i btstale -j ACCEPT",
+		"iptables -D FORWARD -o btstale -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+		"iptables -t nat -D POSTROUTING -s 10.241.0.0/30 -o eth0 -j MASQUERADE",
+		"ip link del btstale",
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
 	}
 }
 

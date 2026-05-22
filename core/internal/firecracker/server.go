@@ -178,7 +178,13 @@ func NewRouter(manager Manager, logger *slog.Logger) *gin.Engine {
 func respondDaemon(c *gin.Context, value any, err error) {
 	if err != nil {
 		_ = c.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrVMInitFailed) {
+			status = http.StatusFailedDependency
+		}
+
+		c.JSON(status, gin.H{"error": err.Error()})
 
 		return
 	}

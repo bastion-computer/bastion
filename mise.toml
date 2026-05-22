@@ -71,6 +71,24 @@ run = "bash ./dev.sh up"
 description = "Stop active development services"
 run = "bash ./dev.sh down"
 
+[tasks."dev:reset"]
+description = "Remove the local dev data directory"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+data_dir="$root/.bastion"
+
+if [ "$data_dir" = "/" ] || [ "$data_dir" = "" ]; then
+  printf 'Refusing to remove unsafe data dir: %s\n' "$data_dir" >&2
+  exit 1
+fi
+
+sudo rm -rf -- "$data_dir"
+printf 'Removed dev data dir: %s\n' "$data_dir"
+'''
+
 [tasks."dev:bastion"]
 description = "Run the Bastion CLI against the local dev API"
 run = "go run ./core/cmd/bastion --api-url \"${BASTION_API_URL:-http://localhost:3148}\""
