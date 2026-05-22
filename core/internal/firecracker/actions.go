@@ -1,6 +1,7 @@
 package firecracker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,11 +18,13 @@ type templateConfig struct {
 }
 
 type templateActions struct {
-	Init []runAction `json:"init"`
+	Init []templateAction `json:"init"`
 }
 
-type runAction struct {
-	Run string `json:"run"`
+type templateAction struct {
+	Run  string         `json:"run,omitempty"`
+	Use  string         `json:"use,omitempty"`
+	With map[string]any `json:"with,omitempty"`
 }
 
 func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessage) error {
@@ -33,7 +36,7 @@ func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessa
 	}
 
 	for index, action := range actions {
-		if err := m.runGuestCommand(ctx, vm, action.Run); err != nil {
+		if err := m.runInitAction(ctx, vm, index+1, action); err != nil {
 			return initActionError{index: index + 1, err: err}
 		}
 	}
@@ -41,17 +44,32 @@ func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessa
 	return nil
 }
 
-func parseInitActions(config json.RawMessage) ([]runAction, error) {
+func parseInitActions(config json.RawMessage) ([]templateAction, error) {
 	if len(config) == 0 {
 		return nil, nil
 	}
 
 	var parsed templateConfig
-	if err := json.Unmarshal(config, &parsed); err != nil {
+
+	decoder := json.NewDecoder(bytes.NewReader(config))
+	decoder.UseNumber()
+
+	if err := decoder.Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("parse template config: %w", err)
 	}
 
 	return parsed.Actions.Init, nil
+}
+
+func (m Manager) runInitAction(ctx context.Context, vm VM, index int, action templateAction) error {
+	switch {
+	case action.Run != "":
+		return m.runGuestCommand(ctx, vm, action.Run)
+	case action.Use != "":
+		return m.runPresetAction(ctx, vm, index, action)
+	default:
+		return errors.New("init action must define run or use")
+	}
 }
 
 func (m Manager) runGuestCommand(ctx context.Context, vm VM, command string) error {

@@ -2,6 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bastion.computer/schemas/template.json",
   "$defs": {
+    "presetAction": {
+      "type": "object",
+      "properties": {
+        "use": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+        },
+        "with": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": ["string", "number", "boolean"]
+          }
+        }
+      },
+      "required": ["use"],
+      "additionalProperties": false
+    },
     "runAction": {
       "type": "object",
       "properties": {
@@ -12,10 +32,20 @@
       "required": ["run"],
       "additionalProperties": false
     },
+    "action": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/presetAction"
+        },
+        {
+          "$ref": "#/$defs/runAction"
+        }
+      ]
+    },
     "actionList": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/runAction"
+        "$ref": "#/$defs/action"
       }
     }
   },

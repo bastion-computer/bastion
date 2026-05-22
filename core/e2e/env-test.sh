@@ -172,6 +172,17 @@ node_docker_config() {
   }'
 }
 
+preset_setup_node_config() {
+  jq -nc '{
+    actions: {
+      init: [
+        {use: "setup_node", with: {version: 24}},
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-preset\nnode --version > /opt/bastion-e2e-preset/node-version\nnpm --version > /opt/bastion-e2e-preset/npm-version"}
+      ]
+    }
+  }'
+}
+
 failing_action_config() {
   jq -nc '{
     actions: {
@@ -240,6 +251,21 @@ run_node_docker_case() {
   log "node/docker setup case passed for $env_id"
 }
 
+run_preset_setup_node_case() {
+  local key="$RUN_ID-preset-node"
+  local env_id
+
+  create_template "$key" "$(preset_setup_node_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" grep -q '^v24\.' /opt/bastion-e2e-preset/node-version
+  ssh_env "$env_id" test -s /opt/bastion-e2e-preset/npm-version
+
+  log "preset setup_node case passed for $env_id"
+}
+
 run_failure_case() {
   local key="$RUN_ID-fails"
   local template_id
@@ -286,6 +312,7 @@ main() {
   log "starting environment e2e run $RUN_ID"
   assert_template_rejected
   run_basic_setup_case
+  run_preset_setup_node_case
   run_node_docker_case
   run_failure_case
   log "environment e2e run passed"

@@ -64,26 +64,35 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 	}
 }
 
-func TestServiceAcceptsRunActionTemplateConfig(t *testing.T) {
+func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 	t.Parallel()
 
-	db := openDB(t)
-	service := template.NewService(db)
-	ctx := context.Background()
-	config := json.RawMessage(`{"actions":{"init":[{"run":"echo node setup"},{"run":"echo docker setup"}]}}`)
-
-	created, err := service.Create(ctx, template.CreateRequest{Key: "run-actions", Config: config})
-	if err != nil {
-		t.Fatalf("create template: %v", err)
+	cases := []struct {
+		key    string
+		config json.RawMessage
+	}{
+		{key: "run-actions", config: json.RawMessage(`{"actions":{"init":[{"run":"echo node setup"},{"run":"echo docker setup"}]}}`)},
+		{key: "preset-actions", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`)},
 	}
 
-	got, err := service.Get(ctx, created.ID, "")
-	if err != nil {
-		t.Fatalf("get template: %v", err)
-	}
+	for _, tc := range cases {
+		db := openDB(t)
+		service := template.NewService(db)
+		ctx := context.Background()
 
-	if string(got.Config) != string(config) {
-		t.Fatalf("config = %s, want %s", got.Config, config)
+		created, err := service.Create(ctx, template.CreateRequest{Key: tc.key, Config: tc.config})
+		if err != nil {
+			t.Fatalf("%s: create template: %v", tc.key, err)
+		}
+
+		got, err := service.Get(ctx, created.ID, "")
+		if err != nil {
+			t.Fatalf("%s: get template: %v", tc.key, err)
+		}
+
+		if string(got.Config) != string(tc.config) {
+			t.Fatalf("%s: config = %s, want %s", tc.key, got.Config, tc.config)
+		}
 	}
 }
 
@@ -102,9 +111,11 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 		{name: "missing actions", config: json.RawMessage(`{}`)},
 		{name: "removed delegate commands", config: json.RawMessage(`{"actions":{"init":[]},"delegateCommands":{}}`)},
 		{name: "removed network rules", config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`)},
-		{name: "removed external action", config: json.RawMessage(`{"actions":{"init":[{"use":"example/action"}]}}`)},
+		{name: "invalid preset action name", config: json.RawMessage(`{"actions":{"init":[{"use":"example/action"}]}}`)},
 		{name: "removed start action", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo hi"}]}}`)},
 		{name: "invalid action", config: json.RawMessage(`{"actions":{"init":[{"run":"echo hi","use":"example/action"}]}}`)},
+		{name: "invalid with input name", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"node-version":24}}]}}`)},
+		{name: "invalid with input value", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":{}}}]}}`)},
 		{name: "non string env", config: json.RawMessage(`{"actions":{"init":[]},"env":{"PORT":3000}}`)},
 	}
 
