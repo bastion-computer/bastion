@@ -149,13 +149,43 @@ func TestRunInitActionsRunsPresetActionWithInputs(t *testing.T) {
 		}
 	}
 
-	contents, err := os.ReadFile(filepath.Join(vm.EnvDir, "actions", "init-1-setup_node", presetInputEnvFileName))
-	if err != nil {
-		t.Fatalf("read staged input env file: %v", err)
+	if _, err := os.Stat(filepath.Join(vm.EnvDir, "actions", "init-1-setup_node", presetInputEnvFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("host input env file error = %v, want not exist", err)
+	}
+}
+
+func TestRunInitActionsRemovesHostPresetInputFileWhenCopyFails(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestPresetAction(t, dataDir, "setup_node", `{
+  "inputs": {
+    "version": {"type": "number", "required": true}
+  },
+  "run": "sh ./install_node.sh"
+}`)
+
+	manager := Manager{
+		DataDir: dataDir,
+		run: func(_ context.Context, name string, _ ...string) error {
+			if name == "scp" {
+				return errors.New("copy failed")
+			}
+
+			return nil
+		},
 	}
 
-	if string(contents) != "export BASTION_INPUT_VERSION='24'\n" {
-		t.Fatalf("input env file = %q", contents)
+	vm := testActionVM()
+	vm.EnvDir = t.TempDir()
+
+	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`))
+	if err == nil || !strings.Contains(err.Error(), "copy preset action to guest") {
+		t.Fatalf("run init actions error = %v, want copy failure", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(vm.EnvDir, "actions", "init-1-setup_node", presetInputEnvFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("host input env file error = %v, want not exist", err)
 	}
 }
 

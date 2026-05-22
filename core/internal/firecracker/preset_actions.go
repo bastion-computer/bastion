@@ -55,12 +55,23 @@ func (m Manager) runPresetAction(ctx context.Context, vm VM, index int, action t
 		return err
 	}
 
-	guestDir := guestPresetActionDir(index, preset.name)
-	if err := m.copyPresetActionToGuest(ctx, vm, stagedDir, path.Dir(guestDir)); err != nil {
-		return err
+	removeHostInputFile := func() error {
+		if err := os.Remove(filepath.Join(stagedDir, presetInputEnvFileName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove host preset action inputs: %w", err)
+		}
+
+		return nil
 	}
 
-	return m.runGuestCommand(ctx, vm, presetActionCommand(guestDir, preset.manifest.Run))
+	guestDir := guestPresetActionDir(index, preset.name)
+	if err := m.copyPresetActionToGuest(ctx, vm, stagedDir, path.Dir(guestDir)); err != nil {
+		return errors.Join(err, removeHostInputFile())
+	}
+
+	removeErr := removeHostInputFile()
+	runErr := m.runGuestCommand(ctx, vm, presetActionCommand(guestDir, preset.manifest.Run))
+
+	return errors.Join(removeErr, runErr)
 }
 
 func loadPresetAction(dataDir, name string) (presetActionPackage, error) {
