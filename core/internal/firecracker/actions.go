@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 )
@@ -27,7 +28,7 @@ type templateAction struct {
 	With map[string]any `json:"with,omitempty"`
 }
 
-func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessage) error {
+func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {
 	m = m.withDefaults()
 
 	actions, err := parseInitActions(config)
@@ -36,7 +37,7 @@ func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessa
 	}
 
 	for index, action := range actions {
-		if err := m.runInitAction(ctx, vm, index+1, action); err != nil {
+		if err := m.runInitAction(ctx, vm, index+1, action, logs); err != nil {
 			return initActionError{index: index + 1, err: err}
 		}
 	}
@@ -61,24 +62,24 @@ func parseInitActions(config json.RawMessage) ([]templateAction, error) {
 	return parsed.Actions.Init, nil
 }
 
-func (m Manager) runInitAction(ctx context.Context, vm VM, index int, action templateAction) error {
+func (m Manager) runInitAction(ctx context.Context, vm VM, index int, action templateAction, logs io.Writer) error {
 	switch {
 	case action.Run != "":
-		return m.runGuestCommand(ctx, vm, action.Run)
+		return m.runGuestCommand(ctx, vm, action.Run, logs)
 	case action.Use != "":
-		return m.runPresetAction(ctx, vm, index, action)
+		return m.runPresetAction(ctx, vm, index, action, logs)
 	default:
 		return errors.New("init action must define run or use")
 	}
 }
 
-func (m Manager) runGuestCommand(ctx context.Context, vm VM, command string) error {
+func (m Manager) runGuestCommand(ctx context.Context, vm VM, command string, logs io.Writer) error {
 	args, err := guestCommandArgs(vm, command)
 	if err != nil {
 		return err
 	}
 
-	if err := m.run(ctx, "ssh", args...); err != nil {
+	if err := m.stream(ctx, logs, "ssh", args...); err != nil {
 		return sanitizeGuestCommandError(err)
 	}
 

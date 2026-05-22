@@ -1,9 +1,11 @@
 package firecracker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,7 +20,7 @@ func TestRunInitActionsRunsCommandsInOrder(t *testing.T) {
 	var got []string
 
 	manager := Manager{
-		run: func(_ context.Context, name string, args ...string) error {
+		stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
 			if name != "ssh" {
 				t.Fatalf("command name = %q, want ssh", name)
 			}
@@ -29,7 +31,7 @@ func TestRunInitActionsRunsCommandsInOrder(t *testing.T) {
 		},
 	}
 
-	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo one"},{"run":"printf '%s' two"}]}}`))
+	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo one"},{"run":"printf '%s' two"}]}}`), nil)
 	if err != nil {
 		t.Fatalf("run init actions: %v", err)
 	}
@@ -43,12 +45,34 @@ func TestRunInitActionsRunsCommandsInOrder(t *testing.T) {
 	}
 }
 
+func TestRunInitActionsStreamsGuestCommandOutput(t *testing.T) {
+	t.Parallel()
+
+	manager := Manager{
+		stream: func(_ context.Context, logs io.Writer, _ string, _ ...string) error {
+			_, err := logs.Write([]byte("installing node\n"))
+
+			return err
+		},
+	}
+
+	var logs bytes.Buffer
+	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo installing"}]}}`), &logs)
+	if err != nil {
+		t.Fatalf("run init actions: %v", err)
+	}
+
+	if logs.String() != "installing node\n" {
+		t.Fatalf("logs = %q, want streamed guest command output", logs.String())
+	}
+}
+
 func TestRunInitActionsReportsFailingActionIndex(t *testing.T) {
 	t.Parallel()
 
 	calls := 0
 	manager := Manager{
-		run: func(_ context.Context, _ string, _ ...string) error {
+		stream: func(_ context.Context, _ io.Writer, _ string, _ ...string) error {
 			calls++
 			if calls == 2 {
 				return errors.New("boom")
@@ -58,7 +82,7 @@ func TestRunInitActionsReportsFailingActionIndex(t *testing.T) {
 		},
 	}
 
-	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo one"},{"run":"false"},{"run":"echo three"}]}}`))
+	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo one"},{"run":"false"},{"run":"echo three"}]}}`), nil)
 	if err == nil || !strings.Contains(err.Error(), "init action 2 failed") {
 		t.Fatalf("run init actions error = %v, want action 2 failure", err)
 	}
@@ -76,12 +100,12 @@ func TestRunInitActionsSanitizesSSHWrapperFailure(t *testing.T) {
 	t.Parallel()
 
 	manager := Manager{
-		run: func(_ context.Context, _ string, _ ...string) error {
+		stream: func(_ context.Context, _ io.Writer, _ string, _ ...string) error {
 			return errors.New("ssh -i /secret/key -p 22 root@10.241.0.2 sh -c 'false' failed: exit status 1: intentional failure")
 		},
 	}
 
-	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"false"}]}}`))
+	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"false"}]}}`), nil)
 	if err == nil {
 		t.Fatal("run init actions error = nil, want failure")
 	}
@@ -115,6 +139,11 @@ func TestRunInitActionsRunsPresetActionWithInputs(t *testing.T) {
 
 	manager := Manager{
 		DataDir: dataDir,
+		stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
+			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+
+			return nil
+		},
 		run: func(_ context.Context, name string, args ...string) error {
 			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
 
@@ -125,7 +154,7 @@ func TestRunInitActionsRunsPresetActionWithInputs(t *testing.T) {
 	vm := testActionVM()
 	vm.EnvDir = t.TempDir()
 
-	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`))
+	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`), nil)
 	if err != nil {
 		t.Fatalf("run init actions: %v", err)
 	}
@@ -167,6 +196,9 @@ func TestRunInitActionsRemovesHostPresetInputFileWhenCopyFails(t *testing.T) {
 
 	manager := Manager{
 		DataDir: dataDir,
+		stream: func(_ context.Context, _ io.Writer, _ string, _ ...string) error {
+			return nil
+		},
 		run: func(_ context.Context, name string, _ ...string) error {
 			if name == "scp" {
 				return errors.New("copy failed")
@@ -179,7 +211,7 @@ func TestRunInitActionsRemovesHostPresetInputFileWhenCopyFails(t *testing.T) {
 	vm := testActionVM()
 	vm.EnvDir = t.TempDir()
 
-	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`))
+	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`), nil)
 	if err == nil || !strings.Contains(err.Error(), "copy preset action to guest") {
 		t.Fatalf("run init actions error = %v, want copy failure", err)
 	}
@@ -203,6 +235,11 @@ func TestRunInitActionsRejectsMissingPresetInput(t *testing.T) {
 	calls := 0
 	manager := Manager{
 		DataDir: dataDir,
+		stream: func(_ context.Context, _ io.Writer, _ string, _ ...string) error {
+			calls++
+
+			return nil
+		},
 		run: func(_ context.Context, _ string, _ ...string) error {
 			calls++
 
@@ -213,7 +250,7 @@ func TestRunInitActionsRejectsMissingPresetInput(t *testing.T) {
 	vm := testActionVM()
 	vm.EnvDir = t.TempDir()
 
-	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node"}]}}`))
+	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node"}]}}`), nil)
 	if err == nil || !strings.Contains(err.Error(), "preset action setup_node input version is required") {
 		t.Fatalf("run init actions error = %v, want missing input", err)
 	}
@@ -238,7 +275,7 @@ func TestRunInitActionsRejectsPresetInputTypeMismatch(t *testing.T) {
 	vm := testActionVM()
 	vm.EnvDir = t.TempDir()
 
-	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":"24"}}]}}`))
+	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":"24"}}]}}`), nil)
 	if err == nil || !strings.Contains(err.Error(), "preset action setup_node input version: must be a number") {
 		t.Fatalf("run init actions error = %v, want type mismatch", err)
 	}

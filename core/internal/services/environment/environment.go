@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
@@ -30,8 +32,25 @@ type Environment struct {
 
 // CreateRequest contains the fields needed to create an environment.
 type CreateRequest struct {
-	TemplateID  string `json:"templateId,omitempty"`
-	TemplateKey string `json:"templateKey,omitempty"`
+	TemplateID  string    `json:"templateId,omitempty"`
+	TemplateKey string    `json:"templateKey,omitempty"`
+	Logs        io.Writer `json:"-"`
+}
+
+// Stream event types used by POST /v1/environments.
+const (
+	StreamEventLog    = "log"
+	StreamEventResult = "result"
+	StreamEventError  = "error"
+)
+
+// CreateStreamEvent is one line in a streamed environment creation response.
+type CreateStreamEvent struct {
+	Type        string       `json:"type"`
+	Log         string       `json:"log,omitempty"`
+	Environment *Environment `json:"environment,omitempty"`
+	Error       string       `json:"error,omitempty"`
+	Status      int          `json:"status,omitempty"`
 }
 
 // Orchestrator launches, reconciles, and removes environment VMs.
@@ -106,9 +125,13 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 			Key:    template.Key,
 			Config: template.Config,
 		},
+		Logs: req.Logs,
 	})
 	if err != nil {
-		if recordErr := s.recordLaunchFailure(ctx, environment.ID, vm, err); recordErr != nil {
+		recordCtx, cancel := launchFailureContext(ctx)
+		defer cancel()
+
+		if recordErr := s.recordLaunchFailure(recordCtx, environment.ID, vm, err); recordErr != nil {
 			err = errors.Join(err, recordErr)
 		}
 
@@ -129,6 +152,14 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	}
 
 	return s.Get(ctx, environment.ID)
+}
+
+func launchFailureContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx.Err() == nil {
+		return ctx, func() {}
+	}
+
+	return context.WithTimeout(context.Background(), 5*time.Second)
 }
 
 // List returns environments ordered by creation time.

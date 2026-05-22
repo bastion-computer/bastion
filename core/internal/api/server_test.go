@@ -60,8 +60,14 @@ func TestCreateEnvironmentForwardsFailedDependency(t *testing.T) {
 	template := createTemplate(t, router, "failed-dependency-template")
 
 	res := request(t, router, http.MethodPost, "/v1/environments", environment.CreateRequest{TemplateKey: template.Key})
-	if res.Code != http.StatusFailedDependency {
-		t.Fatalf("create environment status = %d, want %d", res.Code, http.StatusFailedDependency)
+	if res.Code != http.StatusOK {
+		t.Fatalf("create environment status = %d, want streaming %d", res.Code, http.StatusOK)
+	}
+
+	var event environment.CreateStreamEvent
+	decode(t, res, &event)
+	if event.Type != environment.StreamEventError || event.Status != http.StatusFailedDependency || event.Error == "" {
+		t.Fatalf("create environment event = %#v, want failed dependency error event", event)
 	}
 }
 
@@ -135,7 +141,13 @@ func createEnvironment(t *testing.T, handler http.Handler, templateKey string) e
 	}
 
 	var created environment.Environment
-	decode(t, res, &created)
+	var event environment.CreateStreamEvent
+	decode(t, res, &event)
+	if event.Type != environment.StreamEventResult || event.Environment == nil {
+		t.Fatalf("create environment event = %#v, want result", event)
+	}
+
+	created = *event.Environment
 
 	if created.Status != "running" {
 		t.Fatalf("created environment status = %q, want running", created.Status)

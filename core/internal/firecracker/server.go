@@ -2,6 +2,7 @@ package firecracker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,7 +43,6 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 		Handler:           NewRouter(opts.Manager, opts.Logger),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      240 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 
@@ -158,8 +159,30 @@ func NewRouter(manager Manager, logger *slog.Logger) *gin.Engine {
 			return
 		}
 
-		vm, err := manager.Launch(c.Request.Context(), req)
-		respondDaemon(c, vm, err)
+		launchCtx, cancel := context.WithCancel(c.Request.Context())
+		defer cancel()
+
+		stream := newDaemonLaunchStream(c.Writer, cancel)
+		if err := stream.Start(); err != nil {
+			_ = c.Error(err)
+
+			return
+		}
+
+		req.Logs = stream
+		vm, err := manager.Launch(launchCtx, req)
+		if err != nil {
+			_ = c.Error(err)
+			if writeErr := stream.Error(vm, err); writeErr != nil {
+				_ = c.Error(writeErr)
+			}
+
+			return
+		}
+
+		if err := stream.Result(vm); err != nil {
+			_ = c.Error(err)
+		}
 	})
 
 	v1.GET("/vms/:id", func(c *gin.Context) {
@@ -178,18 +201,93 @@ func NewRouter(manager Manager, logger *slog.Logger) *gin.Engine {
 func respondDaemon(c *gin.Context, value any, err error) {
 	if err != nil {
 		_ = c.Error(err)
-
-		status := http.StatusInternalServerError
-		if errors.Is(err, ErrVMInitFailed) {
-			status = http.StatusFailedDependency
-		}
-
-		c.JSON(status, gin.H{"error": err.Error()})
+		c.JSON(daemonStatusForError(err), gin.H{"error": err.Error()})
 
 		return
 	}
 
 	c.JSON(http.StatusOK, value)
+}
+
+func daemonStatusForError(err error) int {
+	if errors.Is(err, ErrVMInitFailed) {
+		return http.StatusFailedDependency
+	}
+
+	return http.StatusInternalServerError
+}
+
+type daemonLaunchStream struct {
+	w          http.ResponseWriter
+	encoder    *json.Encoder
+	controller *http.ResponseController
+	cancel     context.CancelFunc
+	mu         sync.Mutex
+}
+
+func newDaemonLaunchStream(w http.ResponseWriter, cancel context.CancelFunc) *daemonLaunchStream {
+	return &daemonLaunchStream{
+		w:          w,
+		encoder:    json.NewEncoder(w),
+		controller: http.NewResponseController(w),
+		cancel:     cancel,
+	}
+}
+
+func (s *daemonLaunchStream) Start() error {
+	s.w.Header().Set("Content-Type", "application/x-ndjson")
+	s.w.Header().Set("Cache-Control", "no-cache")
+	s.w.WriteHeader(http.StatusOK)
+
+	return s.flush()
+}
+
+func (s *daemonLaunchStream) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	if err := s.write(LaunchStreamEvent{Type: StreamEventLog, Log: string(p)}); err != nil {
+		return 0, err
+	}
+
+	return len(p), nil
+}
+
+func (s *daemonLaunchStream) Result(vm VM) error {
+	return s.write(LaunchStreamEvent{Type: StreamEventResult, VM: &vm})
+}
+
+func (s *daemonLaunchStream) Error(vm VM, err error) error {
+	event := LaunchStreamEvent{Type: StreamEventError, Error: err.Error(), Status: daemonStatusForError(err)}
+	if vm.EnvironmentID != "" {
+		event.VM = &vm
+	}
+
+	return s.write(event)
+}
+
+func (s *daemonLaunchStream) write(event LaunchStreamEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.encoder.Encode(event); err != nil {
+		s.cancel()
+
+		return err
+	}
+
+	return s.flush()
+}
+
+func (s *daemonLaunchStream) flush() error {
+	if err := s.controller.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		s.cancel()
+
+		return err
+	}
+
+	return nil
 }
 
 func daemonLoggingMiddleware(logger *slog.Logger) gin.HandlerFunc {

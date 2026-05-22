@@ -3,6 +3,7 @@ package firecracker
 
 import (
 	"encoding/json"
+	"io"
 	"time"
 )
 
@@ -28,6 +29,13 @@ const (
 	StateStopped = "stopped"
 	// StateError means orchestration failed.
 	StateError = "error"
+
+	// StreamEventLog carries guest initialization command output.
+	StreamEventLog = "log"
+	// StreamEventResult carries the final successful stream payload.
+	StreamEventResult = "result"
+	// StreamEventError carries the final failed stream payload.
+	StreamEventError = "error"
 )
 
 // Template describes the environment template supplied to VM orchestration.
@@ -40,8 +48,18 @@ type Template struct {
 
 // LaunchRequest asks bastiond to launch a Firecracker VM for an environment.
 type LaunchRequest struct {
-	EnvironmentID string   `json:"environmentId"`
-	Template      Template `json:"template"`
+	EnvironmentID string    `json:"environmentId"`
+	Template      Template  `json:"template"`
+	Logs          io.Writer `json:"-"`
+}
+
+// LaunchStreamEvent is one line in a streamed VM launch response.
+type LaunchStreamEvent struct {
+	Type   string `json:"type"`
+	Log    string `json:"log,omitempty"`
+	VM     *VM    `json:"vm,omitempty"`
+	Error  string `json:"error,omitempty"`
+	Status int    `json:"status,omitempty"`
 }
 
 // VM describes durable VM runtime metadata.

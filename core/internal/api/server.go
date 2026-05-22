@@ -29,7 +29,6 @@ func NewServer(addr string, db *database.Client, logger *slog.Logger, opts ...Ro
 		Handler:           NewRouter(db, logger, opts...),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      300 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 }
