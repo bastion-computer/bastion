@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	presetactions "github.com/bastion-computer/bastion/core/actions"
 	"github.com/bastion-computer/bastion/core/internal/api"
 	"github.com/bastion-computer/bastion/core/internal/config"
 	"github.com/bastion-computer/bastion/core/internal/database"
@@ -31,6 +32,10 @@ func newStartCommand() *cobra.Command {
 
 			resolvedDataDir, err := config.ExpandPath(dataDir)
 			if err != nil {
+				return err
+			}
+
+			if err := presetactions.Seed(resolvedDataDir); err != nil {
 				return err
 			}
 

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -92,6 +95,142 @@ func TestRunInitActionsSanitizesSSHWrapperFailure(t *testing.T) {
 	}
 }
 
+func TestRunInitActionsRunsPresetActionWithInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestPresetAction(t, dataDir, "setup_node", `{
+  "inputs": {
+    "version": {"type": "number", "required": true}
+  },
+  "run": "sh ./install_node.sh"
+}`)
+
+	type call struct {
+		name string
+		args []string
+	}
+
+	var calls []call
+
+	manager := Manager{
+		DataDir: dataDir,
+		run: func(_ context.Context, name string, args ...string) error {
+			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+
+			return nil
+		},
+	}
+
+	vm := testActionVM()
+	vm.EnvDir = t.TempDir()
+
+	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`))
+	if err != nil {
+		t.Fatalf("run init actions: %v", err)
+	}
+
+	if len(calls) != 3 {
+		t.Fatalf("call count = %d, want 3: %#v", len(calls), calls)
+	}
+
+	if calls[0].name != "ssh" || !strings.Contains(calls[0].args[len(calls[0].args)-1], "mkdir -p") || !strings.Contains(calls[0].args[len(calls[0].args)-1], guestActionsDir) {
+		t.Fatalf("prepare guest directory call = %#v", calls[0])
+	}
+
+	if calls[1].name != "scp" || !containsArg(calls[1].args, "-r") || !containsArg(calls[1].args, SSHUser+"@10.241.0.2:"+guestActionsDir) {
+		t.Fatalf("copy preset call = %#v", calls[1])
+	}
+
+	runCommand := calls[2].args[len(calls[2].args)-1]
+	for _, want := range []string{"cd ", guestPresetActionDir(1, "setup_node"), ". ./" + presetInputEnvFileName, "rm -f ./" + presetInputEnvFileName, "sh ./install_node.sh"} {
+		if !strings.Contains(runCommand, want) {
+			t.Fatalf("preset run command = %q, want to contain %q", runCommand, want)
+		}
+	}
+
+	contents, err := os.ReadFile(filepath.Join(vm.EnvDir, "actions", "init-1-setup_node", presetInputEnvFileName))
+	if err != nil {
+		t.Fatalf("read staged input env file: %v", err)
+	}
+
+	if string(contents) != "export BASTION_INPUT_VERSION='24'\n" {
+		t.Fatalf("input env file = %q", contents)
+	}
+}
+
+func TestRunInitActionsRejectsMissingPresetInput(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestPresetAction(t, dataDir, "setup_node", `{
+  "inputs": {
+    "version": {"type": "number", "required": true}
+  },
+  "run": "sh ./install_node.sh"
+}`)
+
+	calls := 0
+	manager := Manager{
+		DataDir: dataDir,
+		run: func(_ context.Context, _ string, _ ...string) error {
+			calls++
+
+			return nil
+		},
+	}
+
+	vm := testActionVM()
+	vm.EnvDir = t.TempDir()
+
+	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node"}]}}`))
+	if err == nil || !strings.Contains(err.Error(), "preset action setup_node input version is required") {
+		t.Fatalf("run init actions error = %v, want missing input", err)
+	}
+
+	if calls != 0 {
+		t.Fatalf("calls = %d, want 0", calls)
+	}
+}
+
+func TestRunInitActionsRejectsPresetInputTypeMismatch(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestPresetAction(t, dataDir, "setup_node", `{
+  "inputs": {
+    "version": {"type": "number", "required": true}
+  },
+  "run": "sh ./install_node.sh"
+}`)
+
+	manager := Manager{DataDir: dataDir}
+	vm := testActionVM()
+	vm.EnvDir = t.TempDir()
+
+	err := manager.runInitActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":"24"}}]}}`))
+	if err == nil || !strings.Contains(err.Error(), "preset action setup_node input version: must be a number") {
+		t.Fatalf("run init actions error = %v, want type mismatch", err)
+	}
+}
+
+func TestLoadPresetActionRejectsInvalidManifest(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestPresetAction(t, dataDir, "bad_action", `{
+  "inputs": {
+    "bad-name": {"type": "string"}
+  },
+  "run": "sh ./bad.sh"
+}`)
+
+	_, err := loadPresetAction(dataDir, "bad_action")
+	if err == nil || !strings.Contains(err.Error(), "manifest input name \"bad-name\" is invalid") {
+		t.Fatalf("load preset action error = %v, want invalid input name", err)
+	}
+}
+
 func TestFailVMWritesErrorState(t *testing.T) {
 	t.Parallel()
 
@@ -123,4 +262,25 @@ func testActionVM() VM {
 		SSHPort:    SSHPort,
 		SSHKeyPath: "/tmp/test.id_rsa",
 	}
+}
+
+func writeTestPresetAction(t *testing.T, dataDir, name, manifest string) {
+	t.Helper()
+
+	dir := filepath.Join(dataDir, "actions", name)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("create preset action dir: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), []byte(manifest), 0o600); err != nil {
+		t.Fatalf("write preset action manifest: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "install_node.sh"), []byte("#!/usr/bin/env sh\n"), 0o600); err != nil {
+		t.Fatalf("write preset action script: %v", err)
+	}
+}
+
+func containsArg(args []string, want string) bool {
+	return slices.Contains(args, want)
 }

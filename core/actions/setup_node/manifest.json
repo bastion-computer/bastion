@@ -1,0 +1,10 @@
+{
+  "inputs": {
+    "version": {
+      "type": "number",
+      "description": "Node.js major version to install.",
+      "required": true
+    }
+  },
+  "run": "sh ./install_node.sh"
+}
