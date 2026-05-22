@@ -110,6 +110,10 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
+	if err := m.runInitActions(ctx, vm, req.Template.Config); err != nil {
+		return failVM(vm, err)
+	}
+
 	vm.State = StateRunning
 	if err := writeVMState(vm); err != nil {
 		_, _ = m.Remove(context.Background(), req.EnvironmentID)
@@ -198,6 +202,10 @@ func (m Manager) State(ctx context.Context, environmentID string) (VM, error) {
 		}
 
 		return VM{}, err
+	}
+
+	if vm.State == StateError {
+		return vm, nil
 	}
 
 	if vm.PID == 0 || !processExists(vm.PID) || vm.SocketPath == "" {
@@ -421,6 +429,17 @@ func logSuffix(path string) string {
 	}
 
 	return ": " + strings.TrimSpace(string(contents))
+}
+
+func failVM(vm VM, err error) (VM, error) {
+	vm.State = StateError
+	vm.LastError = err.Error()
+
+	if writeErr := writeVMState(vm); writeErr != nil {
+		return vm, fmt.Errorf("%w; record vm failure: %w", err, writeErr)
+	}
+
+	return vm, err
 }
 
 func (m Manager) cleanupStoppedVM(ctx context.Context, vm VM) {

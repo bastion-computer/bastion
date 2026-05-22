@@ -3,6 +3,7 @@ package environment_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -12,7 +13,11 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
-const testTemplateKey = "dev-env"
+const (
+	testTemplateKey = "dev-env"
+	testGuestIP     = "10.241.0.2"
+	testVMTime      = "2026-01-01T00:00:00Z"
+)
 
 func TestServiceCreatesListsGetsAndRemovesEnvironment(t *testing.T) {
 	t.Parallel()
@@ -51,6 +56,42 @@ func TestServiceReconcileRejectsEmptyRuntimeState(t *testing.T) {
 	}
 }
 
+func TestServicePersistsLaunchVMFailure(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	orchestrator := &failingLaunchOrchestrator{err: errors.New("init action 2 failed")}
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	if _, err := templates.Create(ctx, template.CreateRequest{
+		Key:    testTemplateKey,
+		Config: json.RawMessage(`{"actions":{"init":[{"run":"false"}]}}`),
+	}); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	_, err := service.Create(ctx, environment.CreateRequest{TemplateKey: testTemplateKey})
+	if err == nil || !strings.Contains(err.Error(), orchestrator.err.Error()) {
+		t.Fatalf("create environment error = %v, want launch failure", err)
+	}
+
+	page, err := service.List(ctx, 20, "")
+	if err != nil {
+		t.Fatalf("list environments: %v", err)
+	}
+
+	if len(page.Entries) != 1 {
+		t.Fatalf("environment count = %d, want 1", len(page.Entries))
+	}
+
+	got := page.Entries[0]
+	if got.Status != fc.StateError || got.LastError != orchestrator.err.Error() || got.SSHHost != testGuestIP {
+		t.Fatalf("failed environment = %#v, want persisted vm failure", got)
+	}
+}
+
 func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates *template.Service, service *environment.Service) environment.Environment {
 	t.Helper()
 
@@ -67,7 +108,7 @@ func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates 
 		t.Fatalf("create environment: %v", err)
 	}
 
-	if created.ID == "" || created.Status != "running" || created.TemplateID != createdTemplate.ID || created.SSHHost != "10.241.0.2" {
+	if created.ID == "" || created.Status != "running" || created.TemplateID != createdTemplate.ID || created.SSHHost != testGuestIP {
 		t.Fatalf("unexpected created environment: %#v", created)
 	}
 
@@ -151,12 +192,12 @@ func (o *fakeOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.V
 		EnvironmentID: req.EnvironmentID,
 		VMID:          "vm-" + req.EnvironmentID,
 		State:         fc.StateRunning,
-		GuestIP:       "10.241.0.2",
+		GuestIP:       testGuestIP,
 		SSHUser:       fc.SSHUser,
 		SSHPort:       fc.SSHPort,
 		SSHKeyPath:    "/tmp/test.id_rsa",
-		CreatedAt:     "2026-01-01T00:00:00Z",
-		UpdatedAt:     "2026-01-01T00:00:00Z",
+		CreatedAt:     testVMTime,
+		UpdatedAt:     testVMTime,
 	}
 	o.vms[req.EnvironmentID] = vm
 
@@ -176,5 +217,35 @@ func (o *fakeOrchestrator) Remove(_ context.Context, environmentID string) (fc.V
 	o.removes++
 	delete(o.vms, environmentID)
 
+	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+}
+
+type failingLaunchOrchestrator struct {
+	err error
+	vm  fc.VM
+}
+
+func (o *failingLaunchOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
+	o.vm = fc.VM{
+		EnvironmentID: req.EnvironmentID,
+		VMID:          "vm-" + req.EnvironmentID,
+		State:         fc.StateError,
+		GuestIP:       testGuestIP,
+		SSHUser:       fc.SSHUser,
+		SSHPort:       fc.SSHPort,
+		SSHKeyPath:    "/tmp/test.id_rsa",
+		CreatedAt:     testVMTime,
+		UpdatedAt:     testVMTime,
+		LastError:     o.err.Error(),
+	}
+
+	return o.vm, o.err
+}
+
+func (o *failingLaunchOrchestrator) State(_ context.Context, _ string) (fc.VM, error) {
+	return o.vm, nil
+}
+
+func (o *failingLaunchOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
 	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
 }
