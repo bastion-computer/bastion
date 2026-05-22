@@ -11,6 +11,7 @@ DATA_DIR="$REPO_DIR/.bastion"
 RUN_ID="e2e-env-$(date +%Y%m%d%H%M%S)-$$"
 
 TEMPLATE_KEYS=()
+TEMPLATE_IDS=()
 ENV_IDS=()
 CREATED_TEMPLATE_ID=""
 CREATED_ENV_ID=""
@@ -35,10 +36,27 @@ run_cli() {
 
 cleanup() {
   local status=$?
+  local removed_env_ids=" "
+  local env_id
   set +e
+
+  for template_id in "${TEMPLATE_IDS[@]}"; do
+    if [ -n "$template_id" ]; then
+      while IFS= read -r env_id; do
+        if [ -n "$env_id" ]; then
+          ENV_IDS+=("$env_id")
+        fi
+      done < <(run_cli env list --limit 5000 2>/dev/null | jq -r --arg template_id "$template_id" '.entries[] | select(.templateId == $template_id) | .id' 2>/dev/null || true)
+    fi
+  done
 
   for env_id in "${ENV_IDS[@]}"; do
     if [ -n "$env_id" ]; then
+      if [[ "$removed_env_ids" == *" $env_id "* ]]; then
+        continue
+      fi
+
+      removed_env_ids+="$env_id "
       run_cli env remove "$env_id" >/dev/null 2>&1 || log "cleanup: environment $env_id was not removed"
     fi
   done
@@ -92,6 +110,7 @@ create_template() {
   fi
 
   TEMPLATE_KEYS+=("$key")
+  TEMPLATE_IDS+=("$CREATED_TEMPLATE_ID")
 }
 
 create_environment() {
