@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/api"
@@ -20,6 +21,12 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
+)
+
+const (
+	apiTestProdTag = "prod"
+	apiTestGPUTag  = "gpu"
+	apiTestCPUTag  = "cpu"
 )
 
 func TestListRoutes(t *testing.T) {
@@ -72,6 +79,57 @@ func TestCreateEnvironmentForwardsFailedDependency(t *testing.T) {
 
 	if event.Type != environment.StreamEventError || event.Status != http.StatusFailedDependency || event.Error == "" {
 		t.Fatalf("create environment event = %#v, want failed dependency error event", event)
+	}
+}
+
+func TestEnvironmentTagsCreateGetAndListRoutes(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
+	template := createTemplate(t, router, "tagged-environment-template")
+
+	prodGPU := createEnvironment(t, router, template.Key, apiTestProdTag, apiTestGPUTag)
+	prodCPU := createEnvironment(t, router, template.Key, apiTestProdTag, apiTestCPUTag)
+
+	res := request(t, router, http.MethodGet, "/v1/environments/"+prodGPU.ID, nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("get tagged environment status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var got environment.Environment
+	decode(t, res, &got)
+
+	if !slices.Equal(got.Tags, []string{apiTestProdTag, apiTestGPUTag}) {
+		t.Fatalf("get tagged environment tags = %#v, want prod/gpu", got.Tags)
+	}
+
+	res = request(t, router, http.MethodGet, "/v1/environments?tag="+apiTestProdTag+"&tag="+apiTestGPUTag, nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("list tagged environments status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var gpuPage services.Page[environment.Environment]
+	decode(t, res, &gpuPage)
+
+	if len(gpuPage.Entries) != 1 || gpuPage.Entries[0].ID != prodGPU.ID || !slices.Equal(gpuPage.Entries[0].Tags, prodGPU.Tags) {
+		t.Fatalf("tag-filtered environments = %#v, want only %#v", gpuPage, prodGPU)
+	}
+
+	res = request(t, router, http.MethodGet, "/v1/environments?tag="+apiTestProdTag, nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("list prod environments status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var prodPage services.Page[environment.Environment]
+	decode(t, res, &prodPage)
+
+	if len(prodPage.Entries) != 2 {
+		t.Fatalf("prod environments = %#v, want 2 entries", prodPage)
+	}
+
+	prodIDs := []string{prodPage.Entries[0].ID, prodPage.Entries[1].ID}
+	if !slices.Contains(prodIDs, prodGPU.ID) || !slices.Contains(prodIDs, prodCPU.ID) {
+		t.Fatalf("prod environment ids = %#v, want %#v and %#v", prodIDs, prodGPU.ID, prodCPU.ID)
 	}
 }
 
@@ -201,10 +259,10 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 	return created
 }
 
-func createEnvironment(t *testing.T, handler http.Handler, templateKey string) environment.Environment {
+func createEnvironment(t *testing.T, handler http.Handler, templateKey string, tags ...string) environment.Environment {
 	t.Helper()
 
-	res := request(t, handler, http.MethodPost, "/v1/environments", environment.CreateRequest{TemplateKey: templateKey})
+	res := request(t, handler, http.MethodPost, "/v1/environments", environment.CreateRequest{TemplateKey: templateKey, Tags: tags})
 	if res.Code != http.StatusOK {
 		t.Fatalf("create environment status = %d, want %d", res.Code, http.StatusOK)
 	}
@@ -218,8 +276,8 @@ func createEnvironment(t *testing.T, handler http.Handler, templateKey string) e
 
 	created := *event.Environment
 
-	if created.Status != "running" {
-		t.Fatalf("created environment status = %q, want running", created.Status)
+	if created.Status != "running" || !slices.Equal(created.Tags, tags) {
+		t.Fatalf("created environment = %#v, want running with tags %#v", created, tags)
 	}
 
 	return created

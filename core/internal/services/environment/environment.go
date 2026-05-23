@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
@@ -19,12 +20,13 @@ import (
 
 // Environment describes a managed opencode environment.
 type Environment struct {
-	ID         string `json:"id"`
-	Status     string `json:"status"`
-	TemplateID string `json:"templateId"`
-	CreatedAt  string `json:"createdAt"`
-	UpdatedAt  string `json:"updatedAt"`
-	LastError  string `json:"lastError,omitempty"`
+	ID         string   `json:"id"`
+	Status     string   `json:"status"`
+	TemplateID string   `json:"templateId"`
+	Tags       []string `json:"tags"`
+	CreatedAt  string   `json:"createdAt"`
+	UpdatedAt  string   `json:"updatedAt"`
+	LastError  string   `json:"lastError,omitempty"`
 }
 
 // SSHConnection contains private connection metadata for API-managed SSH.
@@ -45,6 +47,7 @@ type environmentRecord struct {
 type CreateRequest struct {
 	TemplateID  string    `json:"templateId,omitempty"`
 	TemplateKey string    `json:"templateKey,omitempty"`
+	Tags        []string  `json:"tags,omitempty"`
 	Logs        io.Writer `json:"-"`
 }
 
@@ -107,6 +110,10 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 		return Environment{}, err
 	}
 
+	if err := validateTags(req.Tags); err != nil {
+		return Environment{}, err
+	}
+
 	template, err := s.resolveTemplate(ctx, req.TemplateID, req.TemplateKey)
 	if err != nil {
 		return Environment{}, err
@@ -127,15 +134,10 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	}
 
 	now := services.Now()
-	environment := Environment{ID: environmentID, Status: fc.StateCreating, TemplateID: template.ID, CreatedAt: now, UpdatedAt: now}
+	environment := Environment{ID: environmentID, Status: fc.StateCreating, TemplateID: template.ID, Tags: copyTags(req.Tags), CreatedAt: now, UpdatedAt: now}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO environments (id, status, template_id, created_at, updated_at, last_error) VALUES (?, ?, ?, ?, ?, ?)`, environment.ID, environment.Status, environment.TemplateID, environment.CreatedAt, environment.UpdatedAt, "")
-	if err != nil {
-		if database.IsConstraint(err) {
-			return Environment{}, fmt.Errorf("%w: environment already exists", failure.ErrConflict)
-		}
-
-		return Environment{}, fmt.Errorf("create environment: %w", err)
+	if err := s.createRecord(ctx, environment); err != nil {
+		return Environment{}, err
 	}
 
 	vm, err := s.orchestrator.Launch(ctx, fc.LaunchRequest{
@@ -174,6 +176,43 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	return s.Get(ctx, environment.ID)
 }
 
+func (s *Service) createRecord(ctx context.Context, environment Environment) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin create environment: %w", err)
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO environments (id, status, template_id, created_at, updated_at, last_error) VALUES (?, ?, ?, ?, ?, ?)`, environment.ID, environment.Status, environment.TemplateID, environment.CreatedAt, environment.UpdatedAt, "")
+	if err != nil {
+		if database.IsConstraint(err) {
+			return fmt.Errorf("%w: environment already exists", failure.ErrConflict)
+		}
+
+		return fmt.Errorf("create environment: %w", err)
+	}
+
+	for position, tag := range environment.Tags {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO environment_tags (environment_id, tag, position) VALUES (?, ?, ?)`, environment.ID, tag, position); err != nil {
+			return fmt.Errorf("create environment tag: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit create environment: %w", err)
+	}
+
+	committed = true
+
+	return nil
+}
+
 func launchFailureContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx.Err() == nil {
 		return ctx, func() {}
@@ -183,22 +222,37 @@ func launchFailureContext(ctx context.Context) (context.Context, context.CancelF
 }
 
 // List returns environments ordered by creation time.
-func (s *Service) List(ctx context.Context, limit int, cursor string) (services.Page[Environment], error) {
+func (s *Service) List(ctx context.Context, limit int, cursor string, tags []string) (services.Page[Environment], error) {
 	limit = services.NormalizeLimit(limit)
 
-	query := environmentSelectQuery()
-
-	var (
-		rows *sql.Rows
-		err  error
-	)
-
-	if cursor == "" {
-		rows, err = s.db.QueryContext(ctx, query+` ORDER BY e.created_at LIMIT ?`, limit+1)
-	} else {
-		rows, err = s.db.QueryContext(ctx, query+` WHERE e.created_at > ? ORDER BY e.created_at LIMIT ?`, cursor, limit+1)
+	if err := validateTags(tags); err != nil {
+		return services.Page[Environment]{}, err
 	}
 
+	query := environmentSelectQuery()
+	filters := make([]string, 0, len(tags)+1)
+	args := make([]any, 0, len(tags)+2)
+
+	if cursor != "" {
+		filters = append(filters, "e.created_at > ?")
+		args = append(args, cursor)
+	}
+
+	for index, tag := range uniqueTags(tags) {
+		alias := fmt.Sprintf("tag_filter_%d", index)
+		filters = append(filters, fmt.Sprintf("EXISTS (SELECT 1 FROM environment_tags %s WHERE %s.environment_id = e.id AND %s.tag = ?)", alias, alias, alias))
+		args = append(args, tag)
+	}
+
+	if len(filters) > 0 {
+		query += ` WHERE ` + strings.Join(filters, " AND ")
+	}
+
+	query += ` ORDER BY e.created_at LIMIT ?`
+
+	args = append(args, limit+1)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return services.Page[Environment]{}, fmt.Errorf("list environments: %w", err)
 	}
@@ -218,6 +272,10 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (services.
 
 	if err := rows.Err(); err != nil {
 		return services.Page[Environment]{}, fmt.Errorf("iterate environments: %w", err)
+	}
+
+	if err := s.loadTags(ctx, entries); err != nil {
+		return services.Page[Environment]{}, err
 	}
 
 	for i := range entries {
@@ -311,6 +369,7 @@ func (s *Service) Remove(ctx context.Context, environmentID string) (Environment
 		ID:         environment.ID,
 		Status:     "removed",
 		TemplateID: environment.TemplateID,
+		Tags:       environment.Tags,
 		CreatedAt:  environment.CreatedAt,
 		UpdatedAt:  services.Now(),
 	}, nil
@@ -349,6 +408,13 @@ func (s *Service) get(ctx context.Context, environmentID string) (Environment, e
 	if err != nil {
 		return Environment{}, err
 	}
+
+	entries := []Environment{record.Environment}
+	if err := s.loadTags(ctx, entries); err != nil {
+		return Environment{}, err
+	}
+
+	record.Environment = entries[0]
 
 	return record.Environment, nil
 }
@@ -522,7 +588,87 @@ func scanEnvironmentRecord(row rowScanner) (environmentRecord, error) {
 		record.LastError = record.VMLastError
 	}
 
+	record.Tags = []string{}
+
 	return record, nil
+}
+
+func (s *Service) loadTags(ctx context.Context, entries []Environment) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	placeholders := make([]string, len(entries))
+	args := make([]any, len(entries))
+	indices := make(map[string]int, len(entries))
+
+	for i := range entries {
+		placeholders[i] = "?"
+		args[i] = entries[i].ID
+		indices[entries[i].ID] = i
+		entries[i].Tags = []string{}
+	}
+
+	rows, err := s.db.QueryContext(ctx, `SELECT environment_id, tag FROM environment_tags WHERE environment_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY environment_id, position`, args...)
+	if err != nil {
+		return fmt.Errorf("list environment tags: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var environmentID, tag string
+		if err := rows.Scan(&environmentID, &tag); err != nil {
+			return fmt.Errorf("scan environment tag: %w", err)
+		}
+
+		if index, ok := indices[environmentID]; ok {
+			entries[index].Tags = append(entries[index].Tags, tag)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate environment tags: %w", err)
+	}
+
+	return nil
+}
+
+func validateTags(tags []string) error {
+	for _, tag := range tags {
+		if strings.TrimSpace(tag) == "" {
+			return fmt.Errorf("%w: environment tag is required", failure.ErrInvalid)
+		}
+	}
+
+	return nil
+}
+
+func uniqueTags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+
+	unique := make([]string, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
+
+	for _, tag := range tags {
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+
+		seen[tag] = struct{}{}
+		unique = append(unique, tag)
+	}
+
+	return unique
+}
+
+func copyTags(tags []string) []string {
+	if len(tags) == 0 {
+		return []string{}
+	}
+
+	return append([]string(nil), tags...)
 }
 
 func nullString(value sql.NullString) string {
