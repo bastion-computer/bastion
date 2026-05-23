@@ -7,3 +7,5 @@ ALWAYS verify the code has been linted, format-checked, built, typechecked where
 - `mise run test`
 
 Use `mise run format:write` to rewrite formatting locally. CI uses `mise run format:check`.
+
+If making significant changes to `core`, run `mise //core:test:e2e`. This will run `core/e2e/env-test.sh` against a running dev evironment. You MUST make sure it runs till completion.
