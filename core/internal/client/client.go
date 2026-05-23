@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
@@ -29,9 +28,7 @@ type Client struct {
 func New(baseURL string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		http: &http.Client{
-			Timeout: 300 * time.Second,
-		},
+		http:    &http.Client{},
 	}
 }
 
@@ -72,9 +69,94 @@ func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (template.T
 }
 
 // CreateEnvironment creates an environment from a template.
-func (c *Client) CreateEnvironment(ctx context.Context, req environment.CreateRequest) (environment.Environment, error) {
+func (c *Client) CreateEnvironment(ctx context.Context, createReq environment.CreateRequest) (environment.Environment, error) {
 	var out environment.Environment
-	return out, c.do(ctx, http.MethodPost, "/v1/environments", req, &out)
+
+	contents, err := json.Marshal(createReq)
+	if err != nil {
+		return out, fmt.Errorf("encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/environments", bytes.NewReader(contents))
+	if err != nil {
+		return out, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call host API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeHostStatusError(res)
+	}
+
+	return decodeCreateEnvironmentStream(json.NewDecoder(res.Body), createReq.Logs)
+}
+
+func decodeCreateEnvironmentStream(decoder *json.Decoder, logs io.Writer) (environment.Environment, error) {
+	var out environment.Environment
+
+	for {
+		var event environment.CreateStreamEvent
+		if err := decoder.Decode(&event); err != nil {
+			return out, createEnvironmentStreamDecodeError(err)
+		}
+
+		created, done, err := handleCreateEnvironmentStreamEvent(event, logs)
+		if done || err != nil {
+			return created, err
+		}
+	}
+}
+
+func createEnvironmentStreamDecodeError(err error) error {
+	if errors.Is(err, io.EOF) {
+		return errors.New("host API stream ended before environment creation completed")
+	}
+
+	return fmt.Errorf("decode host API stream: %w", err)
+}
+
+func handleCreateEnvironmentStreamEvent(event environment.CreateStreamEvent, logs io.Writer) (environment.Environment, bool, error) {
+	var out environment.Environment
+
+	switch event.Type {
+	case environment.StreamEventLog:
+		if logs == nil || event.Log == "" {
+			return out, false, nil
+		}
+
+		if _, err := logs.Write([]byte(event.Log)); err != nil {
+			return out, false, fmt.Errorf("stream environment init logs: %w", err)
+		}
+
+		return out, false, nil
+	case environment.StreamEventResult:
+		if event.Environment == nil {
+			return out, false, errors.New("host API stream result missing environment")
+		}
+
+		return *event.Environment, true, nil
+	case environment.StreamEventError:
+		status := event.Status
+		if status == 0 {
+			status = http.StatusInternalServerError
+		}
+
+		message := strings.TrimSpace(event.Error)
+		if message == "" {
+			message = "unknown error"
+		}
+
+		return out, false, fmt.Errorf("host API returned %s: %s", httpStatus(status), message)
+	default:
+		return out, false, fmt.Errorf("host API stream returned unknown event type %q", event.Type)
+	}
 }
 
 // ListEnvironments returns environments.
@@ -123,14 +205,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode >= 400 {
-		var apiErr struct {
-			Error string `json:"error"`
-		}
-		if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil || apiErr.Error == "" {
-			return fmt.Errorf("host API returned %s", res.Status)
-		}
-
-		return fmt.Errorf("host API returned %s: %s", res.Status, apiErr.Error)
+		return decodeHostStatusError(res)
 	}
 
 	if out == nil {
@@ -142,6 +217,25 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	}
 
 	return nil
+}
+
+func decodeHostStatusError(res *http.Response) error {
+	var apiErr struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil || apiErr.Error == "" {
+		return fmt.Errorf("host API returned %s", res.Status)
+	}
+
+	return fmt.Errorf("host API returned %s: %s", res.Status, apiErr.Error)
+}
+
+func httpStatus(status int) string {
+	if text := http.StatusText(status); text != "" {
+		return fmt.Sprintf("%d %s", status, text)
+	}
+
+	return strconv.Itoa(status)
 }
 
 func listPath(path string, limit int, cursor string) string {

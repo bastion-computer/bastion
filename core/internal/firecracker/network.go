@@ -1,16 +1,19 @@
 package firecracker
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"net"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -265,6 +268,44 @@ func runCommand(ctx context.Context, name string, args ...string) error {
 	}
 
 	return nil
+}
+
+func runCommandStream(ctx context.Context, logs io.Writer, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // bastiond intentionally runs selected host commands.
+
+	var output bytes.Buffer
+
+	combined := &lockedWriter{writers: []io.Writer{&output}}
+	if logs != nil {
+		combined.writers = append(combined.writers, logs)
+	}
+
+	cmd.Stdout = combined
+	cmd.Stderr = combined
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s failed: %w: %s", commandString(name, args), err, strings.TrimSpace(output.String()))
+	}
+
+	return nil
+}
+
+type lockedWriter struct {
+	mu      sync.Mutex
+	writers []io.Writer
+}
+
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	for _, writer := range w.writers {
+		if _, err := writer.Write(p); err != nil {
+			return 0, err
+		}
+	}
+
+	return len(p), nil
 }
 
 func outputCommand(ctx context.Context, name string, args ...string) (string, error) {

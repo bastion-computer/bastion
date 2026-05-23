@@ -49,18 +49,21 @@ func ListParams(c *gin.Context) (int, string) {
 }
 
 func respondError(c *gin.Context, err error) {
-	status := http.StatusInternalServerError
+	c.JSON(ErrorStatus(err), gin.H{"error": err.Error()})
+}
 
+// ErrorStatus maps a domain error to an HTTP status code.
+func ErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, failure.ErrInvalid):
-		status = http.StatusBadRequest
+		return http.StatusBadRequest
 	case errors.Is(err, failure.ErrNotFound):
-		status = http.StatusNotFound
+		return http.StatusNotFound
 	case errors.Is(err, failure.ErrConflict):
-		status = http.StatusConflict
+		return http.StatusConflict
 	case errors.Is(err, failure.ErrFailedDependency):
-		status = http.StatusFailedDependency
+		return http.StatusFailedDependency
 	}
 
-	c.JSON(status, gin.H{"error": err.Error()})
+	return http.StatusInternalServerError
 }

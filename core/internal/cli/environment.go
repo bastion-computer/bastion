@@ -39,6 +39,7 @@ func newEnvironmentCreateCommand(opts *rootOptions) *cobra.Command {
 			created, err := apiClient(opts).CreateEnvironment(cmd.Context(), environment.CreateRequest{
 				TemplateID:  templateID,
 				TemplateKey: templateKey,
+				Logs:        cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err

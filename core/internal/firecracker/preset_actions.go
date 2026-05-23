@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -40,7 +41,7 @@ type presetActionInput struct {
 	Required    bool   `json:"required,omitempty"`
 }
 
-func (m Manager) runPresetAction(ctx context.Context, vm VM, index int, action templateAction) error {
+func (m Manager) runPresetAction(ctx context.Context, vm VM, index int, action templateAction, logs io.Writer) error {
 	preset, err := loadPresetAction(m.DataDir, action.Use)
 	if err != nil {
 		return err
@@ -64,12 +65,12 @@ func (m Manager) runPresetAction(ctx context.Context, vm VM, index int, action t
 	}
 
 	guestDir := guestPresetActionDir(index, preset.name)
-	if err := m.copyPresetActionToGuest(ctx, vm, stagedDir, path.Dir(guestDir)); err != nil {
+	if err := m.copyPresetActionToGuest(ctx, vm, stagedDir, path.Dir(guestDir), logs); err != nil {
 		return errors.Join(err, removeHostInputFile())
 	}
 
 	removeErr := removeHostInputFile()
-	runErr := m.runGuestCommand(ctx, vm, presetActionCommand(guestDir, preset.manifest.Run))
+	runErr := m.runGuestCommand(ctx, vm, presetActionCommand(guestDir, preset.manifest.Run), logs)
 
 	return errors.Join(removeErr, runErr)
 }
@@ -239,8 +240,8 @@ func presetInputValueString(value any, inputType string) (string, error) {
 	}
 }
 
-func (m Manager) copyPresetActionToGuest(ctx context.Context, vm VM, srcDir, guestParent string) error {
-	if err := m.runGuestCommand(ctx, vm, "mkdir -p "+shellQuote(guestParent)); err != nil {
+func (m Manager) copyPresetActionToGuest(ctx context.Context, vm VM, srcDir, guestParent string, logs io.Writer) error {
+	if err := m.runGuestCommand(ctx, vm, "mkdir -p "+shellQuote(guestParent), logs); err != nil {
 		return fmt.Errorf("prepare preset action guest directory: %w", err)
 	}
 

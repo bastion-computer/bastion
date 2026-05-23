@@ -38,6 +38,7 @@ type Manager struct {
 	GID     int
 	Logger  *slog.Logger
 	run     func(context.Context, string, ...string) error
+	stream  func(context.Context, io.Writer, string, ...string) error
 	output  func(context.Context, string, ...string) (string, error)
 }
 
@@ -49,6 +50,7 @@ func NewManager(dataDir string, uid, gid int, logger *slog.Logger) Manager {
 		GID:     gid,
 		Logger:  logger,
 		run:     runCommand,
+		stream:  runCommandStream,
 		output:  outputCommand,
 	}
 }
@@ -110,7 +112,7 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	if err := m.runInitActions(ctx, vm, req.Template.Config); err != nil {
+	if err := m.runInitActions(ctx, vm, req.Template.Config, req.Logs); err != nil {
 		return failVM(vm, err)
 	}
 
@@ -462,6 +464,10 @@ func (m Manager) withDefaults() Manager {
 
 	if m.run == nil {
 		m.run = runCommand
+	}
+
+	if m.stream == nil {
+		m.stream = runCommandStream
 	}
 
 	if m.output == nil {
