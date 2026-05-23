@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
+	"github.com/bastion-computer/bastion/core/internal/failure"
 	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
@@ -89,6 +90,96 @@ func TestServicePersistsLaunchVMFailure(t *testing.T) {
 	got := page.Entries[0]
 	if got.Status != fc.StateError || got.LastError != orchestrator.err.Error() || got.SSHHost != testGuestIP {
 		t.Fatalf("failed environment = %#v, want persisted vm failure", got)
+	}
+}
+
+func TestServiceSubstitutesTemplateEnvironmentVariables(t *testing.T) {
+	const envName = "BASTION_TEMPLATE_SUBSTITUTION_TEST"
+
+	t.Setenv(envName, "substituted-value")
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	orchestrator := newFakeOrchestrator()
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
+		Key:    "substitution-template",
+		Config: json.RawMessage(`{"env":{"VALUE":"${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"},"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}]}}`),
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	if _, err := service.Create(ctx, environment.CreateRequest{TemplateKey: "substitution-template"}); err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+
+	if len(orchestrator.templates) != 1 {
+		t.Fatalf("launch templates = %d, want 1", len(orchestrator.templates))
+	}
+
+	var launched struct {
+		Env     map[string]string `json:"env"`
+		Actions struct {
+			Init []struct {
+				Run string `json:"run"`
+			} `json:"init"`
+		} `json:"actions"`
+	}
+	if err := json.Unmarshal(orchestrator.templates[0].Config, &launched); err != nil {
+		t.Fatalf("unmarshal launched template config: %v", err)
+	}
+
+	if launched.Env["VALUE"] != "substituted-value" || len(launched.Actions.Init) != 1 || launched.Actions.Init[0].Run != "printf 'substituted-value'" {
+		t.Fatalf("launched template config = %s, want substituted env values", orchestrator.templates[0].Config)
+	}
+
+	stored, err := templates.Get(ctx, createdTemplate.ID, "")
+	if err != nil {
+		t.Fatalf("get stored template: %v", err)
+	}
+
+	if !strings.Contains(string(stored.Config), "${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}") {
+		t.Fatalf("stored template config = %s, want unresolved placeholder", stored.Config)
+	}
+}
+
+func TestServiceRejectsUnsetTemplateEnvironmentVariable(t *testing.T) {
+	t.Parallel()
+
+	missingName := "BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2"
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	orchestrator := newFakeOrchestrator()
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	if _, err := templates.Create(ctx, template.CreateRequest{
+		Key:    "missing-substitution-template",
+		Config: json.RawMessage(`{"actions":{"init":[{"run":"echo ${{ env.BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2 }}"}]}}`),
+	}); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	_, err := service.Create(ctx, environment.CreateRequest{TemplateKey: "missing-substitution-template"})
+	if !errors.Is(err, failure.ErrInvalid) || !strings.Contains(err.Error(), missingName) {
+		t.Fatalf("create environment error = %v, want invalid missing env var", err)
+	}
+
+	if orchestrator.launches != 0 {
+		t.Fatalf("orchestration launches = %d, want 0", orchestrator.launches)
+	}
+
+	page, err := service.List(ctx, 20, "")
+	if err != nil {
+		t.Fatalf("list environments: %v", err)
+	}
+
+	if len(page.Entries) != 0 {
+		t.Fatalf("environment count = %d, want 0", len(page.Entries))
 	}
 }
 
@@ -177,9 +268,10 @@ func openDB(t *testing.T) *database.Client {
 }
 
 type fakeOrchestrator struct {
-	launches int
-	removes  int
-	vms      map[string]fc.VM
+	launches  int
+	removes   int
+	templates []fc.Template
+	vms       map[string]fc.VM
 }
 
 func newFakeOrchestrator() *fakeOrchestrator {
@@ -188,6 +280,8 @@ func newFakeOrchestrator() *fakeOrchestrator {
 
 func (o *fakeOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
 	o.launches++
+	o.templates = append(o.templates, fc.Template{ID: req.Template.ID, Key: req.Template.Key, Config: append(json.RawMessage(nil), req.Template.Config...)})
+
 	vm := fc.VM{
 		EnvironmentID: req.EnvironmentID,
 		VMID:          "vm-" + req.EnvironmentID,
