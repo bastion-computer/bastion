@@ -10,6 +10,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.1
+	golang.org/x/crypto v0.45.0
 	golang.org/x/sys v0.38.0
 )
 
@@ -68,7 +69,6 @@ require (
 	go.mongodb.org/mongo-driver v1.8.3 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	golang.org/x/arch v0.20.0 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect

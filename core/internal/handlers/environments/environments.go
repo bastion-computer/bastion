@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sync"
 
@@ -12,16 +13,40 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/handlers"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
 )
+
+// SSHRunner runs an upgraded API SSH stream.
+type SSHRunner func(context.Context, io.ReadWriteCloser, environment.SSHConnection, sshtunnel.Request) error
+
+// Option configures environment route handlers.
+type Option func(*Handler)
 
 // Handler handles environment route requests.
 type Handler struct {
 	environments *environment.Service
+	sshRunner    SSHRunner
 }
 
 // NewHandler returns an environment route handler.
-func NewHandler(service *environment.Service) Handler {
-	return Handler{environments: service}
+func NewHandler(service *environment.Service, opts ...Option) Handler {
+	h := Handler{environments: service, sshRunner: runSSHSession}
+	for _, opt := range opts {
+		opt(&h)
+	}
+
+	if h.sshRunner == nil {
+		h.sshRunner = runSSHSession
+	}
+
+	return h
+}
+
+// WithSSHRunner overrides the SSH stream runner.
+func WithSSHRunner(runner SSHRunner) Option {
+	return func(h *Handler) {
+		h.sshRunner = runner
+	}
 }
 
 // Create handles environment creation requests.

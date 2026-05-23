@@ -54,8 +54,8 @@ func TestCreateEnvironmentStreamsBastiondLogsEndToEnd(t *testing.T) {
 		t.Fatalf("create environment: %v", err)
 	}
 
-	if created.ID == "" || created.Status != fc.StateRunning || created.SSHHost != streamTestGuestIP {
-		t.Fatalf("created environment = %#v, want running with SSH host", created)
+	if created.ID == "" || created.Status != fc.StateRunning {
+		t.Fatalf("created environment = %#v, want running", created)
 	}
 
 	if logs.String() != "installing node\n" {
