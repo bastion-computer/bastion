@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	fc "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )

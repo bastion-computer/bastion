@@ -12,75 +12,79 @@ import (
 	"time"
 )
 
-func TestCheckFirecrackerReportsAvailableSystem(t *testing.T) {
+func TestCheckCloudHypervisorReportsAvailableSystem(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
-	store := newFirecrackerStore(dataDir)
-	writeTestFile(t, filepath.Join(store.dir, firecrackerName), 0o755)
-	writeTestFile(t, filepath.Join(store.dir, jailerName), 0o755)
-	writeTestFile(t, filepath.Join(store.dir, "vmlinux-6.1.155"), 0o600)
-	writeTestFile(t, filepath.Join(store.dir, "ubuntu-24.04.squashfs"), 0o600)
-	writeTestFile(t, filepath.Join(store.dir, "ubuntu-24.04.ext4"), 0o600)
+	store := newCloudHypervisorStore(dataDir)
+	writeTestFile(t, filepath.Join(store.dir, cloudHypervisorName), 0o755)
+	writeTestFile(t, filepath.Join(store.dir, ubuntuNobleKernelName), 0o600)
+	writeTestFile(t, filepath.Join(store.dir, ubuntuNobleInitramfsName), 0o600)
+	writeTestFile(t, filepath.Join(store.dir, "ubuntu-24.04.img"), 0o600)
 	writeTestFile(t, filepath.Join(store.dir, "ubuntu-24.04.id_rsa"), 0o600)
 
-	tree := checkFirecracker(testProbe(dataDir, utilityAvailability(firecrackerUtilities...)))
+	tree := checkCloudHypervisor(testProbe(dataDir, utilityAvailability(cloudHypervisorUtilities...)))
 	if !tree.Available() {
 		t.Fatalf("tree available = false, want true: %#v", tree)
 	}
 }
 
-func TestAddFirecrackerInstallsMissingUtilitiesWithFlag(t *testing.T) {
+func TestAddCloudHypervisorInstallsMissingUtilitiesWithFlag(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
 	available := utilityAvailability(
 		packageManagerApt,
 		utilitySSHKeygen,
-		utilityMkfsExt4,
-		utilityE2fsck,
+		utilitySSH,
+		utilitySCP,
+		utilityMkfsVFat,
+		utilityMCopy,
+		utilityIP,
+		utilityIPTables,
+		utilitySysctl,
 		utilityChown,
 		utilitySudo,
 	)
 	runner := &recordRunner{afterRun: func(name string, args []string) {
-		if name == packageManagerApt && slices.Contains(args, packageSquashfs) {
-			available.add(utilityUnsquashfs)
+		if name == packageManagerApt && slices.Contains(args, packageQEMUUtils) {
+			available.add(utilityQEMUImg)
 		}
 	}}
 
 	var out bytes.Buffer
 
-	result, err := AddFirecracker(context.Background(), AddFirecrackerOptions{
+	result, err := AddCloudHypervisor(context.Background(), AddCloudHypervisorOptions{
 		DataDir:       dataDir,
 		WithUtilities: true,
 		Out:           &out,
 		Runner:        runner,
 		downloader:    fakeDownloader{},
-		rootFSBuilder: fakeRootFSBuilder{},
+		imageBuilder:  fakeImageBuilder{},
 		probe:         testProbe(dataDir, available),
 		euid:          func() int { return 0 },
 	})
 	if err != nil {
-		t.Fatalf("add firecracker: %v", err)
+		t.Fatalf("add cloud-hypervisor: %v", err)
 	}
 
-	if result.Path != filepath.Join(dataDir, firecrackerName) {
-		t.Fatalf("result path = %q, want firecracker store", result.Path)
+	if result.Path != filepath.Join(dataDir, cloudHypervisorName) {
+		t.Fatalf("result path = %q, want cloud-hypervisor store", result.Path)
 	}
 
-	if !runner.ran(packageManagerApt, "install", "-y", packageSquashfs) {
-		t.Fatalf("runner commands = %#v, want apt-get install squashfs-tools", runner.commands)
+	if !runner.ran(packageManagerApt, "install", "-y", packageQEMUUtils) {
+		t.Fatalf("runner commands = %#v, want apt-get install qemu-utils", runner.commands)
 	}
 
-	manifest := newFirecrackerStore(dataDir).readManifest()
-	if manifest.RootFSExt4 != "ubuntu-24.04.ext4" || manifest.SSHKey != "ubuntu-24.04.id_rsa" {
+	manifest := newCloudHypervisorStore(dataDir).readManifest()
+	if manifest.CloudHypervisor != cloudHypervisorName || manifest.Kernel != ubuntuNobleKernelName || manifest.Initramfs != ubuntuNobleInitramfsName || manifest.RootFSImage != "ubuntu-24.04.img" || manifest.SSHKey != "ubuntu-24.04.id_rsa" {
 		t.Fatalf("unexpected manifest: %#v", manifest)
 	}
 
 	for _, want := range []string{
 		"bastion: checking host requirements",
 		"bastion: checking required utilities",
-		"bastion: installing missing utilities: unsquashfs",
+		"bastion: installing missing utilities: qemu-img",
 		"bastion: creating data directory",
 		"bastion: writing manifest",
 	} {
@@ -90,21 +94,26 @@ func TestAddFirecrackerInstallsMissingUtilitiesWithFlag(t *testing.T) {
 	}
 }
 
-func TestAddFirecrackerPromptsBeforeInstallingUtilities(t *testing.T) {
+func TestAddCloudHypervisorPromptsBeforeInstallingUtilities(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
 	available := utilityAvailability(
 		utilitySSHKeygen,
-		utilityMkfsExt4,
-		utilityE2fsck,
+		utilitySSH,
+		utilitySCP,
+		utilityMkfsVFat,
+		utilityMCopy,
+		utilityIP,
+		utilityIPTables,
+		utilitySysctl,
 		utilityChown,
 		utilitySudo,
 	)
 
 	var out bytes.Buffer
 
-	_, err := AddFirecracker(context.Background(), AddFirecrackerOptions{
+	_, err := AddCloudHypervisor(context.Background(), AddCloudHypervisorOptions{
 		DataDir: dataDir,
 		In:      strings.NewReader("n\n"),
 		Out:     &out,
@@ -113,7 +122,7 @@ func TestAddFirecrackerPromptsBeforeInstallingUtilities(t *testing.T) {
 		euid:    func() int { return 0 },
 	})
 	if err == nil {
-		t.Fatal("add firecracker error = nil, want error")
+		t.Fatal("add cloud-hypervisor error = nil, want error")
 	}
 
 	if !strings.Contains(out.String(), "install missing utilities? [y/N]") {
@@ -121,21 +130,21 @@ func TestAddFirecrackerPromptsBeforeInstallingUtilities(t *testing.T) {
 	}
 }
 
-func TestRemoveFirecrackerOnlyRemovesFirecrackerData(t *testing.T) {
+func TestRemoveCloudHypervisorOnlyRemovesCloudHypervisorData(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
-	store := newFirecrackerStore(dataDir)
-	writeTestFile(t, filepath.Join(store.dir, firecrackerName), 0o755)
+	store := newCloudHypervisorStore(dataDir)
+	writeTestFile(t, filepath.Join(store.dir, cloudHypervisorName), 0o755)
 	writeTestFile(t, filepath.Join(dataDir, "sqlite.db"), 0o600)
 
-	result, err := RemoveFirecracker(context.Background(), dataDir)
+	result, err := RemoveCloudHypervisor(context.Background(), dataDir)
 	if err != nil {
-		t.Fatalf("remove firecracker: %v", err)
+		t.Fatalf("remove cloud-hypervisor: %v", err)
 	}
 
 	if _, err := os.Stat(store.dir); !os.IsNotExist(err) {
-		t.Fatalf("firecracker dir stat error = %v, want not exist", err)
+		t.Fatalf("cloud-hypervisor dir stat error = %v, want not exist", err)
 	}
 
 	if _, err := os.Stat(filepath.Join(dataDir, "sqlite.db")); err != nil {
@@ -147,10 +156,10 @@ func TestRemoveFirecrackerOnlyRemovesFirecrackerData(t *testing.T) {
 	}
 }
 
-func TestFirecrackerExt4BuilderRunsRootfsCommands(t *testing.T) {
+func TestCloudHypervisorImageBuilderGeneratesSSHKey(t *testing.T) {
 	t.Parallel()
 
-	store := newFirecrackerStore(t.TempDir())
+	store := newCloudHypervisorStore(t.TempDir())
 	if err := store.ensure(); err != nil {
 		t.Fatalf("ensure store: %v", err)
 	}
@@ -170,64 +179,28 @@ func TestFirecrackerExt4BuilderRunsRootfsCommands(t *testing.T) {
 
 	var out bytes.Buffer
 
-	builder := firecrackerExt4Builder{runner: runner, out: &out, size: 1024}
+	builder := cloudHypervisorImageBuilderImpl{runner: runner, out: &out}
 
-	manifest, err := builder.build(context.Background(), store, firecrackerManifest{RootFSSquashfs: "ubuntu-24.04.squashfs"})
+	manifest, err := builder.build(context.Background(), store, cloudHypervisorManifest{Kernel: ubuntuNobleKernelName, Initramfs: ubuntuNobleInitramfsName, RootFSImage: "ubuntu-24.04.img"})
 	if err != nil {
-		t.Fatalf("build rootfs: %v", err)
+		t.Fatalf("build image: %v", err)
 	}
 
-	if manifest.RootFSExt4 != "ubuntu-24.04.ext4" || manifest.SSHKey != "ubuntu-24.04.id_rsa" {
-		t.Fatalf("unexpected manifest: %#v", manifest)
+	if manifest.SSHKey != "ubuntu-24.04.id_rsa" {
+		t.Fatalf("manifest SSH key = %q, want ubuntu-24.04.id_rsa", manifest.SSHKey)
 	}
 
-	for _, name := range []string{utilityUnsquashfs, utilitySSHKeygen, utilitySudo, utilityE2fsck} {
-		if !runner.ranName(name) {
-			t.Fatalf("runner commands = %#v, want command %q", runner.commands, name)
-		}
+	if !runner.ranName(utilitySSHKeygen) {
+		t.Fatalf("runner commands = %#v, want ssh-keygen", runner.commands)
 	}
 
-	if !runner.ranSudo(utilityMkfsExt4) {
-		t.Fatalf("runner commands = %#v, want sudo mkfs.ext4", runner.commands)
-	}
-
-	for _, want := range []string{
-		"bastion: extracting squashfs rootfs",
-		"bastion: generating SSH key",
-		"bastion: adding SSH key to rootfs",
-		"bastion: setting rootfs ownership",
-		"bastion: creating ext4 rootfs image",
-		"bastion: validating ext4 rootfs image",
-	} {
-		if !strings.Contains(out.String(), want) {
-			t.Fatalf("rootfs output missing %q:\n%s", want, out.String())
-		}
+	if !strings.Contains(out.String(), "bastion: generating SSH key") {
+		t.Fatalf("image output = %q", out.String())
 	}
 }
 
-func TestConfigureRootfsDNSLinksResolvConfToKernelAutoconfig(t *testing.T) {
-	t.Parallel()
-
-	workDir := t.TempDir()
-	resolvConf := filepath.Join(workDir, "etc", "resolv.conf")
-	writeTestFile(t, resolvConf, 0o644)
-
-	if err := configureRootfsDNS(workDir); err != nil {
-		t.Fatalf("configure rootfs DNS: %v", err)
-	}
-
-	target, err := os.Readlink(resolvConf)
-	if err != nil {
-		t.Fatalf("read rootfs resolv.conf link: %v", err)
-	}
-
-	if target != "/proc/net/pnp" {
-		t.Fatalf("rootfs resolv.conf target = %q, want /proc/net/pnp", target)
-	}
-}
-
-func testProbe(dataDir string, available *utilitySet) firecrackerProbe {
-	return firecrackerProbe{
+func testProbe(dataDir string, available *utilitySet) cloudHypervisorProbe {
+	return cloudHypervisorProbe{
 		dataDir:   dataDir,
 		osName:    linuxOS,
 		arch:      archX8664,
@@ -302,38 +275,28 @@ func (r *recordRunner) ranName(name string) bool {
 	return false
 }
 
-func (r *recordRunner) ranSudo(name string) bool {
-	for _, command := range r.commands {
-		if command.name == utilitySudo && len(command.args) > 0 && command.args[0] == name {
-			return true
-		}
-	}
-
-	return false
-}
-
 type fakeDownloader struct{}
 
-func (fakeDownloader) download(_ context.Context, _ firecrackerStore, arch string) (firecrackerManifest, error) {
-	return firecrackerManifest{
-		Version:        "v1.15.1",
-		Architecture:   arch,
-		Firecracker:    firecrackerName,
-		Jailer:         jailerName,
-		Kernel:         "vmlinux-6.1.155",
-		RootFSSquashfs: "ubuntu-24.04.squashfs",
-		CreatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
+func (fakeDownloader) download(_ context.Context, _ cloudHypervisorStore, arch string) (cloudHypervisorManifest, error) {
+	return cloudHypervisorManifest{
+		Version:         "v52.0",
+		Architecture:    arch,
+		CloudHypervisor: cloudHypervisorName,
+		Kernel:          ubuntuNobleKernelName,
+		Initramfs:       ubuntuNobleInitramfsName,
+		RootFSImage:     "ubuntu-24.04.img",
+		RootFSImageType: "Qcow2",
+		CreatedAt:       time.Now().UTC().Format(time.RFC3339Nano),
 	}, nil
 }
 
-type fakeRootFSBuilder struct{}
+type fakeImageBuilder struct{}
 
-func (fakeRootFSBuilder) build(
+func (fakeImageBuilder) build(
 	_ context.Context,
-	_ firecrackerStore,
-	manifest firecrackerManifest,
-) (firecrackerManifest, error) {
-	manifest.RootFSExt4 = "ubuntu-24.04.ext4"
+	_ cloudHypervisorStore,
+	manifest cloudHypervisorManifest,
+) (cloudHypervisorManifest, error) {
 	manifest.SSHKey = "ubuntu-24.04.id_rsa"
 
 	return manifest, nil

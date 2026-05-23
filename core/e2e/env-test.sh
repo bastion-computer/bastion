@@ -6,7 +6,7 @@ CORE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_DIR="$(cd "$CORE_DIR/.." && pwd)"
 
 BASTION="$CORE_DIR/tmp/bastion"
-API_URL="http://localhost:3148"
+API_URL="${BASTION_API_URL:-http://localhost:3148}"
 DATA_DIR="$REPO_DIR/.bastion"
 RUN_ID="e2e-env-$(date +%Y%m%d%H%M%S)-$$"
 
@@ -84,7 +84,7 @@ precheck() {
   fi
 
   if ! "$BASTION" system --data-dir "$DATA_DIR" check >/dev/null 2>&1; then
-    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' add firecracker"
+    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' add cloud-hypervisor"
   fi
 }
 

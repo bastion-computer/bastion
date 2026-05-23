@@ -11,23 +11,23 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/system"
 )
 
-const firecrackerDependency = "firecracker"
+const cloudHypervisorDependency = "cloud-hypervisor"
 
 type systemOptions struct {
-	dataDir           string
-	check             func(context.Context, string) system.Node
-	addFirecracker    func(context.Context, system.AddFirecrackerOptions) (system.Result, error)
-	removeFirecracker func(context.Context, string) (system.Result, error)
-	newRunner         func(io.Writer, io.Writer) system.Runner
+	dataDir               string
+	check                 func(context.Context, string) system.Node
+	addCloudHypervisor    func(context.Context, system.AddCloudHypervisorOptions) (system.Result, error)
+	removeCloudHypervisor func(context.Context, string) (system.Result, error)
+	newRunner             func(io.Writer, io.Writer) system.Runner
 }
 
 func newSystemCommand() *cobra.Command {
 	return newSystemCommandWithOptions(systemOptions{
-		dataDir:           config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
-		check:             system.Check,
-		addFirecracker:    system.AddFirecracker,
-		removeFirecracker: system.RemoveFirecracker,
-		newRunner:         defaultSystemRunner,
+		dataDir:               config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
+		check:                 system.Check,
+		addCloudHypervisor:    system.AddCloudHypervisor,
+		removeCloudHypervisor: system.RemoveCloudHypervisor,
+		newRunner:             defaultSystemRunner,
 	})
 }
 
@@ -36,12 +36,12 @@ func newSystemCommandWithOptions(opts systemOptions) *cobra.Command {
 		opts.check = system.Check
 	}
 
-	if opts.addFirecracker == nil {
-		opts.addFirecracker = system.AddFirecracker
+	if opts.addCloudHypervisor == nil {
+		opts.addCloudHypervisor = system.AddCloudHypervisor
 	}
 
-	if opts.removeFirecracker == nil {
-		opts.removeFirecracker = system.RemoveFirecracker
+	if opts.removeCloudHypervisor == nil {
+		opts.removeCloudHypervisor = system.RemoveCloudHypervisor
 	}
 
 	if opts.newRunner == nil {
@@ -93,17 +93,17 @@ func newSystemAddCommand(opts *systemOptions) *cobra.Command {
 		Use:   "add",
 		Short: "Add a host system dependency",
 	}
-	cmd.AddCommand(newSystemAddFirecrackerCommand(opts))
+	cmd.AddCommand(newSystemAddCloudHypervisorCommand(opts))
 
 	return cmd
 }
 
-func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
+func newSystemAddCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 	var withUtilities bool
 
 	cmd := &cobra.Command{
-		Use:   firecrackerDependency,
-		Short: "Install Firecracker system assets",
+		Use:   cloudHypervisorDependency,
+		Short: "Install Cloud Hypervisor system assets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dataDir, err := config.ExpandPath(opts.dataDir)
@@ -113,7 +113,7 @@ func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
 
 			runner := opts.newRunner(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
-			result, err := opts.addFirecracker(cmd.Context(), system.AddFirecrackerOptions{
+			result, err := opts.addCloudHypervisor(cmd.Context(), system.AddCloudHypervisorOptions{
 				DataDir:       dataDir,
 				WithUtilities: withUtilities,
 				In:            cmd.InOrStdin(),
@@ -124,7 +124,7 @@ func newSystemAddFirecrackerCommand(opts *systemOptions) *cobra.Command {
 				return err
 			}
 
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "installed firecracker system assets in %s\n", result.Path); err != nil {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "installed cloud-hypervisor system assets in %s\n", result.Path); err != nil {
 				return err
 			}
 
@@ -141,15 +141,15 @@ func newSystemRemoveCommand(opts *systemOptions) *cobra.Command {
 		Use:   "remove",
 		Short: "Remove a host system dependency",
 	}
-	cmd.AddCommand(newSystemRemoveFirecrackerCommand(opts))
+	cmd.AddCommand(newSystemRemoveCloudHypervisorCommand(opts))
 
 	return cmd
 }
 
-func newSystemRemoveFirecrackerCommand(opts *systemOptions) *cobra.Command {
+func newSystemRemoveCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   firecrackerDependency,
-		Short: "Remove Firecracker system assets",
+		Use:   cloudHypervisorDependency,
+		Short: "Remove Cloud Hypervisor system assets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dataDir, err := config.ExpandPath(opts.dataDir)
@@ -157,12 +157,12 @@ func newSystemRemoveFirecrackerCommand(opts *systemOptions) *cobra.Command {
 				return err
 			}
 
-			result, err := opts.removeFirecracker(cmd.Context(), dataDir)
+			result, err := opts.removeCloudHypervisor(cmd.Context(), dataDir)
 			if err != nil {
 				return err
 			}
 
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed firecracker system assets from %s\n", result.Path); err != nil {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed cloud-hypervisor system assets from %s\n", result.Path); err != nil {
 				return err
 			}
 

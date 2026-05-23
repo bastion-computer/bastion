@@ -14,9 +14,9 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/api"
 	hostclient "github.com/bastion-computer/bastion/core/internal/client"
+	fc "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"

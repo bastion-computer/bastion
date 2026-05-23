@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-const firecrackerDownloadBarWidth = 24
+const cloudHypervisorDownloadBarWidth = 24
 
-func logFirecrackerProgress(w io.Writer, format string, args ...any) error {
+func logCloudHypervisorProgress(w io.Writer, format string, args ...any) error {
 	if w == nil {
 		return nil
 	}
@@ -19,7 +19,7 @@ func logFirecrackerProgress(w io.Writer, format string, args ...any) error {
 	return err
 }
 
-type firecrackerDownloadProgress struct {
+type cloudHypervisorDownloadProgress struct {
 	out        io.Writer
 	name       string
 	total      int64
@@ -28,11 +28,11 @@ type firecrackerDownloadProgress struct {
 	lastRender time.Time
 }
 
-func newFirecrackerDownloadProgress(out io.Writer, name string, total int64) *firecrackerDownloadProgress {
-	return &firecrackerDownloadProgress{out: out, name: name, total: total}
+func newCloudHypervisorDownloadProgress(out io.Writer, name string, total int64) *cloudHypervisorDownloadProgress {
+	return &cloudHypervisorDownloadProgress{out: out, name: name, total: total}
 }
 
-func (p *firecrackerDownloadProgress) Write(contents []byte) (int, error) {
+func (p *cloudHypervisorDownloadProgress) Write(contents []byte) (int, error) {
 	p.downloaded += int64(len(contents))
 	if p.out == nil {
 		return len(contents), nil
@@ -48,7 +48,7 @@ func (p *firecrackerDownloadProgress) Write(contents []byte) (int, error) {
 	return len(contents), nil
 }
 
-func (p *firecrackerDownloadProgress) finish(done bool) error {
+func (p *cloudHypervisorDownloadProgress) finish(done bool) error {
 	if p.out == nil {
 		return nil
 	}
@@ -62,11 +62,11 @@ func (p *firecrackerDownloadProgress) finish(done bool) error {
 	return err
 }
 
-func (p *firecrackerDownloadProgress) complete() bool {
+func (p *cloudHypervisorDownloadProgress) complete() bool {
 	return p.total > 0 && p.downloaded >= p.total
 }
 
-func (p *firecrackerDownloadProgress) render(done bool) error {
+func (p *cloudHypervisorDownloadProgress) render(done bool) error {
 	p.started = true
 	p.lastRender = time.Now()
 
@@ -99,14 +99,14 @@ func (p *firecrackerDownloadProgress) render(done bool) error {
 }
 
 func downloadBar(percent float64) string {
-	filled := int(percent * firecrackerDownloadBarWidth)
-	filled = min(filled, firecrackerDownloadBarWidth)
+	filled := int(percent * cloudHypervisorDownloadBarWidth)
+	filled = min(filled, cloudHypervisorDownloadBarWidth)
 
-	if filled == firecrackerDownloadBarWidth {
-		return strings.Repeat("=", firecrackerDownloadBarWidth)
+	if filled == cloudHypervisorDownloadBarWidth {
+		return strings.Repeat("=", cloudHypervisorDownloadBarWidth)
 	}
 
-	return strings.Repeat("=", filled) + ">" + strings.Repeat(".", firecrackerDownloadBarWidth-filled-1)
+	return strings.Repeat("=", filled) + ">" + strings.Repeat(".", cloudHypervisorDownloadBarWidth-filled-1)
 }
 
 func formatBytes(size int64) string {

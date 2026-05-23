@@ -12,10 +12,10 @@ import (
 	"testing"
 )
 
-func TestFirecrackerHTTPDownloaderDoesNotApplyGlobalClientTimeout(t *testing.T) {
+func TestCloudHypervisorHTTPDownloaderDoesNotApplyGlobalClientTimeout(t *testing.T) {
 	t.Parallel()
 
-	downloader := firecrackerHTTPDownloader{}.withDefaults()
+	downloader := cloudHypervisorHTTPDownloader{}.withDefaults()
 	if downloader.client.Timeout != 0 {
 		t.Fatalf("client timeout = %s, want no global timeout for large asset downloads", downloader.client.Timeout)
 	}
@@ -34,10 +34,10 @@ func TestDownloadFileShowsProgressBar(t *testing.T) {
 
 	var out bytes.Buffer
 
-	downloader := firecrackerHTTPDownloader{client: server.Client(), out: &out}
+	downloader := cloudHypervisorHTTPDownloader{client: server.Client(), out: &out}
 	destination := filepath.Join(t.TempDir(), "asset.bin")
 
-	if err := downloader.downloadFile(context.Background(), server.URL, destination); err != nil {
+	if err := downloader.downloadFile(context.Background(), server.URL, destination, 0o640); err != nil {
 		t.Fatalf("download file: %v", err)
 	}
 

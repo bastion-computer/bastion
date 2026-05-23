@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	fc "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
-	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/schema"
 	"github.com/bastion-computer/bastion/core/internal/services"
 )
@@ -469,7 +469,7 @@ func (s *Service) saveVM(ctx context.Context, vm fc.VM) error {
 
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO environment_vms (
-  environment_id, vm_id, state, pid, env_dir, jailer_dir, socket_path, kernel_path, rootfs_path,
+  environment_id, vm_id, state, pid, env_dir, runtime_dir, socket_path, kernel_path, rootfs_path,
   tap_name, host_ip, guest_ip, guest_cidr, guest_mac, ssh_user, ssh_port, ssh_key_path,
   created_at, updated_at, last_error
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -478,7 +478,7 @@ ON CONFLICT(environment_id) DO UPDATE SET
   state = excluded.state,
   pid = excluded.pid,
   env_dir = excluded.env_dir,
-  jailer_dir = excluded.jailer_dir,
+  runtime_dir = excluded.runtime_dir,
   socket_path = excluded.socket_path,
   kernel_path = excluded.kernel_path,
   rootfs_path = excluded.rootfs_path,
@@ -492,7 +492,7 @@ ON CONFLICT(environment_id) DO UPDATE SET
   ssh_key_path = excluded.ssh_key_path,
   updated_at = excluded.updated_at,
   last_error = excluded.last_error
-`, vm.EnvironmentID, vm.VMID, vm.State, vm.PID, vm.EnvDir, vm.JailerDir, vm.SocketPath, vm.KernelPath, vm.RootfsPath, vm.TapName, vm.HostIP, vm.GuestIP, vm.GuestCIDR, vm.GuestMAC, vm.SSHUser, vm.SSHPort, vm.SSHKeyPath, fallbackTime(vm.CreatedAt), fallbackTime(vm.UpdatedAt), vm.LastError)
+`, vm.EnvironmentID, vm.VMID, vm.State, vm.PID, vm.EnvDir, vm.RuntimeDir, vm.SocketPath, vm.KernelPath, vm.RootfsPath, vm.TapName, vm.HostIP, vm.GuestIP, vm.GuestCIDR, vm.GuestMAC, vm.SSHUser, vm.SSHPort, vm.SSHKeyPath, fallbackTime(vm.CreatedAt), fallbackTime(vm.UpdatedAt), vm.LastError)
 	if err != nil {
 		return fmt.Errorf("save environment vm: %w", err)
 	}

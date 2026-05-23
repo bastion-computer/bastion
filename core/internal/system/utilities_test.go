@@ -11,7 +11,7 @@ func TestConfirmInstallUtilitiesAcceptsYes(t *testing.T) {
 
 	var out bytes.Buffer
 
-	confirmed, err := confirmInstallUtilities(false, strings.NewReader("yes\n"), &out, []string{utilityUnsquashfs})
+	confirmed, err := confirmInstallUtilities(false, strings.NewReader("yes\n"), &out, []string{utilityQEMUImg})
 	if err != nil {
 		t.Fatalf("confirm install: %v", err)
 	}
@@ -20,7 +20,7 @@ func TestConfirmInstallUtilitiesAcceptsYes(t *testing.T) {
 		t.Fatal("confirmed = false, want true")
 	}
 
-	if !strings.Contains(out.String(), "missing utilities: unsquashfs") {
+	if !strings.Contains(out.String(), "missing utilities: qemu-img") {
 		t.Fatalf("prompt output = %q", out.String())
 	}
 }
@@ -28,12 +28,12 @@ func TestConfirmInstallUtilitiesAcceptsYes(t *testing.T) {
 func TestPackagesForUtilitiesDeduplicatesPackages(t *testing.T) {
 	t.Parallel()
 
-	packages, err := packagesForUtilities(packageManagerApt, []string{utilityMkfsExt4, utilityE2fsck})
+	packages, err := packagesForUtilities(packageManagerApt, []string{utilitySSHKeygen, utilitySSH, utilitySCP})
 	if err != nil {
 		t.Fatalf("packages for utilities: %v", err)
 	}
 
-	if len(packages) != 1 || packages[0] != packageE2fsprogs {
-		t.Fatalf("packages = %#v, want e2fsprogs once", packages)
+	if len(packages) != 1 || packages[0] != packageOpenSSHDeb {
+		t.Fatalf("packages = %#v, want openssh-client once", packages)
 	}
 }

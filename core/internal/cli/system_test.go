@@ -19,7 +19,7 @@ func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: t.TempDir(),
 		check: func(context.Context, string) system.Node {
-			return system.Node{Name: "bastion", Children: []system.Node{{Name: firecrackerDependency, OK: false}}}
+			return system.Node{Name: "bastion", Children: []system.Node{{Name: cloudHypervisorDependency, OK: false}}}
 		},
 	})
 	cmd.SetOut(&out)
@@ -36,7 +36,7 @@ func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 	}
 }
 
-func TestSystemAddFirecrackerCommandPassesWithUtilitiesAndDataDir(t *testing.T) {
+func TestSystemAddCloudHypervisorCommandPassesWithUtilitiesAndDataDir(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -48,12 +48,12 @@ func TestSystemAddFirecrackerCommandPassesWithUtilitiesAndDataDir(t *testing.T) 
 	dataDir := t.TempDir()
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: "unused",
-		addFirecracker: func(_ context.Context, opts system.AddFirecrackerOptions) (system.Result, error) {
+		addCloudHypervisor: func(_ context.Context, opts system.AddCloudHypervisorOptions) (system.Result, error) {
 			gotDataDir = opts.DataDir
 			gotWithUtilities = opts.WithUtilities
 			gotRunner = opts.Runner
 
-			return system.Result{Path: opts.DataDir + "/firecracker"}, nil
+			return system.Result{Path: opts.DataDir + "/cloud-hypervisor"}, nil
 		},
 		newRunner: func(io.Writer, io.Writer) system.Runner {
 			return fakeCLIRunner{}
@@ -61,7 +61,7 @@ func TestSystemAddFirecrackerCommandPassesWithUtilitiesAndDataDir(t *testing.T) 
 	})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--data-dir", dataDir, "add", firecrackerDependency, "--with-utilities"})
+	cmd.SetArgs([]string{"--data-dir", dataDir, "add", cloudHypervisorDependency, "--with-utilities"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -80,7 +80,7 @@ func TestSystemAddFirecrackerCommandPassesWithUtilitiesAndDataDir(t *testing.T) 
 	}
 }
 
-func TestSystemRemoveFirecrackerCommandPrintsUtilityNote(t *testing.T) {
+func TestSystemRemoveCloudHypervisorCommandPrintsUtilityNote(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -91,18 +91,18 @@ func TestSystemRemoveFirecrackerCommandPrintsUtilityNote(t *testing.T) {
 	dataDir := t.TempDir()
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: "unused",
-		removeFirecracker: func(_ context.Context, dataDir string) (system.Result, error) {
+		removeCloudHypervisor: func(_ context.Context, dataDir string) (system.Result, error) {
 			gotDataDir = dataDir
 
 			return system.Result{
-				Path:  dataDir + "/firecracker",
-				Notes: []string{"system utilities installed for Firecracker were not removed"},
+				Path:  dataDir + "/cloud-hypervisor",
+				Notes: []string{"system utilities installed for Cloud Hypervisor were not removed"},
 			}, nil
 		},
 	})
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--data-dir", dataDir, "remove", firecrackerDependency})
+	cmd.SetArgs([]string{"--data-dir", dataDir, "remove", cloudHypervisorDependency})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -112,7 +112,7 @@ func TestSystemRemoveFirecrackerCommandPrintsUtilityNote(t *testing.T) {
 		t.Fatalf("data dir = %q, want %q", gotDataDir, dataDir)
 	}
 
-	if !strings.Contains(out.String(), "note: system utilities installed for Firecracker were not removed") {
+	if !strings.Contains(out.String(), "note: system utilities installed for Cloud Hypervisor were not removed") {
 		t.Fatalf("remove output = %q", out.String())
 	}
 }

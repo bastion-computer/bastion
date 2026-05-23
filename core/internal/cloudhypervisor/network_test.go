@@ -1,4 +1,4 @@
-package firecracker
+package cloudhypervisor
 
 import (
 	"context"
@@ -30,6 +30,24 @@ func TestPlanNetworkUsesAllocatedIndex(t *testing.T) {
 
 	if first.tapName == second.tapName {
 		t.Fatalf("tap names should still be environment-specific: %q", first.tapName)
+	}
+}
+
+func TestPlanNetworkUsesCustomPrefix(t *testing.T) {
+	t.Parallel()
+
+	prefix, err := parseVMNetworkPrefix("10.242")
+	if err != nil {
+		t.Fatalf("parse network prefix: %v", err)
+	}
+
+	plan, err := planNetworkWithPrefix("env_nested", 0, prefix)
+	if err != nil {
+		t.Fatalf("plan nested network: %v", err)
+	}
+
+	if plan.hostIP != "10.242.0.1" || plan.guestIP != "10.242.0.2" || plan.networkCIDR != "10.242.0.0/30" || plan.guestMAC != "06:00:0A:F2:00:02" {
+		t.Fatalf("nested network = %#v", plan)
 	}
 }
 

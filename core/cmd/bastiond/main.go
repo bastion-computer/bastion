@@ -16,8 +16,8 @@ import (
 	"github.com/spf13/cobra"
 
 	presetactions "github.com/bastion-computer/bastion/core/actions"
+	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/config"
-	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/logging"
 )
 
@@ -58,7 +58,7 @@ func newCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "bastiond",
-		Short:         "Run the privileged Bastion Firecracker daemon",
+		Short:         "Run the privileged Bastion Cloud Hypervisor daemon",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
@@ -96,9 +96,9 @@ func newCommand() *cobra.Command {
 				slog.String("log_level", logLevel),
 			)
 
-			manager := fc.NewManager(resolvedDataDir, vmUID, vmGID, logger)
+			manager := ch.NewManager(resolvedDataDir, vmUID, vmGID, logger)
 
-			return fc.RunServer(cmd.Context(), fc.ServerOptions{
+			return ch.RunServer(cmd.Context(), ch.ServerOptions{
 				SocketPath: socketPath,
 				SocketUID:  socketUID,
 				SocketGID:  socketGID,
@@ -111,8 +111,8 @@ func newCommand() *cobra.Command {
 	cmd.Flags().StringVar(&socketPath, "socket", socketPath, "Unix socket path")
 	cmd.Flags().IntVar(&socketUID, "socket-uid", socketUID, "UID that owns the bastiond Unix socket")
 	cmd.Flags().IntVar(&socketGID, "socket-gid", socketGID, "GID that owns the bastiond Unix socket")
-	cmd.Flags().IntVar(&vmUID, "vm-uid", vmUID, "UID used by jailer for Firecracker")
-	cmd.Flags().IntVar(&vmGID, "vm-gid", vmGID, "GID used by jailer for Firecracker")
+	cmd.Flags().IntVar(&vmUID, "vm-uid", vmUID, "UID used for VM-owned runtime files")
+	cmd.Flags().IntVar(&vmGID, "vm-gid", vmGID, "GID used for VM-owned runtime files")
 	cmd.Flags().StringVar(&logFormat, "log-format", logFormat, "log format: json or text")
 	cmd.Flags().StringVar(&logLevel, "log-level", logLevel, "minimum log level: debug, info, warn, or error")
 
