@@ -279,17 +279,6 @@ func (m Manager) defaultRouteInterface(ctx context.Context) (string, error) {
 	return "", errors.New("default route interface not found")
 }
 
-func ipNet(cidr string) (net.IPNet, error) {
-	ip, network, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return net.IPNet{}, err
-	}
-
-	network.IP = ip
-
-	return *network, nil
-}
-
 func waitForTCP(ctx context.Context, host string, port int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	address := net.JoinHostPort(host, strconv.Itoa(port))

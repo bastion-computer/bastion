@@ -254,6 +254,7 @@ func (m Manager) Remove(ctx context.Context, environmentID string) (VM, error) {
 	if vm.PID > 0 && processMatches(vm.PID, vm.VMID) {
 		_ = cloudHypervisorCall(ctx, vm.SocketPath, http.MethodPut, "/vm.shutdown", nil, nil)
 		_ = cloudHypervisorCall(ctx, vm.SocketPath, http.MethodPut, "/vmm.shutdown", nil, nil)
+
 		if err := terminateProcess(vm.PID, 10*time.Second); err != nil {
 			return VM{}, err
 		}
@@ -265,7 +266,6 @@ func (m Manager) Remove(ctx context.Context, environmentID string) (VM, error) {
 	return VM{EnvironmentID: environmentID, State: StateStopped, EnvDir: dir, UpdatedAt: now()}, nil
 }
 
-//nolint:funlen // Keeping the Cloud Hypervisor config together makes launch behavior easier to audit.
 func (m Manager) startMachine(
 	ctx context.Context,
 	environmentID string,
@@ -298,6 +298,7 @@ func (m Manager) startMachine(
 	}
 
 	socketPath := filepath.Join(runtimeBase, apiSocketName)
+
 	pid, err := startVMMProcess(workspace.assets.cloudHypervisor, socketPath, stdout, stderr)
 	if err != nil {
 		_ = os.Remove(runtimeBase)
@@ -472,7 +473,7 @@ func vmMemoryBytes() int64 {
 }
 
 func startVMMProcess(binaryPath, socketPath string, stdout, stderr *os.File) (int, error) {
-	cmd := exec.Command(binaryPath, "--api-socket", "path="+socketPath) //nolint:gosec // Binary path is resolved from the Cloud Hypervisor asset manifest.
+	cmd := exec.CommandContext(context.Background(), binaryPath, "--api-socket", "path="+socketPath) //nolint:gosec // Binary path is resolved from the Cloud Hypervisor asset manifest.
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -510,6 +511,7 @@ func waitForCloudHypervisorAPI(ctx context.Context, socketPath string, pid int, 
 
 func cloudHypervisorVMInfo(ctx context.Context, socketPath string) (cloudHypervisorInfo, error) {
 	var info cloudHypervisorInfo
+
 	err := cloudHypervisorCall(ctx, socketPath, http.MethodGet, "/vm.info", nil, &info)
 
 	return info, err
@@ -521,6 +523,7 @@ func cloudHypervisorCall(ctx context.Context, socketPath, method, path string, i
 	}
 
 	var body io.Reader
+
 	if in != nil {
 		contents, err := json.Marshal(in)
 		if err != nil {
@@ -566,7 +569,7 @@ func cloudHypervisorCall(ctx context.Context, socketPath, method, path string, i
 }
 
 func (m Manager) prepareCloudInit(ctx context.Context, environmentID string, workspace workspace, plan networkPlan) error {
-	publicKey, err := os.ReadFile(workspace.assets.sshKey + ".pub") //nolint:gosec // SSH key path is resolved from the Cloud Hypervisor asset manifest.
+	publicKey, err := os.ReadFile(workspace.assets.sshKey + ".pub")
 	if err != nil {
 		return fmt.Errorf("read SSH public key: %w", err)
 	}
@@ -600,6 +603,7 @@ func (m Manager) prepareCloudInit(ctx context.Context, environmentID string, wor
 
 	args := append([]string{"-oi", workspace.seedPath}, paths...)
 	args = append(args, "::")
+
 	if err := m.run(ctx, "mcopy", args...); err != nil {
 		return err
 	}

@@ -44,6 +44,7 @@ type githubAsset struct {
 
 func (d cloudHypervisorHTTPDownloader) download(ctx context.Context, store cloudHypervisorStore, arch string) (cloudHypervisorManifest, error) {
 	d = d.withDefaults()
+
 	if arch != archX8664 {
 		return cloudHypervisorManifest{}, fmt.Errorf("cloud-hypervisor setup supports %s hosts only, got %s", archX8664, arch)
 	}
@@ -116,6 +117,7 @@ func (d cloudHypervisorHTTPDownloader) downloadCloudHypervisor(
 	}
 
 	path := filepath.Join(store.dir, cloudHypervisorName)
+
 	if err := logCloudHypervisorProgress(d.out, "downloading Cloud Hypervisor %s", release.TagName); err != nil {
 		return err
 	}

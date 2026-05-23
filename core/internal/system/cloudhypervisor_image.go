@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,13 +22,15 @@ func (b cloudHypervisorImageBuilderImpl) build(
 	b = b.withDefaults()
 
 	if manifest.RootFSImage == "" {
-		return manifest, fmt.Errorf("cloud-hypervisor rootfs image is missing")
+		return manifest, errors.New("cloud-hypervisor rootfs image is missing")
 	}
+
 	if manifest.Kernel == "" {
-		return manifest, fmt.Errorf("cloud-hypervisor kernel is missing")
+		return manifest, errors.New("cloud-hypervisor kernel is missing")
 	}
+
 	if manifest.Initramfs == "" {
-		return manifest, fmt.Errorf("cloud-hypervisor initramfs is missing")
+		return manifest, errors.New("cloud-hypervisor initramfs is missing")
 	}
 
 	keyPath := filepath.Join(store.dir, "ubuntu-24.04.id_rsa")
