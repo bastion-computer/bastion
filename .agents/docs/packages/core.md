@@ -7,21 +7,21 @@ The core package lives in `core/` and builds the `bastion` and `bastiond` binari
 - `bastion start` runs the local host API service on `localhost:3148` by default.
 - The remaining `bastion` CLI commands call the host API service and print JSON responses.
 
-The `bastiond` binary runs privileged Firecracker runtime operations behind a Unix socket and should be started with `sudo bastiond`.
+The `bastiond` binary runs privileged Cloud Hypervisor runtime operations behind a Unix socket and should be started with `sudo bastiond`.
 
 ## Layout
 
 | Path | Purpose |
 | ---- | ------- |
 | `cmd/bastion` | Minimal CLI/API binary entrypoint. |
-| `cmd/bastiond` | Privileged Firecracker daemon entrypoint. |
+| `cmd/bastiond` | Privileged Cloud Hypervisor daemon entrypoint. |
 | `internal/cli` | Cobra command tree and CLI output handling. |
 | `internal/api` | Gin router assembly and HTTP server setup. Route definitions live here. |
 | `internal/client` | HTTP client used by CLI commands to call the host API. |
 | `internal/config` | Environment defaults and local path handling. |
 | `internal/database` | SQLite client setup, query helpers, transactions, and migration handling. |
 | `internal/failure` | Shared domain error sentinels mapped by the API layer. |
-| `internal/firecracker` | Firecracker runtime orchestration, bastiond Gin routes, Unix socket client, and per-environment VM state. |
+| `internal/cloudhypervisor` | Cloud Hypervisor runtime orchestration, bastiond Gin routes, Unix socket client, and per-environment VM state. |
 | `internal/handlers` | HTTP route handlers grouped by domain, plus shared handler helpers. Handlers adapt Gin requests to services. |
 | `internal/services` | Shared service-layer helpers and response types. |
 | `internal/services/template` | Template request/response types and persistence service. |
@@ -60,7 +60,7 @@ Local builds report `dev` from `internal/config.Version`. Release builds can inj
 
 The service uses Gin and wraps it in `http.Server` so timeouts and graceful shutdown remain explicit. `internal/api/server.go` owns route registration. Domain-specific handler packages under `internal/handlers` expose `NewHandler(service)` constructors and handler methods used by those routes.
 
-`bastiond` accepts `--data-dir`, `--socket`, `--socket-uid`, `--socket-gid`, `--vm-uid`, `--vm-gid`, `--log-format`, and `--log-level`. It also uses Gin, but listens on a Unix socket instead of TCP. Root-only Firecracker operations, TAP device setup, jailer launch, and VM cleanup belong in `internal/firecracker`; do not add runtime orchestration to `internal/system`, which is limited to `bastion system ...` host setup commands.
+`bastiond` accepts `--data-dir`, `--socket`, `--socket-uid`, `--socket-gid`, `--vm-uid`, `--vm-gid`, `--log-format`, and `--log-level`. It also uses Gin, but listens on a Unix socket instead of TCP. Root-only Cloud Hypervisor operations, TAP device setup, VMM launch, and VM cleanup belong in `internal/cloudhypervisor`; do not add runtime orchestration to `internal/system`, which is limited to `bastion system ...` host setup commands.
 
 ## Database
 

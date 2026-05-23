@@ -17,7 +17,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/api"
 	hostclient "github.com/bastion-computer/bastion/core/internal/client"
-	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
+	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 )
@@ -28,7 +28,7 @@ func TestCreateEnvironmentStreamsBastiondLogsEndToEnd(t *testing.T) {
 	t.Parallel()
 
 	socket := startFakeBastiond(t, func(w http.ResponseWriter, r *http.Request) {
-		var req fc.LaunchRequest
+		var req ch.LaunchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 
@@ -36,12 +36,12 @@ func TestCreateEnvironmentStreamsBastiondLogsEndToEnd(t *testing.T) {
 		}
 
 		streamBastiondLaunch(t, w,
-			fc.LaunchStreamEvent{Type: fc.StreamEventLog, Log: "installing node\n"},
-			fc.LaunchStreamEvent{Type: fc.StreamEventResult, VM: &fc.VM{EnvironmentID: req.EnvironmentID, State: fc.StateRunning, GuestIP: streamTestGuestIP, SSHUser: fc.SSHUser, SSHPort: fc.SSHPort}},
+			ch.LaunchStreamEvent{Type: ch.StreamEventLog, Log: "installing node\n"},
+			ch.LaunchStreamEvent{Type: ch.StreamEventResult, VM: &ch.VM{EnvironmentID: req.EnvironmentID, State: ch.StateRunning, GuestIP: streamTestGuestIP, SSHUser: ch.SSHUser, SSHPort: ch.SSHPort}},
 		)
-	}, fc.StateRunning)
+	}, ch.StateRunning)
 
-	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(fc.NewClient(socket)))
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(ch.NewClient(socket)))
 	createTemplate(t, router, "stream-template")
 
 	server := httptest.NewServer(router)
@@ -54,7 +54,7 @@ func TestCreateEnvironmentStreamsBastiondLogsEndToEnd(t *testing.T) {
 		t.Fatalf("create environment: %v", err)
 	}
 
-	if created.ID == "" || created.Status != fc.StateRunning {
+	if created.ID == "" || created.Status != ch.StateRunning {
 		t.Fatalf("created environment = %#v, want running", created)
 	}
 
@@ -68,7 +68,7 @@ func TestCreateEnvironmentClientCutoffAbortsBastiondLaunch(t *testing.T) {
 
 	cancelled := make(chan struct{})
 	socket := startFakeBastiond(t, func(w http.ResponseWriter, r *http.Request) {
-		streamBastiondLaunch(t, w, fc.LaunchStreamEvent{Type: fc.StreamEventLog, Log: "first log\n"})
+		streamBastiondLaunch(t, w, ch.LaunchStreamEvent{Type: ch.StreamEventLog, Log: "first log\n"})
 
 		select {
 		case <-r.Context().Done():
@@ -76,9 +76,9 @@ func TestCreateEnvironmentClientCutoffAbortsBastiondLaunch(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Errorf("bastiond launch context was not cancelled after client cutoff")
 		}
-	}, fc.StateError)
+	}, ch.StateError)
 
-	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(fc.NewClient(socket)))
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(ch.NewClient(socket)))
 	createTemplate(t, router, "cutoff-template")
 
 	server := httptest.NewServer(router)
@@ -153,12 +153,12 @@ func fakeBastiondHandler(launch http.HandlerFunc, state string) http.Handler {
 
 func writeFakeBastiondState(w http.ResponseWriter, r *http.Request, state string) {
 	environmentID := strings.TrimPrefix(r.URL.Path, "/v1/vms/")
-	vm := fc.VM{EnvironmentID: environmentID, State: state, GuestIP: streamTestGuestIP, SSHUser: fc.SSHUser, SSHPort: fc.SSHPort, LastError: "init aborted"}
+	vm := ch.VM{EnvironmentID: environmentID, State: state, GuestIP: streamTestGuestIP, SSHUser: ch.SSHUser, SSHPort: ch.SSHPort, LastError: "init aborted"}
 
 	_ = json.NewEncoder(w).Encode(vm)
 }
 
-func streamBastiondLaunch(t *testing.T, w http.ResponseWriter, events ...fc.LaunchStreamEvent) {
+func streamBastiondLaunch(t *testing.T, w http.ResponseWriter, events ...ch.LaunchStreamEvent) {
 	t.Helper()
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
@@ -190,7 +190,7 @@ func assertFailedEnvironmentRecorded(t *testing.T, handler http.Handler) {
 		var page services.Page[environment.Environment]
 		decode(t, res, &page)
 
-		if len(page.Entries) == 1 && page.Entries[0].Status == fc.StateError && page.Entries[0].LastError != "" {
+		if len(page.Entries) == 1 && page.Entries[0].Status == ch.StateError && page.Entries[0].LastError != "" {
 			return
 		}
 

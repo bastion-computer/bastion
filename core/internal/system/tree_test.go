@@ -13,7 +13,7 @@ func TestNodeRenderAggregatesChildStatus(t *testing.T) {
 		Name: bastionName,
 		Children: []Node{
 			{
-				Name: firecrackerName,
+				Name: cloudHypervisorName,
 				Children: []Node{
 					{Name: "host", OK: true},
 					{Name: "assets", OK: false},
@@ -30,7 +30,7 @@ func TestNodeRenderAggregatesChildStatus(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		"bastion [x]",
-		"└── firecracker [x]",
+		"└── cloud-hypervisor [x]",
 		"    ├── host [ok]",
 		"    └── assets [x]",
 	} {

@@ -1,5 +1,5 @@
-// Package firecracker orchestrates Firecracker microVM runtime state.
-package firecracker
+// Package cloudhypervisor orchestrates Cloud Hypervisor runtime state.
+package cloudhypervisor
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ const (
 	StateCreating = "creating"
 	// StateRunning means a VM is live and reachable.
 	StateRunning = "running"
-	// StatePaused means Firecracker reports the VM is paused.
+	// StatePaused means Cloud Hypervisor reports the VM is paused.
 	StatePaused = "paused"
 	// StateStopped means no live VM is present.
 	StateStopped = "stopped"
@@ -46,7 +46,7 @@ type Template struct {
 	Config json.RawMessage `json:"config"`
 }
 
-// LaunchRequest asks bastiond to launch a Firecracker VM for an environment.
+// LaunchRequest asks bastiond to launch a VM for an environment.
 type LaunchRequest struct {
 	EnvironmentID string    `json:"environmentId"`
 	Template      Template  `json:"template"`
@@ -69,9 +69,10 @@ type VM struct {
 	State         string `json:"state"`
 	PID           int    `json:"pid,omitempty"`
 	EnvDir        string `json:"envDir,omitempty"`
-	JailerDir     string `json:"jailerDir,omitempty"`
+	RuntimeDir    string `json:"runtimeDir,omitempty"`
 	SocketPath    string `json:"socketPath,omitempty"`
 	KernelPath    string `json:"kernelPath,omitempty"`
+	InitramfsPath string `json:"initramfsPath,omitempty"`
 	RootfsPath    string `json:"rootfsPath,omitempty"`
 	TapName       string `json:"tapName,omitempty"`
 	HostIP        string `json:"hostIp,omitempty"`

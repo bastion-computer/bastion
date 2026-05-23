@@ -15,68 +15,105 @@ const (
 	packageManagerDNF  = "dnf"
 	packageManagerYUM  = "yum"
 	packageManagerArch = "pacman"
-	packageSquashfs    = "squashfs-tools"
 	packageOpenSSH     = "openssh"
 	packageOpenSSHDeb  = "openssh-client"
 	packageOpenSSHRPM  = "openssh-clients"
-	packageE2fsprogs   = "e2fsprogs"
 	packageCoreutils   = "coreutils"
-	utilityUnsquashfs  = "unsquashfs"
+	packageDosfstools  = "dosfstools"
+	packageMtools      = "mtools"
+	packageQEMUUtils   = "qemu-utils"
+	packageQEMUImg     = "qemu-img"
+	packageIPRouteDeb  = "iproute2"
+	packageIPRouteRPM  = "iproute"
+	packageIPTables    = "iptables"
+	packageProcpsDeb   = "procps"
+	packageProcpsRPM   = "procps-ng"
 	utilitySSHKeygen   = "ssh-keygen"
-	utilityMkfsExt4    = "mkfs.ext4"
-	utilityE2fsck      = "e2fsck"
+	utilitySSH         = "ssh"
+	utilitySCP         = "scp"
+	utilityQEMUImg     = "qemu-img"
+	utilityMkfsVFat    = "mkfs.vfat"
+	utilityMCopy       = "mcopy"
+	utilityIP          = "ip"
+	utilityIPTables    = "iptables"
+	utilitySysctl      = "sysctl"
 	utilityChown       = "chown"
 	utilitySudo        = "sudo"
 )
 
-var firecrackerUtilities = []string{
-	utilityUnsquashfs,
+var cloudHypervisorUtilities = []string{
 	utilitySSHKeygen,
-	utilityMkfsExt4,
-	utilityE2fsck,
+	utilitySSH,
+	utilitySCP,
+	utilityQEMUImg,
+	utilityMkfsVFat,
+	utilityMCopy,
+	utilityIP,
+	utilityIPTables,
+	utilitySysctl,
 	utilityChown,
 	utilitySudo,
 }
 
 var utilityPackages = map[string]map[string]string{
 	packageManagerApt: {
-		utilityUnsquashfs: packageSquashfs,
-		utilitySSHKeygen:  packageOpenSSHDeb,
-		utilityMkfsExt4:   packageE2fsprogs,
-		utilityE2fsck:     packageE2fsprogs,
-		utilityChown:      packageCoreutils,
-		utilitySudo:       utilitySudo,
+		utilitySSHKeygen: packageOpenSSHDeb,
+		utilitySSH:       packageOpenSSHDeb,
+		utilitySCP:       packageOpenSSHDeb,
+		utilityQEMUImg:   packageQEMUUtils,
+		utilityMkfsVFat:  packageDosfstools,
+		utilityMCopy:     packageMtools,
+		utilityIP:        packageIPRouteDeb,
+		utilityIPTables:  packageIPTables,
+		utilitySysctl:    packageProcpsDeb,
+		utilityChown:     packageCoreutils,
+		utilitySudo:      utilitySudo,
 	},
 	packageManagerDNF: {
-		utilityUnsquashfs: packageSquashfs,
-		utilitySSHKeygen:  packageOpenSSHRPM,
-		utilityMkfsExt4:   packageE2fsprogs,
-		utilityE2fsck:     packageE2fsprogs,
-		utilityChown:      packageCoreutils,
-		utilitySudo:       utilitySudo,
+		utilitySSHKeygen: packageOpenSSHRPM,
+		utilitySSH:       packageOpenSSHRPM,
+		utilitySCP:       packageOpenSSHRPM,
+		utilityQEMUImg:   packageQEMUImg,
+		utilityMkfsVFat:  packageDosfstools,
+		utilityMCopy:     packageMtools,
+		utilityIP:        packageIPRouteRPM,
+		utilityIPTables:  packageIPTables,
+		utilitySysctl:    packageProcpsRPM,
+		utilityChown:     packageCoreutils,
+		utilitySudo:      utilitySudo,
 	},
 	packageManagerYUM: {
-		utilityUnsquashfs: packageSquashfs,
-		utilitySSHKeygen:  packageOpenSSHRPM,
-		utilityMkfsExt4:   packageE2fsprogs,
-		utilityE2fsck:     packageE2fsprogs,
-		utilityChown:      packageCoreutils,
-		utilitySudo:       utilitySudo,
+		utilitySSHKeygen: packageOpenSSHRPM,
+		utilitySSH:       packageOpenSSHRPM,
+		utilitySCP:       packageOpenSSHRPM,
+		utilityQEMUImg:   packageQEMUImg,
+		utilityMkfsVFat:  packageDosfstools,
+		utilityMCopy:     packageMtools,
+		utilityIP:        packageIPRouteRPM,
+		utilityIPTables:  packageIPTables,
+		utilitySysctl:    packageProcpsRPM,
+		utilityChown:     packageCoreutils,
+		utilitySudo:      utilitySudo,
 	},
 	packageManagerArch: {
-		utilityUnsquashfs: packageSquashfs,
-		utilitySSHKeygen:  packageOpenSSH,
-		utilityMkfsExt4:   packageE2fsprogs,
-		utilityE2fsck:     packageE2fsprogs,
-		utilityChown:      packageCoreutils,
-		utilitySudo:       utilitySudo,
+		utilitySSHKeygen: packageOpenSSH,
+		utilitySSH:       packageOpenSSH,
+		utilitySCP:       packageOpenSSH,
+		utilityQEMUImg:   packageQEMUImg,
+		utilityMkfsVFat:  packageDosfstools,
+		utilityMCopy:     packageMtools,
+		utilityIP:        packageIPRouteDeb,
+		utilityIPTables:  packageIPTables,
+		utilitySysctl:    packageProcpsRPM,
+		utilityChown:     packageCoreutils,
+		utilitySudo:      utilitySudo,
 	},
 }
 
-func firecrackerUtilitiesNode(lookPath func(string) (string, error)) Node {
-	children := make([]Node, 0, len(firecrackerUtilities))
+func cloudHypervisorUtilitiesNode(lookPath func(string) (string, error)) Node {
+	children := make([]Node, 0, len(cloudHypervisorUtilities))
 
-	for _, utility := range firecrackerUtilities {
+	for _, utility := range cloudHypervisorUtilities {
 		_, err := lookPath(utility)
 		children = append(children, Node{Name: utility, OK: err == nil})
 	}
@@ -84,12 +121,12 @@ func firecrackerUtilitiesNode(lookPath func(string) (string, error)) Node {
 	return Node{Name: "utilities", Children: children}
 }
 
-func ensureFirecrackerUtilities(ctx context.Context, opts AddFirecrackerOptions) error {
-	if err := logFirecrackerProgress(opts.Out, "checking required utilities"); err != nil {
+func ensureCloudHypervisorUtilities(ctx context.Context, opts AddCloudHypervisorOptions) error {
+	if err := logCloudHypervisorProgress(opts.Out, "checking required utilities"); err != nil {
 		return err
 	}
 
-	missing := missingFirecrackerUtilities(opts.probe.lookPath)
+	missing := missingCloudHypervisorUtilities(opts.probe.lookPath)
 	if len(missing) == 0 {
 		return nil
 	}
@@ -103,7 +140,7 @@ func ensureFirecrackerUtilities(ctx context.Context, opts AddFirecrackerOptions)
 		return fmt.Errorf("missing utilities: %s", strings.Join(missing, ", "))
 	}
 
-	if err := logFirecrackerProgress(opts.Out, "installing missing utilities: %s", strings.Join(missing, ", ")); err != nil {
+	if err := logCloudHypervisorProgress(opts.Out, "installing missing utilities: %s", strings.Join(missing, ", ")); err != nil {
 		return err
 	}
 
@@ -111,7 +148,7 @@ func ensureFirecrackerUtilities(ctx context.Context, opts AddFirecrackerOptions)
 		return err
 	}
 
-	missing = missingFirecrackerUtilities(opts.probe.lookPath)
+	missing = missingCloudHypervisorUtilities(opts.probe.lookPath)
 	if len(missing) > 0 {
 		return fmt.Errorf("missing utilities after install: %s", strings.Join(missing, ", "))
 	}
@@ -119,10 +156,10 @@ func ensureFirecrackerUtilities(ctx context.Context, opts AddFirecrackerOptions)
 	return nil
 }
 
-func missingFirecrackerUtilities(lookPath func(string) (string, error)) []string {
+func missingCloudHypervisorUtilities(lookPath func(string) (string, error)) []string {
 	missing := make([]string, 0)
 
-	for _, utility := range firecrackerUtilities {
+	for _, utility := range cloudHypervisorUtilities {
 		if _, err := lookPath(utility); err != nil {
 			missing = append(missing, utility)
 		}

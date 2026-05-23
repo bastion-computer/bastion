@@ -34,9 +34,9 @@ func TestExecRunnerPrefixesCommandOutput(t *testing.T) {
 func TestCommandOutputLabelUsesPrivilegedUtility(t *testing.T) {
 	t.Parallel()
 
-	got := commandOutputLabel(utilitySudo, []string{"/usr/sbin/mkfs.ext4", "-F", "rootfs.ext4"})
-	if got != utilityMkfsExt4 {
-		t.Fatalf("label = %q, want %q", got, utilityMkfsExt4)
+	got := commandOutputLabel(utilitySudo, []string{"/usr/bin/qemu-img", "resize", "rootfs.img", "20G"})
+	if got != utilityQEMUImg {
+		t.Fatalf("label = %q, want %q", got, utilityQEMUImg)
 	}
 }
 

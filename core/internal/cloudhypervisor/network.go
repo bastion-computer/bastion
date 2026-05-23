@@ -1,4 +1,4 @@
-package firecracker
+package cloudhypervisor
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"hash/fnv"
 	"io"
 	"net"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -17,7 +18,16 @@ import (
 	"time"
 )
 
-const bastionGuestCIDR = "10.241.%d.%d/30"
+const (
+	defaultVMNetworkPrefix = "10.241"
+	vmNetworkPrefixEnv     = "BASTION_VM_NETWORK_PREFIX"
+)
+
+type vmNetworkPrefix struct {
+	value  string
+	first  int
+	second int
+}
 
 type networkPlan struct {
 	tapName      string
@@ -32,6 +42,15 @@ type networkPlan struct {
 }
 
 func planNetwork(environmentID string, networkIndex int) (networkPlan, error) {
+	prefix, err := parseVMNetworkPrefix(os.Getenv(vmNetworkPrefixEnv))
+	if err != nil {
+		return networkPlan{}, err
+	}
+
+	return planNetworkWithPrefix(environmentID, networkIndex, prefix)
+}
+
+func planNetworkWithPrefix(environmentID string, networkIndex int, prefix vmNetworkPrefix) (networkPlan, error) {
 	if networkIndex < 0 || networkIndex >= NetworkIndexLimit {
 		return networkPlan{}, fmt.Errorf("network index %d out of range", networkIndex)
 	}
@@ -45,8 +64,8 @@ func planNetwork(environmentID string, networkIndex int) (networkPlan, error) {
 
 	third := networkIndex / 64
 	base := (networkIndex % 64) * 4
-	hostIP := fmt.Sprintf("10.241.%d.%d", third, base+1)
-	guestIP := fmt.Sprintf("10.241.%d.%d", third, base+2)
+	hostIP := fmt.Sprintf("%s.%d.%d", prefix.value, third, base+1)
+	guestIP := fmt.Sprintf("%s.%d.%d", prefix.value, third, base+2)
 
 	return networkPlan{
 		tapName:      tapName,
@@ -55,9 +74,45 @@ func planNetwork(environmentID string, networkIndex int) (networkPlan, error) {
 		hostCIDR:     hostIP + "/30",
 		guestIP:      guestIP,
 		guestCIDR:    guestIP + "/30",
-		guestMAC:     fmt.Sprintf("06:00:0A:F1:%02X:%02X", third, base+2),
-		networkCIDR:  fmt.Sprintf(bastionGuestCIDR, third, base),
+		guestMAC:     fmt.Sprintf("06:00:%02X:%02X:%02X:%02X", prefix.first, prefix.second, third, base+2),
+		networkCIDR:  fmt.Sprintf("%s.%d.%d/30", prefix.value, third, base),
 	}, nil
+}
+
+func parseVMNetworkPrefix(value string) (vmNetworkPrefix, error) {
+	if strings.TrimSpace(value) == "" {
+		value = defaultVMNetworkPrefix
+	}
+
+	firstText, secondText, ok := strings.Cut(value, ".")
+	if !ok || strings.Contains(secondText, ".") {
+		return vmNetworkPrefix{}, fmt.Errorf("%s must be an IPv4 /16 prefix like 10.241", vmNetworkPrefixEnv)
+	}
+
+	first, err := parseIPv4Octet(firstText)
+	if err != nil {
+		return vmNetworkPrefix{}, fmt.Errorf("%s first octet: %w", vmNetworkPrefixEnv, err)
+	}
+
+	second, err := parseIPv4Octet(secondText)
+	if err != nil {
+		return vmNetworkPrefix{}, fmt.Errorf("%s second octet: %w", vmNetworkPrefixEnv, err)
+	}
+
+	return vmNetworkPrefix{value: fmt.Sprintf("%d.%d", first, second), first: first, second: second}, nil
+}
+
+func parseIPv4Octet(value string) (int, error) {
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, err
+	}
+
+	if parsed < 0 || parsed > 255 {
+		return 0, fmt.Errorf("%d is out of range", parsed)
+	}
+
+	return parsed, nil
 }
 
 func (m Manager) setupTap(ctx context.Context, plan networkPlan) (networkPlan, error) {
@@ -222,17 +277,6 @@ func (m Manager) defaultRouteInterface(ctx context.Context) (string, error) {
 	}
 
 	return "", errors.New("default route interface not found")
-}
-
-func ipNet(cidr string) (net.IPNet, error) {
-	ip, network, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return net.IPNet{}, err
-	}
-
-	network.IP = ip
-
-	return *network, nil
 }
 
 func waitForTCP(ctx context.Context, host string, port int, timeout time.Duration) error {

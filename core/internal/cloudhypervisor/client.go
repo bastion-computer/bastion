@@ -1,4 +1,4 @@
-package firecracker
+package cloudhypervisor
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/failure"
 )
 
-// Client calls the privileged bastiond Firecracker runtime API over a Unix socket.
+// Client calls the privileged bastiond runtime API over a Unix socket.
 type Client struct {
 	socketPath string
 	http       *http.Client

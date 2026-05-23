@@ -6,9 +6,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bastion-computer/bastion/core/internal/api"
+	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/config"
 	"github.com/bastion-computer/bastion/core/internal/database"
-	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/logging"
 )
 
@@ -49,7 +49,7 @@ func newStartCommand() *cobra.Command {
 				slog.String("log_level", logLevel),
 			)
 
-			return api.Run(cmd.Context(), addr, db, logger, api.WithEnvironmentOrchestrator(fc.NewClient(bastiondSocket)))
+			return api.Run(cmd.Context(), addr, db, logger, api.WithEnvironmentOrchestrator(ch.NewClient(bastiondSocket)))
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", addr, "host API listen address")
