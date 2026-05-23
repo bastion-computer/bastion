@@ -5,18 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/api"
+	hostclient "github.com/bastion-computer/bastion/core/internal/client"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
+	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
 )
 
 func TestListRoutes(t *testing.T) {
@@ -101,6 +104,71 @@ func TestDeleteRoutes(t *testing.T) {
 	templateForEnv := createTemplate(t, router, "environment-delete-source")
 	env := createEnvironment(t, router, templateForEnv.Key)
 	assertDelete(t, router, "/v1/environments/"+env.ID)
+}
+
+func TestSSHRouteUpgradesAndRunsSSHRunner(t *testing.T) {
+	t.Parallel()
+
+	orchestrator := &sshRouteOrchestrator{vms: make(map[string]fc.VM)}
+	runnerCalled := make(chan struct {
+		connection environment.SSHConnection
+		req        sshtunnel.Request
+	}, 1)
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler),
+		api.WithEnvironmentOrchestrator(orchestrator),
+		api.WithEnvironmentSSHRunner(func(_ context.Context, stream io.ReadWriteCloser, connection environment.SSHConnection, req sshtunnel.Request) error {
+			runnerCalled <- struct {
+				connection environment.SSHConnection
+				req        sshtunnel.Request
+			}{connection: connection, req: req}
+
+			payload, err := json.Marshal(sshtunnel.ExitStatus{})
+			if err != nil {
+				return err
+			}
+
+			return sshtunnel.WriteFrame(stream, sshtunnel.FrameExit, payload)
+		}),
+	)
+	template := createTemplate(t, router, "ssh-route-template")
+	env := createEnvironment(t, router, template.Key)
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	stream, err := hostclient.New(server.URL).OpenSSH(context.Background(), env.ID, sshtunnel.Request{Command: []string{"true"}})
+	if err != nil {
+		t.Fatalf("open SSH stream: %v", err)
+	}
+	defer func() { _ = stream.Close() }()
+
+	frameType, payload, err := sshtunnel.ReadFrame(stream)
+	if err != nil {
+		t.Fatalf("read SSH frame: %v", err)
+	}
+
+	if frameType != sshtunnel.FrameExit {
+		t.Fatalf("frame type = %d, want exit", frameType)
+	}
+
+	var status sshtunnel.ExitStatus
+	if err := json.Unmarshal(payload, &status); err != nil {
+		t.Fatalf("decode exit status: %v", err)
+	}
+
+	if status.Code != 0 {
+		t.Fatalf("exit status = %d, want 0", status.Code)
+	}
+
+	got := <-runnerCalled
+	if got.connection.Host != "10.241.0.2" || got.connection.KeyPath != "/tmp/test.id_rsa" {
+		t.Fatalf("SSH connection = %#v, want private metadata", got.connection)
+	}
+
+	if len(got.req.Command) != 1 || got.req.Command[0] != "true" {
+		t.Fatalf("SSH request = %#v, want true command", got.req)
+	}
 }
 
 func newTestRouter(t *testing.T, logger *slog.Logger, opts ...api.RouterOption) http.Handler {
@@ -250,6 +318,40 @@ func (failedDependencyOrchestrator) State(_ context.Context, environmentID strin
 }
 
 func (failedDependencyOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
+	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+}
+
+type sshRouteOrchestrator struct {
+	vms map[string]fc.VM
+}
+
+func (o *sshRouteOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
+	vm := fc.VM{
+		EnvironmentID: req.EnvironmentID,
+		VMID:          "vm-" + req.EnvironmentID,
+		State:         fc.StateRunning,
+		GuestIP:       "10.241.0.2",
+		SSHUser:       fc.SSHUser,
+		SSHPort:       fc.SSHPort,
+		SSHKeyPath:    "/tmp/test.id_rsa",
+	}
+	o.vms[req.EnvironmentID] = vm
+
+	return vm, nil
+}
+
+func (o *sshRouteOrchestrator) State(_ context.Context, environmentID string) (fc.VM, error) {
+	vm, ok := o.vms[environmentID]
+	if !ok {
+		return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+	}
+
+	return vm, nil
+}
+
+func (o *sshRouteOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
+	delete(o.vms, environmentID)
+
 	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
 }
 

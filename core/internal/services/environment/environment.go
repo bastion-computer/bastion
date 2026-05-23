@@ -25,10 +25,20 @@ type Environment struct {
 	CreatedAt  string `json:"createdAt"`
 	UpdatedAt  string `json:"updatedAt"`
 	LastError  string `json:"lastError,omitempty"`
-	SSHHost    string `json:"sshHost,omitempty"`
-	SSHPort    int    `json:"sshPort,omitempty"`
-	SSHUser    string `json:"sshUser,omitempty"`
-	SSHKeyPath string `json:"sshKeyPath,omitempty"`
+}
+
+// SSHConnection contains private connection metadata for API-managed SSH.
+type SSHConnection struct {
+	Host    string
+	Port    int
+	User    string
+	KeyPath string
+}
+
+type environmentRecord struct {
+	Environment
+	SSHConnection
+	VMLastError string
 }
 
 // CreateRequest contains the fields needed to create an environment.
@@ -198,12 +208,12 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (services.
 	entries := make([]Environment, 0, limit+1)
 
 	for rows.Next() {
-		environment, err := scanEnvironment(rows)
+		record, err := scanEnvironmentRecord(rows)
 		if err != nil {
 			return services.Page[Environment]{}, fmt.Errorf("scan environment: %w", err)
 		}
 
-		entries = append(entries, environment)
+		entries = append(entries, record.Environment)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -234,6 +244,42 @@ func (s *Service) Get(ctx context.Context, environmentID string) (Environment, e
 	}
 
 	return s.reconcile(ctx, environment)
+}
+
+// SSHConnection returns private SSH connection metadata for an environment.
+func (s *Service) SSHConnection(ctx context.Context, environmentID string) (SSHConnection, error) {
+	environment, err := s.Get(ctx, environmentID)
+	if err != nil {
+		return SSHConnection{}, err
+	}
+
+	if environment.Status != fc.StateRunning && environment.Status != fc.StatePaused {
+		return SSHConnection{}, fmt.Errorf("%w: environment status is %q, want running", failure.ErrFailedDependency, environment.Status)
+	}
+
+	record, err := s.getRecord(ctx, environment.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SSHConnection{}, fmt.Errorf("%w: environment not found", failure.ErrNotFound)
+	}
+
+	if err != nil {
+		return SSHConnection{}, fmt.Errorf("get environment ssh metadata: %w", err)
+	}
+
+	connection := record.SSHConnection
+	if connection.Port == 0 {
+		connection.Port = fc.SSHPort
+	}
+
+	if connection.User == "" {
+		connection.User = fc.SSHUser
+	}
+
+	if connection.Host == "" || connection.KeyPath == "" {
+		return SSHConnection{}, fmt.Errorf("%w: environment does not have SSH connection metadata", failure.ErrFailedDependency)
+	}
+
+	return connection, nil
 }
 
 // Remove deletes an environment and returns the removed record.
@@ -299,9 +345,18 @@ func (s *Service) resolveTemplate(ctx context.Context, templateID, templateKey s
 }
 
 func (s *Service) get(ctx context.Context, environmentID string) (Environment, error) {
+	record, err := s.getRecord(ctx, environmentID)
+	if err != nil {
+		return Environment{}, err
+	}
+
+	return record.Environment, nil
+}
+
+func (s *Service) getRecord(ctx context.Context, environmentID string) (environmentRecord, error) {
 	row := s.db.QueryRowContext(ctx, environmentSelectQuery()+` WHERE e.id = ?`, environmentID)
 
-	return scanEnvironment(row)
+	return scanEnvironmentRecord(row)
 }
 
 func (s *Service) reconcile(ctx context.Context, environment Environment) (Environment, error) {
@@ -429,9 +484,9 @@ type rowScanner interface {
 	Scan(...any) error
 }
 
-func scanEnvironment(row rowScanner) (Environment, error) {
+func scanEnvironmentRecord(row rowScanner) (environmentRecord, error) {
 	var (
-		environment Environment
+		record      environmentRecord
 		sshHost     sql.NullString
 		sshPort     sql.NullInt64
 		sshUser     sql.NullString
@@ -440,31 +495,34 @@ func scanEnvironment(row rowScanner) (Environment, error) {
 	)
 
 	if err := row.Scan(
-		&environment.ID,
-		&environment.Status,
-		&environment.TemplateID,
-		&environment.CreatedAt,
-		&environment.UpdatedAt,
-		&environment.LastError,
+		&record.ID,
+		&record.Status,
+		&record.TemplateID,
+		&record.CreatedAt,
+		&record.UpdatedAt,
+		&record.LastError,
 		&sshHost,
 		&sshPort,
 		&sshUser,
 		&sshKeyPath,
 		&vmLastError,
 	); err != nil {
-		return Environment{}, err
+		return environmentRecord{}, err
 	}
 
-	environment.SSHHost = nullString(sshHost)
-	environment.SSHPort = int(sshPort.Int64)
-	environment.SSHUser = nullString(sshUser)
-	environment.SSHKeyPath = nullString(sshKeyPath)
+	record.SSHConnection = SSHConnection{
+		Host:    nullString(sshHost),
+		Port:    int(sshPort.Int64),
+		User:    nullString(sshUser),
+		KeyPath: nullString(sshKeyPath),
+	}
+	record.VMLastError = nullString(vmLastError)
 
-	if environment.LastError == "" {
-		environment.LastError = nullString(vmLastError)
+	if record.LastError == "" {
+		record.LastError = record.VMLastError
 	}
 
-	return environment, nil
+	return record, nil
 }
 
 func nullString(value sql.NullString) string {

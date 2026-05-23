@@ -2,12 +2,15 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -16,6 +19,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
+	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
 )
 
 // Client wraps HTTP access to the Bastion API.
@@ -177,6 +181,67 @@ func (c *Client) RemoveEnvironment(ctx context.Context, id string) (environment.
 	return out, c.do(ctx, http.MethodDelete, "/v1/environments/"+url.PathEscape(id), nil, &out)
 }
 
+// OpenSSH opens an upgraded API SSH tunnel for an environment.
+func (c *Client) OpenSSH(ctx context.Context, id string, tunnelReq sshtunnel.Request) (io.ReadWriteCloser, error) {
+	contents, err := json.Marshal(tunnelReq)
+	if err != nil {
+		return nil, fmt.Errorf("encode request: %w", err)
+	}
+
+	target, err := url.Parse(c.baseURL + "/v1/environments/" + url.PathEscape(id) + "/ssh")
+	if err != nil {
+		return nil, fmt.Errorf("parse host API URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(contents))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", sshtunnel.Protocol)
+
+	conn, err := dialHTTP(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := req.Write(conn); err != nil {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("write SSH upgrade request: %w", err)
+	}
+
+	reader := bufio.NewReader(conn)
+
+	res, err := http.ReadResponse(reader, req)
+	if err != nil {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("read SSH upgrade response: %w", err)
+	}
+
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		defer func() { _ = res.Body.Close() }()
+		defer func() { _ = conn.Close() }()
+
+		if res.StatusCode >= http.StatusBadRequest {
+			return nil, decodeHostStatusError(res)
+		}
+
+		return nil, fmt.Errorf("host API returned %s, want %d Switching Protocols", res.Status, http.StatusSwitchingProtocols)
+	}
+
+	if !strings.EqualFold(res.Header.Get("Upgrade"), sshtunnel.Protocol) {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("host API returned unexpected SSH upgrade protocol %q", res.Header.Get("Upgrade"))
+	}
+
+	return &upgradedConn{Conn: conn, reader: reader}, nil
+}
+
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
 	var body io.Reader
 
@@ -264,4 +329,56 @@ func resourcePath(path, id, key string) (string, error) {
 	default:
 		return "", errors.New("specify exactly one of id or key")
 	}
+}
+
+func dialHTTP(ctx context.Context, target *url.URL) (net.Conn, error) {
+	host := target.Hostname()
+
+	port := target.Port()
+	if port == "" {
+		switch target.Scheme {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		}
+	}
+
+	addr := net.JoinHostPort(host, port)
+
+	dialer := net.Dialer{}
+
+	switch target.Scheme {
+	case "http":
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			return nil, fmt.Errorf("dial host API: %w", err)
+		}
+
+		return conn, nil
+	case "https":
+		tlsDialer := tls.Dialer{NetDialer: &dialer, Config: &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}}
+
+		conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			return nil, fmt.Errorf("dial host API: %w", err)
+		}
+
+		return conn, nil
+	default:
+		return nil, fmt.Errorf("unsupported host API scheme %q", target.Scheme)
+	}
+}
+
+type upgradedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *upgradedConn) Read(p []byte) (int, error) {
+	if c.reader.Buffered() > 0 {
+		return c.reader.Read(p)
+	}
+
+	return c.Conn.Read(p)
 }

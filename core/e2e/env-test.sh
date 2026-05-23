@@ -287,7 +287,7 @@ run_env_substitution_case() {
 
   ssh_env "$env_id" test -s /opt/bastion-e2e-env/home
   ssh_env "$env_id" grep -q '^/' /opt/bastion-e2e-env/home
-  if ssh_env "$env_id" grep -F -q '${{ env.HOME }}' /opt/bastion-e2e-env/home; then
+  if ssh_env "$env_id" "grep -F -q '\${{ env.HOME }}' /opt/bastion-e2e-env/home" 2>/dev/null; then
     fail "environment variable placeholder was not substituted in $env_id"
   fi
 

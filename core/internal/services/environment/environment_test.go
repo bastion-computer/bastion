@@ -88,7 +88,7 @@ func TestServicePersistsLaunchVMFailure(t *testing.T) {
 	}
 
 	got := page.Entries[0]
-	if got.Status != fc.StateError || got.LastError != orchestrator.err.Error() || got.SSHHost != testGuestIP {
+	if got.Status != fc.StateError || got.LastError != orchestrator.err.Error() {
 		t.Fatalf("failed environment = %#v, want persisted vm failure", got)
 	}
 }
@@ -199,7 +199,7 @@ func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates 
 		t.Fatalf("create environment: %v", err)
 	}
 
-	if created.ID == "" || created.Status != "running" || created.TemplateID != createdTemplate.ID || created.SSHHost != testGuestIP {
+	if created.ID == "" || created.Status != "running" || created.TemplateID != createdTemplate.ID {
 		t.Fatalf("unexpected created environment: %#v", created)
 	}
 
@@ -208,7 +208,7 @@ func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates 
 		t.Fatalf("marshal created environment: %v", err)
 	}
 
-	if strings.Contains(string(encoded), "vmId") || strings.Contains(string(encoded), "runtimeState") {
+	if strings.Contains(string(encoded), "vmId") || strings.Contains(string(encoded), "runtimeState") || strings.Contains(string(encoded), "sshHost") || strings.Contains(string(encoded), "sshKeyPath") {
 		t.Fatalf("created environment exposes internal runtime fields: %s", encoded)
 	}
 
@@ -236,8 +236,17 @@ func assertEnvironmentGet(ctx context.Context, t *testing.T, service *environmen
 		t.Fatalf("get environment: %v", err)
 	}
 
-	if got.ID != want.ID || got.TemplateID != want.TemplateID || got.SSHKeyPath != "/tmp/test.id_rsa" {
+	if got.ID != want.ID || got.TemplateID != want.TemplateID {
 		t.Fatalf("unexpected environment: %#v", got)
+	}
+
+	connection, err := service.SSHConnection(ctx, want.ID)
+	if err != nil {
+		t.Fatalf("get environment SSH connection: %v", err)
+	}
+
+	if connection.Host != testGuestIP || connection.KeyPath != "/tmp/test.id_rsa" {
+		t.Fatalf("unexpected SSH connection metadata: %#v", connection)
 	}
 }
 
@@ -249,7 +258,7 @@ func assertEnvironmentRemove(ctx context.Context, t *testing.T, service *environ
 		t.Fatalf("remove environment: %v", err)
 	}
 
-	if removed.ID != id || removed.Status != "removed" || removed.SSHHost != "" {
+	if removed.ID != id || removed.Status != "removed" {
 		t.Fatalf("unexpected removed environment: %#v", removed)
 	}
 }

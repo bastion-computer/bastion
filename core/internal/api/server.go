@@ -35,6 +35,7 @@ func NewServer(addr string, db *database.Client, logger *slog.Logger, opts ...Ro
 
 type routerConfig struct {
 	environmentOrchestrator environment.Orchestrator
+	environmentSSHRunner    environments.SSHRunner
 }
 
 // RouterOption configures the Bastion API router.
@@ -44,6 +45,13 @@ type RouterOption func(*routerConfig)
 func WithEnvironmentOrchestrator(orchestrator environment.Orchestrator) RouterOption {
 	return func(cfg *routerConfig) {
 		cfg.environmentOrchestrator = orchestrator
+	}
+}
+
+// WithEnvironmentSSHRunner configures the environment SSH stream runner.
+func WithEnvironmentSSHRunner(runner environments.SSHRunner) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.environmentSSHRunner = runner
 	}
 }
 
@@ -71,10 +79,14 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 	templateRoutes.DELETE("/:id", templateHandler.RemoveByID)
 	templateRoutes.DELETE("/by-key/:key", templateHandler.RemoveByKey)
 
-	environmentHandler := environments.NewHandler(environment.NewService(db, environment.WithOrchestrator(cfg.environmentOrchestrator)))
+	environmentHandler := environments.NewHandler(
+		environment.NewService(db, environment.WithOrchestrator(cfg.environmentOrchestrator)),
+		environments.WithSSHRunner(cfg.environmentSSHRunner),
+	)
 	environmentRoutes := v1.Group("/environments")
 	environmentRoutes.POST("", environmentHandler.Create)
 	environmentRoutes.GET("", environmentHandler.List)
+	environmentRoutes.POST("/:id/ssh", environmentHandler.SSH)
 	environmentRoutes.GET("/:id", environmentHandler.Get)
 	environmentRoutes.DELETE("/:id", environmentHandler.Remove)
 
