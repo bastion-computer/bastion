@@ -68,6 +68,7 @@ Core stores persistent data in SQLite at `<data-dir>/sqlite.db`.
 
 - The default data directory is `~/.bastion`.
 - The development data directory is `.bastion` via the Air configuration.
+- `bastion start` owns creating the top-level data directory; `bastiond` waits for it at startup and must not create it first.
 - Tests use `:memory:` and run the same migrations as local development.
 
 SQL migrations live in `core/internal/migrations` and are embedded into the Go binary. `internal/database.Open()` runs pending migrations automatically before the API starts serving. If migrations fail, startup fails rather than serving against a partially migrated schema.

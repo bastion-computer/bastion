@@ -1,6 +1,7 @@
 package actions_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,5 +56,38 @@ func TestSeedDoesNotOverwriteExistingPresetAction(t *testing.T) {
 
 	if string(contents) != "custom\n" {
 		t.Fatalf("manifest was overwritten: %q", contents)
+	}
+}
+
+func TestSeedRequiresExistingDataDir(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "missing")
+
+	err := actions.Seed(dataDir)
+	if err == nil {
+		t.Fatal("seed actions error = nil, want missing data dir error")
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("seed actions error = %v, want not exist", err)
+	}
+
+	if _, statErr := os.Stat(dataDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("data dir stat error = %v, want not exist", statErr)
+	}
+}
+
+func TestSeedRejectsDataDirFile(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "data")
+	if err := os.WriteFile(dataDir, []byte("not a dir"), 0o600); err != nil {
+		t.Fatalf("write data dir file: %v", err)
+	}
+
+	err := actions.Seed(dataDir)
+	if err == nil {
+		t.Fatal("seed actions error = nil, want non-directory data dir error")
 	}
 }
