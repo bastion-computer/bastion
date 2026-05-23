@@ -94,7 +94,7 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	if err := m.prepareCloudInit(ctx, workspace, plan); err != nil {
+	if err := m.prepareCloudInit(ctx, req.EnvironmentID, workspace, plan); err != nil {
 		_ = m.cleanupTap(context.Background(), plan)
 		_ = os.RemoveAll(workspace.dir)
 
@@ -565,15 +565,18 @@ func cloudHypervisorCall(ctx context.Context, socketPath, method, path string, i
 	return nil
 }
 
-func (m Manager) prepareCloudInit(ctx context.Context, workspace workspace, plan networkPlan) error {
+func (m Manager) prepareCloudInit(ctx context.Context, environmentID string, workspace workspace, plan networkPlan) error {
 	publicKey, err := os.ReadFile(workspace.assets.sshKey + ".pub") //nolint:gosec // SSH key path is resolved from the Cloud Hypervisor asset manifest.
 	if err != nil {
 		return fmt.Errorf("read SSH public key: %w", err)
 	}
 
+	vmID := shortID(environmentID)
+	hostname := "bastion-" + strings.TrimPrefix(vmID, "vm-")
+
 	files := map[string]string{
 		"user-data":      cloudInitUserData(strings.TrimSpace(string(publicKey))),
-		"meta-data":      cloudInitMetaData(shortID(workspace.dir)),
+		"meta-data":      cloudInitMetaData(vmID, hostname),
 		"network-config": cloudInitNetworkConfig(plan),
 	}
 
@@ -623,8 +626,8 @@ runcmd:
 `, publicKey)
 }
 
-func cloudInitMetaData(id string) string {
-	return fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", id, id)
+func cloudInitMetaData(instanceID, hostname string) string {
+	return fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", instanceID, hostname)
 }
 
 func cloudInitNetworkConfig(plan networkPlan) string {
