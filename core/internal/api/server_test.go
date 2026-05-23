@@ -14,7 +14,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/api"
 	hostclient "github.com/bastion-computer/bastion/core/internal/client"
-	fc "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
+	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services"
@@ -167,7 +167,7 @@ func TestDeleteRoutes(t *testing.T) {
 func TestSSHRouteUpgradesAndRunsSSHRunner(t *testing.T) {
 	t.Parallel()
 
-	orchestrator := &sshRouteOrchestrator{vms: make(map[string]fc.VM)}
+	orchestrator := &sshRouteOrchestrator{vms: make(map[string]ch.VM)}
 	runnerCalled := make(chan struct {
 		connection environment.SSHConnection
 		req        sshtunnel.Request
@@ -362,35 +362,35 @@ func decode(t *testing.T, res *httptest.ResponseRecorder, value any) {
 
 type failedDependencyOrchestrator struct{}
 
-func (failedDependencyOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
-	return fc.VM{
+func (failedDependencyOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
+	return ch.VM{
 		EnvironmentID: req.EnvironmentID,
 		VMID:          "vm-" + req.EnvironmentID,
-		State:         fc.StateError,
+		State:         ch.StateError,
 		LastError:     "init action 2 failed",
 	}, fmt.Errorf("%w: bastiond returned 424 Failed Dependency: init action 2 failed", failure.ErrFailedDependency)
 }
 
-func (failedDependencyOrchestrator) State(_ context.Context, environmentID string) (fc.VM, error) {
-	return fc.VM{EnvironmentID: environmentID, State: fc.StateError, LastError: "init action 2 failed"}, nil
+func (failedDependencyOrchestrator) State(_ context.Context, environmentID string) (ch.VM, error) {
+	return ch.VM{EnvironmentID: environmentID, State: ch.StateError, LastError: "init action 2 failed"}, nil
 }
 
-func (failedDependencyOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
-	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+func (failedDependencyOrchestrator) Remove(_ context.Context, environmentID string) (ch.VM, error) {
+	return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil
 }
 
 type sshRouteOrchestrator struct {
-	vms map[string]fc.VM
+	vms map[string]ch.VM
 }
 
-func (o *sshRouteOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
-	vm := fc.VM{
+func (o *sshRouteOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
+	vm := ch.VM{
 		EnvironmentID: req.EnvironmentID,
 		VMID:          "vm-" + req.EnvironmentID,
-		State:         fc.StateRunning,
+		State:         ch.StateRunning,
 		GuestIP:       "10.241.0.2",
-		SSHUser:       fc.SSHUser,
-		SSHPort:       fc.SSHPort,
+		SSHUser:       ch.SSHUser,
+		SSHPort:       ch.SSHPort,
 		SSHKeyPath:    "/tmp/test.id_rsa",
 	}
 	o.vms[req.EnvironmentID] = vm
@@ -398,19 +398,19 @@ func (o *sshRouteOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (
 	return vm, nil
 }
 
-func (o *sshRouteOrchestrator) State(_ context.Context, environmentID string) (fc.VM, error) {
+func (o *sshRouteOrchestrator) State(_ context.Context, environmentID string) (ch.VM, error) {
 	vm, ok := o.vms[environmentID]
 	if !ok {
-		return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+		return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil
 	}
 
 	return vm, nil
 }
 
-func (o *sshRouteOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
+func (o *sshRouteOrchestrator) Remove(_ context.Context, environmentID string) (ch.VM, error) {
 	delete(o.vms, environmentID)
 
-	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+	return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil
 }
 
 func TestHealthRoute(t *testing.T) {

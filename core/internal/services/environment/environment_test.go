@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	fc "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
+	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
@@ -53,7 +53,7 @@ func TestServiceReconcileRejectsEmptyRuntimeState(t *testing.T) {
 	ctx := context.Background()
 
 	created := createEnvironmentFromTemplate(ctx, t, templates, service)
-	orchestrator.vms[created.ID] = fc.VM{EnvironmentID: created.ID}
+	orchestrator.vms[created.ID] = ch.VM{EnvironmentID: created.ID}
 
 	_, err := service.Get(ctx, created.ID)
 	if err == nil || !strings.Contains(err.Error(), "empty runtime state") {
@@ -92,7 +92,7 @@ func TestServicePersistsLaunchVMFailure(t *testing.T) {
 	}
 
 	got := page.Entries[0]
-	if got.Status != fc.StateError || got.LastError != orchestrator.err.Error() {
+	if got.Status != ch.StateError || got.LastError != orchestrator.err.Error() {
 		t.Fatalf("failed environment = %#v, want persisted vm failure", got)
 	}
 }
@@ -369,25 +369,25 @@ func openDB(t *testing.T) *database.Client {
 type fakeOrchestrator struct {
 	launches  int
 	removes   int
-	templates []fc.Template
-	vms       map[string]fc.VM
+	templates []ch.Template
+	vms       map[string]ch.VM
 }
 
 func newFakeOrchestrator() *fakeOrchestrator {
-	return &fakeOrchestrator{vms: make(map[string]fc.VM)}
+	return &fakeOrchestrator{vms: make(map[string]ch.VM)}
 }
 
-func (o *fakeOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
+func (o *fakeOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
 	o.launches++
-	o.templates = append(o.templates, fc.Template{ID: req.Template.ID, Key: req.Template.Key, Config: append(json.RawMessage(nil), req.Template.Config...)})
+	o.templates = append(o.templates, ch.Template{ID: req.Template.ID, Key: req.Template.Key, Config: append(json.RawMessage(nil), req.Template.Config...)})
 
-	vm := fc.VM{
+	vm := ch.VM{
 		EnvironmentID: req.EnvironmentID,
 		VMID:          "vm-" + req.EnvironmentID,
-		State:         fc.StateRunning,
+		State:         ch.StateRunning,
 		GuestIP:       testGuestIP,
-		SSHUser:       fc.SSHUser,
-		SSHPort:       fc.SSHPort,
+		SSHUser:       ch.SSHUser,
+		SSHPort:       ch.SSHPort,
 		SSHKeyPath:    "/tmp/test.id_rsa",
 		CreatedAt:     testVMTime,
 		UpdatedAt:     testVMTime,
@@ -397,35 +397,35 @@ func (o *fakeOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.V
 	return vm, nil
 }
 
-func (o *fakeOrchestrator) State(_ context.Context, environmentID string) (fc.VM, error) {
+func (o *fakeOrchestrator) State(_ context.Context, environmentID string) (ch.VM, error) {
 	vm, ok := o.vms[environmentID]
 	if !ok {
-		return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+		return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil
 	}
 
 	return vm, nil
 }
 
-func (o *fakeOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
+func (o *fakeOrchestrator) Remove(_ context.Context, environmentID string) (ch.VM, error) {
 	o.removes++
 	delete(o.vms, environmentID)
 
-	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+	return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil
 }
 
 type failingLaunchOrchestrator struct {
 	err error
-	vm  fc.VM
+	vm  ch.VM
 }
 
-func (o *failingLaunchOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
-	o.vm = fc.VM{
+func (o *failingLaunchOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
+	o.vm = ch.VM{
 		EnvironmentID: req.EnvironmentID,
 		VMID:          "vm-" + req.EnvironmentID,
-		State:         fc.StateError,
+		State:         ch.StateError,
 		GuestIP:       testGuestIP,
-		SSHUser:       fc.SSHUser,
-		SSHPort:       fc.SSHPort,
+		SSHUser:       ch.SSHUser,
+		SSHPort:       ch.SSHPort,
 		SSHKeyPath:    "/tmp/test.id_rsa",
 		CreatedAt:     testVMTime,
 		UpdatedAt:     testVMTime,
@@ -435,10 +435,10 @@ func (o *failingLaunchOrchestrator) Launch(_ context.Context, req fc.LaunchReque
 	return o.vm, o.err
 }
 
-func (o *failingLaunchOrchestrator) State(_ context.Context, _ string) (fc.VM, error) {
+func (o *failingLaunchOrchestrator) State(_ context.Context, _ string) (ch.VM, error) {
 	return o.vm, nil
 }
 
-func (o *failingLaunchOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
-	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped}, nil
+func (o *failingLaunchOrchestrator) Remove(_ context.Context, environmentID string) (ch.VM, error) {
+	return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil
 }

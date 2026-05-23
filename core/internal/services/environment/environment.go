@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	fc "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
+	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/schema"
@@ -69,9 +69,9 @@ type CreateStreamEvent struct {
 
 // Orchestrator launches, reconciles, and removes environment VMs.
 type Orchestrator interface {
-	Launch(context.Context, fc.LaunchRequest) (fc.VM, error)
-	State(context.Context, string) (fc.VM, error)
-	Remove(context.Context, string) (fc.VM, error)
+	Launch(context.Context, ch.LaunchRequest) (ch.VM, error)
+	State(context.Context, string) (ch.VM, error)
+	Remove(context.Context, string) (ch.VM, error)
 }
 
 // Option configures the environment service.
@@ -134,15 +134,15 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	}
 
 	now := services.Now()
-	environment := Environment{ID: environmentID, Status: fc.StateCreating, TemplateID: template.ID, Tags: copyTags(req.Tags), CreatedAt: now, UpdatedAt: now}
+	environment := Environment{ID: environmentID, Status: ch.StateCreating, TemplateID: template.ID, Tags: copyTags(req.Tags), CreatedAt: now, UpdatedAt: now}
 
 	if err := s.createRecord(ctx, environment); err != nil {
 		return Environment{}, err
 	}
 
-	vm, err := s.orchestrator.Launch(ctx, fc.LaunchRequest{
+	vm, err := s.orchestrator.Launch(ctx, ch.LaunchRequest{
 		EnvironmentID: environment.ID,
-		Template: fc.Template{
+		Template: ch.Template{
 			ID:     template.ID,
 			Key:    template.Key,
 			Config: template.Config,
@@ -162,7 +162,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 
 	if err := s.saveVM(ctx, vm); err != nil {
 		_, _ = s.orchestrator.Remove(context.Background(), environment.ID)
-		_ = s.updateStatus(ctx, environment.ID, fc.StateError, err.Error())
+		_ = s.updateStatus(ctx, environment.ID, ch.StateError, err.Error())
 
 		return Environment{}, err
 	}
@@ -311,7 +311,7 @@ func (s *Service) SSHConnection(ctx context.Context, environmentID string) (SSHC
 		return SSHConnection{}, err
 	}
 
-	if environment.Status != fc.StateRunning && environment.Status != fc.StatePaused {
+	if environment.Status != ch.StateRunning && environment.Status != ch.StatePaused {
 		return SSHConnection{}, fmt.Errorf("%w: environment status is %q, want running", failure.ErrFailedDependency, environment.Status)
 	}
 
@@ -326,11 +326,11 @@ func (s *Service) SSHConnection(ctx context.Context, environmentID string) (SSHC
 
 	connection := record.SSHConnection
 	if connection.Port == 0 {
-		connection.Port = fc.SSHPort
+		connection.Port = ch.SSHPort
 	}
 
 	if connection.User == "" {
-		connection.User = fc.SSHUser
+		connection.User = ch.SSHUser
 	}
 
 	if connection.Host == "" || connection.KeyPath == "" {
@@ -352,7 +352,7 @@ func (s *Service) Remove(ctx context.Context, environmentID string) (Environment
 	}
 
 	if _, err := s.orchestrator.Remove(ctx, environment.ID); err != nil {
-		_ = s.updateStatus(ctx, environment.ID, fc.StateError, err.Error())
+		_ = s.updateStatus(ctx, environment.ID, ch.StateError, err.Error())
 
 		return Environment{}, fmt.Errorf("remove environment vm: %w", err)
 	}
@@ -439,7 +439,7 @@ func (s *Service) reconcile(ctx context.Context, environment Environment) (Envir
 		return Environment{}, fmt.Errorf("reconcile environment vm: empty runtime state for environment %s", environment.ID)
 	}
 
-	if vm.State == fc.StateStopped {
+	if vm.State == ch.StateStopped {
 		if err := s.deleteVM(ctx, environment.ID); err != nil {
 			return Environment{}, err
 		}
@@ -462,7 +462,7 @@ func (s *Service) reconcile(ctx context.Context, environment Environment) (Envir
 	return s.get(ctx, environment.ID)
 }
 
-func (s *Service) saveVM(ctx context.Context, vm fc.VM) error {
+func (s *Service) saveVM(ctx context.Context, vm ch.VM) error {
 	if vm.EnvironmentID == "" {
 		return nil
 	}
@@ -500,13 +500,13 @@ ON CONFLICT(environment_id) DO UPDATE SET
 	return nil
 }
 
-func (s *Service) recordLaunchFailure(ctx context.Context, environmentID string, vm fc.VM, launchErr error) error {
+func (s *Service) recordLaunchFailure(ctx context.Context, environmentID string, vm ch.VM, launchErr error) error {
 	if vm.EnvironmentID == "" {
-		return s.updateStatus(ctx, environmentID, fc.StateError, launchErr.Error())
+		return s.updateStatus(ctx, environmentID, ch.StateError, launchErr.Error())
 	}
 
 	if vm.State == "" {
-		vm.State = fc.StateError
+		vm.State = ch.StateError
 	}
 
 	if vm.LastError == "" {
@@ -679,9 +679,9 @@ func nullString(value sql.NullString) string {
 	return value.String
 }
 
-func statusFromVM(vm fc.VM) string {
+func statusFromVM(vm ch.VM) string {
 	if vm.State == "" {
-		return fc.StateRunning
+		return ch.StateRunning
 	}
 
 	return vm.State
@@ -697,24 +697,24 @@ func fallbackTime(value string) string {
 
 type noopOrchestrator struct{}
 
-func (noopOrchestrator) Launch(_ context.Context, req fc.LaunchRequest) (fc.VM, error) {
+func (noopOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
 	now := services.Now()
 
-	return fc.VM{
+	return ch.VM{
 		EnvironmentID: req.EnvironmentID,
 		VMID:          req.EnvironmentID,
-		State:         fc.StateRunning,
-		SSHUser:       fc.SSHUser,
-		SSHPort:       fc.SSHPort,
+		State:         ch.StateRunning,
+		SSHUser:       ch.SSHUser,
+		SSHPort:       ch.SSHPort,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}, nil
 }
 
-func (noopOrchestrator) State(_ context.Context, environmentID string) (fc.VM, error) {
-	return fc.VM{EnvironmentID: environmentID, State: fc.StateRunning, SSHUser: fc.SSHUser, SSHPort: fc.SSHPort, UpdatedAt: services.Now()}, nil
+func (noopOrchestrator) State(_ context.Context, environmentID string) (ch.VM, error) {
+	return ch.VM{EnvironmentID: environmentID, State: ch.StateRunning, SSHUser: ch.SSHUser, SSHPort: ch.SSHPort, UpdatedAt: services.Now()}, nil
 }
 
-func (noopOrchestrator) Remove(_ context.Context, environmentID string) (fc.VM, error) {
-	return fc.VM{EnvironmentID: environmentID, State: fc.StateStopped, UpdatedAt: services.Now()}, nil
+func (noopOrchestrator) Remove(_ context.Context, environmentID string) (ch.VM, error) {
+	return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped, UpdatedAt: services.Now()}, nil
 }
