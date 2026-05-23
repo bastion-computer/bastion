@@ -183,6 +183,16 @@ preset_setup_node_config() {
   }'
 }
 
+env_substitution_config() {
+  jq -nc '{
+    actions: {
+      init: [
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-env\nprintf \"%s\\n\" \"${{ env.HOME }}\" > /opt/bastion-e2e-env/home"}
+      ]
+    }
+  }'
+}
+
 failing_action_config() {
   jq -nc '{
     actions: {
@@ -266,6 +276,24 @@ run_preset_setup_node_case() {
   log "preset setup_node case passed for $env_id"
 }
 
+run_env_substitution_case() {
+  local key="$RUN_ID-env-substitution"
+  local env_id
+
+  create_template "$key" "$(env_substitution_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" test -s /opt/bastion-e2e-env/home
+  ssh_env "$env_id" grep -q '^/' /opt/bastion-e2e-env/home
+  if ssh_env "$env_id" grep -F -q '${{ env.HOME }}' /opt/bastion-e2e-env/home; then
+    fail "environment variable placeholder was not substituted in $env_id"
+  fi
+
+  log "environment substitution case passed for $env_id"
+}
+
 run_failure_case() {
   local key="$RUN_ID-fails"
   local template_id
@@ -312,6 +340,7 @@ main() {
   log "starting environment e2e run $RUN_ID"
   assert_template_rejected
   run_basic_setup_case
+  run_env_substitution_case
   run_preset_setup_node_case
   run_node_docker_case
   run_failure_case

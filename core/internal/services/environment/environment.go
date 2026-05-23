@@ -13,6 +13,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
+	"github.com/bastion-computer/bastion/core/internal/schema"
 	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
@@ -99,6 +100,15 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	template, err := s.resolveTemplate(ctx, req.TemplateID, req.TemplateKey)
 	if err != nil {
 		return Environment{}, err
+	}
+
+	template.Config, err = substituteTemplateEnvironment(template.Config)
+	if err != nil {
+		return Environment{}, err
+	}
+
+	if err := schema.ValidateTemplateConfig(template.Config); err != nil {
+		return Environment{}, fmt.Errorf("%w: resolved template config does not match schema: %w", failure.ErrInvalid, err)
 	}
 
 	environmentID, err := services.GenerateID("env")
