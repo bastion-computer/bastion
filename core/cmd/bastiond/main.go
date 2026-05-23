@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +19,11 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/config"
 	fc "github.com/bastion-computer/bastion/core/internal/firecracker"
 	"github.com/bastion-computer/bastion/core/internal/logging"
+)
+
+const (
+	dataDirWaitTimeout  = 30 * time.Second
+	dataDirWaitInterval = 100 * time.Millisecond
 )
 
 func main() {
@@ -68,6 +74,10 @@ func newCommand() *cobra.Command {
 
 			resolvedDataDir, err := config.ExpandPath(dataDir)
 			if err != nil {
+				return err
+			}
+
+			if err := waitForDataDir(cmd.Context(), resolvedDataDir, dataDirWaitTimeout, dataDirWaitInterval); err != nil {
 				return err
 			}
 
@@ -131,4 +141,54 @@ func defaultDataDir() string {
 	}
 
 	return config.DefaultDataDir()
+}
+
+func waitForDataDir(ctx context.Context, dataDir string, timeout, interval time.Duration) error {
+	if dataDir == "" {
+		return errors.New("data dir is required")
+	}
+
+	if interval <= 0 {
+		interval = dataDirWaitInterval
+	}
+
+	if err := dataDirReady(dataDir); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return fmt.Errorf("timed out waiting %s for API to create data directory %s", timeout, dataDir)
+		case <-ticker.C:
+			if err := dataDirReady(dataDir); err == nil {
+				return nil
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+	}
+}
+
+func dataDirReady(dataDir string) error {
+	info, err := os.Stat(dataDir)
+	if err != nil {
+		return fmt.Errorf("stat data directory %s: %w", dataDir, err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("data directory %s is not a directory", dataDir)
+	}
+
+	return nil
 }

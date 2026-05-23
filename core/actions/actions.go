@@ -22,9 +22,24 @@ func Seed(dataDir string) error {
 		return errors.New("data dir is required")
 	}
 
+	if err := requireExistingDir(dataDir); err != nil {
+		return err
+	}
+
 	actionsDir := filepath.Join(dataDir, DirName)
-	if err := os.MkdirAll(actionsDir, 0o750); err != nil {
-		return fmt.Errorf("create actions data directory: %w", err)
+	if err := os.Mkdir(actionsDir, 0o750); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create actions data directory: %w", err)
+		}
+
+		info, statErr := os.Stat(actionsDir)
+		if statErr != nil {
+			return fmt.Errorf("stat actions data directory: %w", statErr)
+		}
+
+		if !info.IsDir() {
+			return fmt.Errorf("actions data path %s is not a directory", actionsDir)
+		}
 	}
 
 	entries, err := fs.ReadDir(files, ".")
@@ -49,6 +64,19 @@ func Seed(dataDir string) error {
 
 			return err
 		}
+	}
+
+	return nil
+}
+
+func requireExistingDir(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat data directory: %w", err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("data directory %s is not a directory", path)
 	}
 
 	return nil
