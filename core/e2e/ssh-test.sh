@@ -20,11 +20,6 @@ log() {
   printf '[ssh-test] %s\n' "$*"
 }
 
-skip() {
-  log "SKIP: $*"
-  exit 0
-}
-
 fail() {
   log "FAIL: $*" >&2
   exit 1
@@ -68,11 +63,11 @@ precheck() {
   fi
 
   if ! run_cli templates list >/dev/null 2>&1; then
-    skip "Bastion API is not reachable on $API_URL"
+    fail "Bastion API is not reachable on $API_URL; run mise dev:up"
   fi
 
   if ! "$BASTION" system --data-dir "$DATA_DIR" check >/dev/null 2>&1; then
-    skip "Bastion system check is not ok for $DATA_DIR"
+    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' add firecracker"
   fi
 }
 
