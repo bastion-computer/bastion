@@ -48,6 +48,7 @@ func TestCreateEnvironmentStreamsBastiondLogsEndToEnd(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	var logs bytes.Buffer
+
 	created, err := hostclient.New(server.URL).CreateEnvironment(context.Background(), environment.CreateRequest{TemplateKey: "stream-template", Logs: &logs})
 	if err != nil {
 		t.Fatalf("create environment: %v", err)
@@ -101,24 +102,19 @@ func startFakeBastiond(t *testing.T, launch http.HandlerFunc, state string) stri
 	t.Helper()
 
 	socket := filepath.Join(t.TempDir(), "bastiond.sock")
-	listener, err := net.Listen("unix", socket)
+
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socket)
 	if err != nil {
 		t.Fatalf("listen on fake bastiond socket: %v", err)
 	}
 
-	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/vms":
-			launch(w, r)
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/vms/"):
-			environmentID := strings.TrimPrefix(r.URL.Path, "/v1/vms/")
-			_ = json.NewEncoder(w).Encode(fc.VM{EnvironmentID: environmentID, State: state, GuestIP: streamTestGuestIP, SSHUser: fc.SSHUser, SSHPort: fc.SSHPort, LastError: "init aborted"})
-		default:
-			http.NotFound(w, r)
-		}
-	})}
+	server := &http.Server{
+		Handler:           fakeBastiondHandler(launch, state),
+		ReadHeaderTimeout: time.Second,
+	}
 
 	errCh := make(chan error, 1)
+
 	go func() {
 		err := server.Serve(listener)
 		if errors.Is(err, http.ErrServerClosed) {
@@ -133,6 +129,7 @@ func startFakeBastiond(t *testing.T, launch http.HandlerFunc, state string) stri
 		defer cancel()
 
 		_ = server.Shutdown(ctx)
+
 		if err := <-errCh; err != nil {
 			t.Errorf("fake bastiond server error: %v", err)
 		}
@@ -141,10 +138,31 @@ func startFakeBastiond(t *testing.T, launch http.HandlerFunc, state string) stri
 	return socket
 }
 
+func fakeBastiondHandler(launch http.HandlerFunc, state string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/vms":
+			launch(w, r)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/vms/"):
+			writeFakeBastiondState(w, r, state)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+func writeFakeBastiondState(w http.ResponseWriter, r *http.Request, state string) {
+	environmentID := strings.TrimPrefix(r.URL.Path, "/v1/vms/")
+	vm := fc.VM{EnvironmentID: environmentID, State: state, GuestIP: streamTestGuestIP, SSHUser: fc.SSHUser, SSHPort: fc.SSHPort, LastError: "init aborted"}
+
+	_ = json.NewEncoder(w).Encode(vm)
+}
+
 func streamBastiondLaunch(t *testing.T, w http.ResponseWriter, events ...fc.LaunchStreamEvent) {
 	t.Helper()
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
+
 	encoder := json.NewEncoder(w)
 	for _, event := range events {
 		if err := encoder.Encode(event); err != nil {
@@ -171,6 +189,7 @@ func assertFailedEnvironmentRecorded(t *testing.T, handler http.Handler) {
 
 		var page services.Page[environment.Environment]
 		decode(t, res, &page)
+
 		if len(page.Entries) == 1 && page.Entries[0].Status == fc.StateError && page.Entries[0].LastError != "" {
 			return
 		}

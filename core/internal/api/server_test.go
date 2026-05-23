@@ -66,6 +66,7 @@ func TestCreateEnvironmentForwardsFailedDependency(t *testing.T) {
 
 	var event environment.CreateStreamEvent
 	decode(t, res, &event)
+
 	if event.Type != environment.StreamEventError || event.Status != http.StatusFailedDependency || event.Error == "" {
 		t.Fatalf("create environment event = %#v, want failed dependency error event", event)
 	}
@@ -140,14 +141,14 @@ func createEnvironment(t *testing.T, handler http.Handler, templateKey string) e
 		t.Fatalf("create environment status = %d, want %d", res.Code, http.StatusOK)
 	}
 
-	var created environment.Environment
 	var event environment.CreateStreamEvent
 	decode(t, res, &event)
+
 	if event.Type != environment.StreamEventResult || event.Environment == nil {
 		t.Fatalf("create environment event = %#v, want result", event)
 	}
 
-	created = *event.Environment
+	created := *event.Environment
 
 	if created.Status != "running" {
 		t.Fatalf("created environment status = %q, want running", created.Status)

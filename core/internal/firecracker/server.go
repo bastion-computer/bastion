@@ -170,6 +170,7 @@ func NewRouter(manager Manager, logger *slog.Logger) *gin.Engine {
 		}
 
 		req.Logs = stream
+
 		vm, err := manager.Launch(launchCtx, req)
 		if err != nil {
 			_ = c.Error(err)

@@ -95,47 +95,67 @@ func (c *Client) CreateEnvironment(ctx context.Context, createReq environment.Cr
 		return out, decodeHostStatusError(res)
 	}
 
-	decoder := json.NewDecoder(res.Body)
+	return decodeCreateEnvironmentStream(json.NewDecoder(res.Body), createReq.Logs)
+}
+
+func decodeCreateEnvironmentStream(decoder *json.Decoder, logs io.Writer) (environment.Environment, error) {
+	var out environment.Environment
+
 	for {
 		var event environment.CreateStreamEvent
 		if err := decoder.Decode(&event); err != nil {
-			if err == io.EOF {
-				return out, fmt.Errorf("host API stream ended before environment creation completed")
-			}
-
-			return out, fmt.Errorf("decode host API stream: %w", err)
+			return out, createEnvironmentStreamDecodeError(err)
 		}
 
-		switch event.Type {
-		case environment.StreamEventLog:
-			if createReq.Logs == nil || event.Log == "" {
-				continue
-			}
-
-			if _, err := createReq.Logs.Write([]byte(event.Log)); err != nil {
-				return out, fmt.Errorf("stream environment init logs: %w", err)
-			}
-		case environment.StreamEventResult:
-			if event.Environment == nil {
-				return out, fmt.Errorf("host API stream result missing environment")
-			}
-
-			return *event.Environment, nil
-		case environment.StreamEventError:
-			status := event.Status
-			if status == 0 {
-				status = http.StatusInternalServerError
-			}
-
-			message := strings.TrimSpace(event.Error)
-			if message == "" {
-				message = "unknown error"
-			}
-
-			return out, fmt.Errorf("host API returned %s: %s", httpStatus(status), message)
-		default:
-			return out, fmt.Errorf("host API stream returned unknown event type %q", event.Type)
+		created, done, err := handleCreateEnvironmentStreamEvent(event, logs)
+		if done || err != nil {
+			return created, err
 		}
+	}
+}
+
+func createEnvironmentStreamDecodeError(err error) error {
+	if errors.Is(err, io.EOF) {
+		return errors.New("host API stream ended before environment creation completed")
+	}
+
+	return fmt.Errorf("decode host API stream: %w", err)
+}
+
+func handleCreateEnvironmentStreamEvent(event environment.CreateStreamEvent, logs io.Writer) (environment.Environment, bool, error) {
+	var out environment.Environment
+
+	switch event.Type {
+	case environment.StreamEventLog:
+		if logs == nil || event.Log == "" {
+			return out, false, nil
+		}
+
+		if _, err := logs.Write([]byte(event.Log)); err != nil {
+			return out, false, fmt.Errorf("stream environment init logs: %w", err)
+		}
+
+		return out, false, nil
+	case environment.StreamEventResult:
+		if event.Environment == nil {
+			return out, false, errors.New("host API stream result missing environment")
+		}
+
+		return *event.Environment, true, nil
+	case environment.StreamEventError:
+		status := event.Status
+		if status == 0 {
+			status = http.StatusInternalServerError
+		}
+
+		message := strings.TrimSpace(event.Error)
+		if message == "" {
+			message = "unknown error"
+		}
+
+		return out, false, fmt.Errorf("host API returned %s: %s", httpStatus(status), message)
+	default:
+		return out, false, fmt.Errorf("host API stream returned unknown event type %q", event.Type)
 	}
 }
 
@@ -215,7 +235,7 @@ func httpStatus(status int) string {
 		return fmt.Sprintf("%d %s", status, text)
 	}
 
-	return fmt.Sprintf("%d", status)
+	return strconv.Itoa(status)
 }
 
 func listPath(path string, limit int, cursor string) string {

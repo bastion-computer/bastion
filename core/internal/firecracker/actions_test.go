@@ -57,6 +57,7 @@ func TestRunInitActionsStreamsGuestCommandOutput(t *testing.T) {
 	}
 
 	var logs bytes.Buffer
+
 	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo installing"}]}}`), &logs)
 	if err != nil {
 		t.Fatalf("run init actions: %v", err)
@@ -303,7 +304,7 @@ func TestFailVMWritesErrorState(t *testing.T) {
 
 	cause := errors.New("init action 1 failed")
 
-	failed, err := failVM(VM{EnvironmentID: "env_test", EnvDir: t.TempDir()}, cause)
+	failed, err := failVM(VM{EnvironmentID: testEnvironmentID, EnvDir: t.TempDir()}, cause)
 	if !errors.Is(err, cause) {
 		t.Fatalf("fail vm error = %v, want %v", err, cause)
 	}

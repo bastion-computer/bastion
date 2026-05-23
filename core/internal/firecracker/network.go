@@ -274,6 +274,7 @@ func runCommandStream(ctx context.Context, logs io.Writer, name string, args ...
 	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // bastiond intentionally runs selected host commands.
 
 	var output bytes.Buffer
+
 	combined := &lockedWriter{writers: []io.Writer{&output}}
 	if logs != nil {
 		combined.writers = append(combined.writers, logs)

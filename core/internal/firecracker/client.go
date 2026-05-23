@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/bastion-computer/bastion/core/internal/failure"
@@ -67,51 +69,71 @@ func (c *Client) Launch(ctx context.Context, launchReq LaunchRequest) (VM, error
 		return vm, decodeDaemonStatusError(res)
 	}
 
-	decoder := json.NewDecoder(res.Body)
+	return decodeLaunchStream(json.NewDecoder(res.Body), launchReq.Logs)
+}
+
+func decodeLaunchStream(decoder *json.Decoder, logs io.Writer) (VM, error) {
+	var vm VM
+
 	for {
 		var event LaunchStreamEvent
 		if err := decoder.Decode(&event); err != nil {
-			if err == io.EOF {
-				return vm, fmt.Errorf("bastiond stream ended before VM launch completed")
-			}
-
-			return vm, fmt.Errorf("decode bastiond stream: %w", err)
+			return vm, launchStreamDecodeError(err)
 		}
 
-		switch event.Type {
-		case StreamEventLog:
-			if launchReq.Logs == nil || event.Log == "" {
-				continue
-			}
-
-			if _, err := launchReq.Logs.Write([]byte(event.Log)); err != nil {
-				return vm, fmt.Errorf("stream VM init logs: %w", err)
-			}
-		case StreamEventResult:
-			if event.VM == nil {
-				return vm, fmt.Errorf("bastiond stream result missing VM")
-			}
-
-			return *event.VM, nil
-		case StreamEventError:
-			if event.VM != nil {
-				vm = *event.VM
-			}
-
-			status := event.Status
-			if status == 0 {
-				status = http.StatusInternalServerError
-			}
-
-			message := strings.TrimSpace(event.Error)
-			if message == "" {
-				message = "unknown error"
-			}
-
-			return vm, daemonStatusError(status, "bastiond returned %s: %s", httpStatus(status), message)
-		default:
-			return vm, fmt.Errorf("bastiond stream returned unknown event type %q", event.Type)
+		decoded, done, err := handleLaunchStreamEvent(event, logs)
+		if done || err != nil {
+			return decoded, err
 		}
+	}
+}
+
+func launchStreamDecodeError(err error) error {
+	if errors.Is(err, io.EOF) {
+		return errors.New("bastiond stream ended before VM launch completed")
+	}
+
+	return fmt.Errorf("decode bastiond stream: %w", err)
+}
+
+func handleLaunchStreamEvent(event LaunchStreamEvent, logs io.Writer) (VM, bool, error) {
+	var vm VM
+
+	switch event.Type {
+	case StreamEventLog:
+		if logs == nil || event.Log == "" {
+			return vm, false, nil
+		}
+
+		if _, err := logs.Write([]byte(event.Log)); err != nil {
+			return vm, false, fmt.Errorf("stream VM init logs: %w", err)
+		}
+
+		return vm, false, nil
+	case StreamEventResult:
+		if event.VM == nil {
+			return vm, false, errors.New("bastiond stream result missing VM")
+		}
+
+		return *event.VM, true, nil
+	case StreamEventError:
+		if event.VM != nil {
+			vm = *event.VM
+		}
+
+		status := event.Status
+		if status == 0 {
+			status = http.StatusInternalServerError
+		}
+
+		message := strings.TrimSpace(event.Error)
+		if message == "" {
+			message = "unknown error"
+		}
+
+		return vm, false, daemonStatusError(status, "bastiond returned %s: %s", httpStatus(status), message)
+	default:
+		return vm, false, fmt.Errorf("bastiond stream returned unknown event type %q", event.Type)
 	}
 }
 
@@ -194,5 +216,5 @@ func httpStatus(status int) string {
 		return fmt.Sprintf("%d %s", status, text)
 	}
 
-	return fmt.Sprintf("%d", status)
+	return strconv.Itoa(status)
 }

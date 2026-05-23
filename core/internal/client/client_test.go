@@ -15,6 +15,7 @@ func TestCreateEnvironmentStreamsLogsAndResult(t *testing.T) {
 	t.Parallel()
 
 	var body bytes.Buffer
+
 	encoder := json.NewEncoder(&body)
 	if err := encoder.Encode(environment.CreateStreamEvent{Type: environment.StreamEventLog, Log: "installing docker\n"}); err != nil {
 		t.Fatalf("encode log event: %v", err)
@@ -40,6 +41,7 @@ func TestCreateEnvironmentStreamsLogsAndResult(t *testing.T) {
 	}
 
 	var logs bytes.Buffer
+
 	created, err := client.CreateEnvironment(context.Background(), environment.CreateRequest{TemplateKey: "dev", Logs: &logs})
 	if err != nil {
 		t.Fatalf("create environment: %v", err)

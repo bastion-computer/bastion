@@ -13,6 +13,8 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/failure"
 )
 
+const testEnvironmentID = "env_test"
+
 func TestClientWrapsFailedDependencyResponses(t *testing.T) {
 	t.Parallel()
 
@@ -27,7 +29,7 @@ func TestClientWrapsFailedDependencyResponses(t *testing.T) {
 		})},
 	}
 
-	_, err := client.Launch(context.Background(), LaunchRequest{EnvironmentID: "env_test"})
+	_, err := client.Launch(context.Background(), LaunchRequest{EnvironmentID: testEnvironmentID})
 	if !errors.Is(err, failure.ErrFailedDependency) {
 		t.Fatalf("launch error = %v, want failed dependency", err)
 	}
@@ -37,12 +39,13 @@ func TestClientLaunchStreamsLogsAndResult(t *testing.T) {
 	t.Parallel()
 
 	var body bytes.Buffer
+
 	encoder := json.NewEncoder(&body)
 	if err := encoder.Encode(LaunchStreamEvent{Type: StreamEventLog, Log: "installing node\n"}); err != nil {
 		t.Fatalf("encode log event: %v", err)
 	}
 
-	if err := encoder.Encode(LaunchStreamEvent{Type: StreamEventResult, VM: &VM{EnvironmentID: "env_test", State: StateRunning}}); err != nil {
+	if err := encoder.Encode(LaunchStreamEvent{Type: StreamEventResult, VM: &VM{EnvironmentID: testEnvironmentID, State: StateRunning}}); err != nil {
 		t.Fatalf("encode result event: %v", err)
 	}
 
@@ -62,13 +65,14 @@ func TestClientLaunchStreamsLogsAndResult(t *testing.T) {
 	}
 
 	var logs bytes.Buffer
-	vm, err := client.Launch(context.Background(), LaunchRequest{EnvironmentID: "env_test", Logs: &logs})
+
+	vm, err := client.Launch(context.Background(), LaunchRequest{EnvironmentID: testEnvironmentID, Logs: &logs})
 	if err != nil {
 		t.Fatalf("launch: %v", err)
 	}
 
-	if vm.EnvironmentID != "env_test" || vm.State != StateRunning {
-		t.Fatalf("vm = %#v, want env_test running", vm)
+	if vm.EnvironmentID != testEnvironmentID || vm.State != StateRunning {
+		t.Fatalf("vm = %#v, want %s running", vm, testEnvironmentID)
 	}
 
 	if logs.String() != "installing node\n" {
@@ -80,6 +84,7 @@ func TestClientLaunchWrapsStreamFailedDependencyEvent(t *testing.T) {
 	t.Parallel()
 
 	var body bytes.Buffer
+
 	if err := json.NewEncoder(&body).Encode(LaunchStreamEvent{Type: StreamEventError, Error: "init action 1 failed", Status: http.StatusFailedDependency}); err != nil {
 		t.Fatalf("encode error event: %v", err)
 	}
@@ -95,7 +100,7 @@ func TestClientLaunchWrapsStreamFailedDependencyEvent(t *testing.T) {
 		})},
 	}
 
-	_, err := client.Launch(context.Background(), LaunchRequest{EnvironmentID: "env_test"})
+	_, err := client.Launch(context.Background(), LaunchRequest{EnvironmentID: testEnvironmentID})
 	if !errors.Is(err, failure.ErrFailedDependency) {
 		t.Fatalf("launch error = %v, want failed dependency", err)
 	}

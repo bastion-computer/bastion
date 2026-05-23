@@ -42,6 +42,7 @@ func (h Handler) Create(c *gin.Context) {
 	}
 
 	req.Logs = stream
+
 	created, err := h.environments.Create(createCtx, req)
 	if err != nil {
 		_ = c.Error(err)
