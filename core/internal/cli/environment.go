@@ -25,6 +25,7 @@ func newEnvironmentCreateCommand(opts *rootOptions) *cobra.Command {
 	var (
 		templateID  string
 		templateKey string
+		tags        []string
 	)
 
 	cmd := &cobra.Command{
@@ -39,6 +40,7 @@ func newEnvironmentCreateCommand(opts *rootOptions) *cobra.Command {
 			created, err := apiClient(opts).CreateEnvironment(cmd.Context(), environment.CreateRequest{
 				TemplateID:  templateID,
 				TemplateKey: templateKey,
+				Tags:        tags,
 				Logs:        cmd.ErrOrStderr(),
 			})
 			if err != nil {
@@ -50,14 +52,36 @@ func newEnvironmentCreateCommand(opts *rootOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&templateID, "template-id", "", "template ID")
 	cmd.Flags().StringVar(&templateKey, "template", "", "template key")
+	cmd.Flags().StringArrayVarP(&tags, "tag", "t", nil, "environment tag (repeatable)")
 
 	return cmd
 }
 
 func newEnvironmentListCommand(opts *rootOptions) *cobra.Command {
-	return newListCommand("List environments", func(cmd *cobra.Command, limit int, cursor string) (any, error) {
-		return apiClient(opts).ListEnvironments(cmd.Context(), limit, cursor)
-	})
+	var (
+		limit  int
+		cursor string
+		tags   []string
+	)
+
+	cmd := &cobra.Command{
+		Use:   listUse,
+		Short: "List environments",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			value, err := apiClient(opts).ListEnvironments(cmd.Context(), limit, cursor, tags)
+			if err != nil {
+				return err
+			}
+
+			return writeJSON(cmd.OutOrStdout(), value)
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 20, "maximum entries to return")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor")
+	cmd.Flags().StringArrayVarP(&tags, "tag", "t", nil, "environment tag filter (repeatable)")
+
+	return cmd
 }
 
 func newEnvironmentGetCommand(opts *rootOptions) *cobra.Command {

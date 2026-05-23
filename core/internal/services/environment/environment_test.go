@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -18,6 +19,9 @@ const (
 	testTemplateKey = "dev-env"
 	testGuestIP     = "10.241.0.2"
 	testVMTime      = "2026-01-01T00:00:00Z"
+	testProdTag     = "prod"
+	testGPUTag      = "gpu"
+	testCPUTag      = "cpu"
 )
 
 func TestServiceCreatesListsGetsAndRemovesEnvironment(t *testing.T) {
@@ -78,7 +82,7 @@ func TestServicePersistsLaunchVMFailure(t *testing.T) {
 		t.Fatalf("create environment error = %v, want launch failure", err)
 	}
 
-	page, err := service.List(ctx, 20, "")
+	page, err := service.List(ctx, 20, "", nil)
 	if err != nil {
 		t.Fatalf("list environments: %v", err)
 	}
@@ -173,13 +177,99 @@ func TestServiceRejectsUnsetTemplateEnvironmentVariable(t *testing.T) {
 		t.Fatalf("orchestration launches = %d, want 0", orchestrator.launches)
 	}
 
-	page, err := service.List(ctx, 20, "")
+	page, err := service.List(ctx, 20, "", nil)
 	if err != nil {
 		t.Fatalf("list environments: %v", err)
 	}
 
 	if len(page.Entries) != 0 {
 		t.Fatalf("environment count = %d, want 0", len(page.Entries))
+	}
+}
+
+func TestServiceCreatesAndFiltersEnvironmentTags(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	service := environment.NewService(db, environment.WithOrchestrator(newFakeOrchestrator()))
+	ctx := context.Background()
+
+	createdTemplate := createTaggedTestTemplate(ctx, t, templates)
+	prodGPU := createTaggedEnvironment(ctx, t, service, createdTemplate.Key, testProdTag, testGPUTag)
+	createTaggedEnvironment(ctx, t, service, createdTemplate.Key, testProdTag, testCPUTag)
+
+	assertStoredEnvironmentTags(ctx, t, service, prodGPU.ID, testProdTag, testGPUTag)
+	assertEnvironmentListCount(ctx, t, service, []string{testProdTag}, 2)
+	assertEnvironmentListOnly(ctx, t, service, []string{testProdTag, testGPUTag}, prodGPU)
+	assertEnvironmentListCount(ctx, t, service, []string{"missing"}, 0)
+}
+
+func createTaggedTestTemplate(ctx context.Context, t *testing.T, templates *template.Service) template.Metadata {
+	t.Helper()
+
+	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
+		Key:    testTemplateKey,
+		Config: json.RawMessage(`{"actions":{"init":[]}}`),
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	return createdTemplate
+}
+
+func createTaggedEnvironment(ctx context.Context, t *testing.T, service *environment.Service, templateKey string, tags ...string) environment.Environment {
+	t.Helper()
+
+	created, err := service.Create(ctx, environment.CreateRequest{TemplateKey: templateKey, Tags: tags})
+	if err != nil {
+		t.Fatalf("create tagged environment: %v", err)
+	}
+
+	if !slices.Equal(created.Tags, tags) {
+		t.Fatalf("created environment tags = %#v, want %#v", created.Tags, tags)
+	}
+
+	return created
+}
+
+func assertStoredEnvironmentTags(ctx context.Context, t *testing.T, service *environment.Service, environmentID string, tags ...string) {
+	t.Helper()
+
+	got, err := service.Get(ctx, environmentID)
+	if err != nil {
+		t.Fatalf("get tagged environment: %v", err)
+	}
+
+	if !slices.Equal(got.Tags, tags) {
+		t.Fatalf("environment tags = %#v, want %#v", got.Tags, tags)
+	}
+}
+
+func assertEnvironmentListCount(ctx context.Context, t *testing.T, service *environment.Service, tags []string, want int) {
+	t.Helper()
+
+	page, err := service.List(ctx, 20, "", tags)
+	if err != nil {
+		t.Fatalf("list environments by tags %#v: %v", tags, err)
+	}
+
+	if len(page.Entries) != want {
+		t.Fatalf("tagged environment count = %d, want %d for %#v", len(page.Entries), want, tags)
+	}
+}
+
+func assertEnvironmentListOnly(ctx context.Context, t *testing.T, service *environment.Service, tags []string, want environment.Environment) {
+	t.Helper()
+
+	page, err := service.List(ctx, 20, "", tags)
+	if err != nil {
+		t.Fatalf("list environments by tags %#v: %v", tags, err)
+	}
+
+	if len(page.Entries) != 1 || page.Entries[0].ID != want.ID || !slices.Equal(page.Entries[0].Tags, want.Tags) {
+		t.Fatalf("tagged environment page = %#v, want only %#v", page, want)
 	}
 }
 
@@ -199,7 +289,7 @@ func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates 
 		t.Fatalf("create environment: %v", err)
 	}
 
-	if created.ID == "" || created.Status != "running" || created.TemplateID != createdTemplate.ID {
+	if created.ID == "" || created.Status != "running" || created.TemplateID != createdTemplate.ID || created.Tags == nil || len(created.Tags) != 0 {
 		t.Fatalf("unexpected created environment: %#v", created)
 	}
 
@@ -218,7 +308,7 @@ func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates 
 func assertEnvironmentList(ctx context.Context, t *testing.T, service *environment.Service) {
 	t.Helper()
 
-	page, err := service.List(ctx, 20, "")
+	page, err := service.List(ctx, 20, "", nil)
 	if err != nil {
 		t.Fatalf("list environments: %v", err)
 	}

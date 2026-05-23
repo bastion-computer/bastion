@@ -15,6 +15,7 @@ TEMPLATE_IDS=()
 ENV_IDS=()
 CREATED_TEMPLATE_ID=""
 CREATED_ENV_ID=""
+CREATED_ENV_OUTPUT=""
 
 log() {
   printf '[env-test] %s\n' "$*"
@@ -110,17 +111,58 @@ create_template() {
 
 create_environment() {
   local key=$1
+  shift
   local output
 
   log "creating environment from $key"
-  output="$(run_cli env create --template "$key")"
+  output="$(run_cli env create --template "$key" "$@")"
   CREATED_ENV_ID="$(json_get '.id' <<<"$output")"
+  CREATED_ENV_OUTPUT="$output"
 
   if [ -z "$CREATED_ENV_ID" ] || [ "$CREATED_ENV_ID" = "null" ]; then
     fail "environment from $key did not return an id"
   fi
 
   ENV_IDS+=("$CREATED_ENV_ID")
+}
+
+assert_json_tags() {
+  local label=$1
+  local json=$2
+  shift 2
+  local expected
+
+  expected="$(jq -nc '$ARGS.positional' --args "$@")"
+  if ! jq -e --argjson expected "$expected" '.tags == $expected' <<<"$json" >/dev/null; then
+    fail "$label tags are $(jq -c '.tags' <<<"$json"), want $expected"
+  fi
+}
+
+assert_environment_tags() {
+  local env_id=$1
+  shift
+  local output
+
+  output="$(run_cli env get "$env_id")"
+  assert_json_tags "environment $env_id" "$output" "$@"
+}
+
+assert_environment_list_tags() {
+  local env_id=$1
+  shift
+  local args=()
+  local output
+
+  for tag in "$@"; do
+    args+=(--tag "$tag")
+  done
+
+  output="$(run_cli env list --limit 5000 "${args[@]}")"
+  if ! jq -e --arg env_id "$env_id" '.entries as $entries | ($entries | length) == 1 and $entries[0].id == $env_id' <<<"$output" >/dev/null; then
+    fail "tag-filtered environment list did not return only $env_id: $(jq -c '.entries | map(.id)' <<<"$output")"
+  fi
+
+  assert_json_tags "tag-filtered environment $env_id" "$(jq -c '.entries[0]' <<<"$output")" "$@"
 }
 
 assert_environment_running() {
@@ -216,12 +258,17 @@ run_basic_setup_case() {
   local first_env
   local second_env
   local run_id_mode
+  local first_env_tag="$RUN_ID-basic-first"
+  local shared_tag="$RUN_ID-basic"
 
   create_template "$key" "$(basic_setup_config)"
 
-  create_environment "$key"
+  create_environment "$key" -t "$shared_tag" --tag "$first_env_tag"
   first_env="$CREATED_ENV_ID"
+  assert_json_tags "env create $first_env" "$CREATED_ENV_OUTPUT" "$shared_tag" "$first_env_tag"
   assert_environment_running "$first_env"
+  assert_environment_tags "$first_env" "$shared_tag" "$first_env_tag"
+  assert_environment_list_tags "$first_env" "$shared_tag" "$first_env_tag"
   ssh_env "$first_env" grep -q "$RUN_ID" /opt/bastion-e2e/run-id
   ssh_env "$first_env" grep -q basic-complete /opt/bastion-e2e/status
   ssh_env "$first_env" id bastione2e >/dev/null

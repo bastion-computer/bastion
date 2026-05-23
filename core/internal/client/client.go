@@ -164,9 +164,9 @@ func handleCreateEnvironmentStreamEvent(event environment.CreateStreamEvent, log
 }
 
 // ListEnvironments returns environments.
-func (c *Client) ListEnvironments(ctx context.Context, limit int, cursor string) (services.Page[environment.Environment], error) {
+func (c *Client) ListEnvironments(ctx context.Context, limit int, cursor string, tags []string) (services.Page[environment.Environment], error) {
 	var out services.Page[environment.Environment]
-	return out, c.do(ctx, http.MethodGet, listPath("/v1/environments", limit, cursor), nil, &out)
+	return out, c.do(ctx, http.MethodGet, listPath("/v1/environments", limit, cursor, tags...), nil, &out)
 }
 
 // GetEnvironment returns an environment by ID.
@@ -303,7 +303,7 @@ func httpStatus(status int) string {
 	return strconv.Itoa(status)
 }
 
-func listPath(path string, limit int, cursor string) string {
+func listPath(path string, limit int, cursor string, tags ...string) string {
 	values := url.Values{}
 	if limit > 0 {
 		values.Set("limit", strconv.Itoa(limit))
@@ -311,6 +311,10 @@ func listPath(path string, limit int, cursor string) string {
 
 	if cursor != "" {
 		values.Set("cursor", cursor)
+	}
+
+	for _, tag := range tags {
+		values.Add("tag", tag)
 	}
 
 	if len(values) == 0 {

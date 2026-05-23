@@ -86,7 +86,7 @@ func (h Handler) Create(c *gin.Context) {
 // List handles environment list requests.
 func (h Handler) List(c *gin.Context) {
 	limit, cursor := handlers.ListParams(c)
-	environments, err := h.environments.List(c.Request.Context(), limit, cursor)
+	environments, err := h.environments.List(c.Request.Context(), limit, cursor, c.QueryArray("tag"))
 	handlers.Respond(c, environments, err, http.StatusOK)
 }
 
