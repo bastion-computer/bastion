@@ -1,6 +1,6 @@
-# bastion
+# Bastion
 
-Bastion is an orchestration platform to run many opencode agents in isolated and reproducible dev environments.
+Bastion replicates agentic coding environments into isolated VMs.
 
 **See the full documentation at [bastion.computer](https://bastion.computer).**
 

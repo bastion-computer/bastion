@@ -1,16 +1,16 @@
 ---
 title: Bastion
-description: An orchestration platform to run many opencode agents in isolated and reproducible dev environments.
+description: Bastion replicates agentic coding environments into isolated VMs.
 head:
   - tag: title
     content: Bastion Computer
 template: splash
 editUrl: false
 hero:
-  tagline: An orchestration platform to run many opencode agents in isolated and reproducible dev environments.
+  tagline: Bastion replicates agentic coding environments into isolated VMs.
   actions:
-    - text: Docs
-      link: /introduction/
+    - text: Quick Start
+      link: /quick-start/
       icon: right-arrow
     - text: Star on GitHub
       link: https://github.com/bastion-computer/bastion
@@ -42,18 +42,18 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
 <CardGrid stagger>
 
-<Card title="Scale parallel opencode environments" icon="rocket">
-  Run multiple opencode instances at the same time with zero runtime conflicts
-  from other agents working in parallel.
+<Card title="Scale background coding agents" icon="rocket">
+  Run multiple background coding agents at the same time with zero runtime
+  conflicts from other agents working in parallel.
 </Card>
 
-<Card title="Run opencode environments in isolation" icon="laptop">
-  Every opencode instance runs in a separate microVM, giving agents complete
-  control of its dev environment from file systems to background processes.
+<Card title="Run agent environments in isolation" icon="laptop">
+  Every coding agent runs in a separate VM, giving agents complete control of
+  its dev environment from file systems to background processes.
 </Card>
 
 <Card title="Define environments as JSON" icon="seti:json">
-  All opencode instances are initialized with schema validated JSON templates
+  All Bastion environments are initialized with schema validated JSON templates
   rather than manually configured.
 </Card>
 
@@ -71,33 +71,37 @@ curl -fsSL https://bastion.computer/install.sh | bash
 ## FAQ
 
 <details open>
-  <summary>What is the difference between bastion and opencode?</summary>
+  <summary>
+    What is the difference between bastion and a coding agent like Opencode?
+  </summary>
   <p>
-    Opencode is the primitive for running an AI coding agent in your dev
-    environment. Bastion is a layer built on top of opencode to replicate your
-    AI coding agent and dev environment into many isolated instances that can
-    operate in parallel.
+    Opencode is one of many primitives for running an AI coding agent in your
+    local machine. Bastion is an orchestration tool to replicate your AI coding
+    agent and dev environment into many isolated instances that can operate in
+    parallel.
   </p>
 </details>
 
 <details open>
-  <summary>Why microVMs and not just use git worktrees?</summary>
+  <summary>Why VMs and not just use git worktrees?</summary>
   <p>
     Git worktrees isolate source code. They do not isolate everything an agent
     touches while working: ports, background processes, package installs,
     databases, temporary files, credentials, and local services. Bastion gives
-    each opencode agent its own runtime so agents can build, test, and modify
-    code without colliding with one another.
+    each coding agent its own runtime so agents can build, test, and modify code
+    without colliding with one another.
   </p>
 </details>
 
 <details open>
-  <summary>Can I use this with other coding agents?</summary>
+  <summary>
+    Is this compatible with my coding agent and dev environment?
+  </summary>
   <p>
-    Bastion is built for opencode. On top of being a top tier harness, opencode
-    also has an excellent developer ecosystem that allows for powerful open
-    source extensions. This allows bastion to focus efforts on being the best in
-    class orchestration platform for the open source community.
+    At its core, a Bastion environment is backed by a Cloud Hypervisor VM. They
+    are capable of supporting any dev environment that runs on Linux. You can
+    configure these environments through a growing ecosystem of preset actions,
+    create your own reusable setup, or run arbitrary shell commands.
   </p>
 </details>
 
