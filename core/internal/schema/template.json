@@ -56,7 +56,7 @@
       "additionalProperties": false,
       "properties": {
         "vcpu": {
-          "type": "number",
+          "type": "integer",
           "minimum": 1
         },
         "memory": {
@@ -67,12 +67,6 @@
           "type": "integer",
           "minimum": 1
         }
-      }
-    },
-    "env": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
       }
     },
     "actions": {

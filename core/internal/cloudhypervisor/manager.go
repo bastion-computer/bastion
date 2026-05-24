@@ -34,6 +34,7 @@ const (
 	defaultCPUs          = 2
 	defaultMemoryBytes   = 2 << 30
 	defaultRootfsSize    = "20G"
+	gibBytes             = int64(1 << 30)
 )
 
 // Manager performs privileged Cloud Hypervisor operations for bastiond.
@@ -68,7 +69,12 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, errors.New("environment id is required")
 	}
 
-	workspace, err := m.prepareWorkspace(ctx, req.EnvironmentID)
+	resources, err := resolveTemplateResources(req.Template.Config)
+	if err != nil {
+		return VM{}, err
+	}
+
+	workspace, err := m.prepareWorkspace(ctx, req.EnvironmentID, resources)
 	if err != nil {
 		return VM{}, err
 	}
@@ -101,7 +107,7 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	vm, err := m.startMachine(ctx, req.EnvironmentID, workspace, plan)
+	vm, err := m.startMachine(ctx, req.EnvironmentID, workspace, plan, resources)
 	if err != nil {
 		_ = m.cleanupTap(context.Background(), plan)
 		_ = os.RemoveAll(workspace.dir)
@@ -155,7 +161,7 @@ type workspace struct {
 	assets        assets
 }
 
-func (m Manager) prepareWorkspace(ctx context.Context, environmentID string) (workspace, error) {
+func (m Manager) prepareWorkspace(ctx context.Context, environmentID string, resources resolvedResources) (workspace, error) {
 	assetSet, err := loadAssets(m.DataDir)
 	if err != nil {
 		return workspace{}, err
@@ -179,7 +185,7 @@ func (m Manager) prepareWorkspace(ctx context.Context, environmentID string) (wo
 		return workspace{}, err
 	}
 
-	if err := m.run(ctx, "qemu-img", "resize", rootfsPath, defaultRootfsSize); err != nil {
+	if err := m.run(ctx, "qemu-img", "resize", rootfsPath, resources.rootfsSize); err != nil {
 		_ = os.RemoveAll(dir)
 
 		return workspace{}, err
@@ -271,6 +277,7 @@ func (m Manager) startMachine(
 	environmentID string,
 	workspace workspace,
 	plan networkPlan,
+	resources resolvedResources,
 ) (VM, error) {
 	stdoutPath := filepath.Join(workspace.dir, "stdout.log")
 
@@ -314,7 +321,7 @@ func (m Manager) startMachine(
 		return VM{}, fmt.Errorf("start cloud-hypervisor API: %w%s", err, logSuffix(stderrPath))
 	}
 
-	if err := cloudHypervisorCall(ctx, socketPath, http.MethodPut, "/vm.create", buildVMConfig(workspace, plan, vmCPUs(), vmMemoryBytes()), nil); err != nil {
+	if err := cloudHypervisorCall(ctx, socketPath, http.MethodPut, "/vm.create", buildVMConfig(workspace, plan, resources.cpus, resources.memoryBytes), nil); err != nil {
 		_ = terminateProcess(pid, vmmStartErrorTimeout)
 		_ = os.Remove(runtimeBase)
 
