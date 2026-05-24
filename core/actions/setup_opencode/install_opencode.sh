@@ -70,10 +70,13 @@ ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode
 
 umask 077
 config_dir=/root/.config/opencode
+data_dir=/root/.local/share/opencode
 mkdir -p "$config_dir"
+mkdir -p "$data_dir"
 base_config=$(mktemp)
 merged_config=$(mktemp)
-trap 'rm -f "$base_config" "$merged_config"' EXIT
+auth_config=$(mktemp)
+trap 'rm -f "$base_config" "$merged_config" "$auth_config"' EXIT
 
 jq -n \
   --arg provider "$provider" \
@@ -88,7 +91,7 @@ jq -n \
     model: $model,
     provider: {
       ($provider): {
-        options: ({apiKey: $api_key} + (if $base_url != "" then {baseURL: $base_url} else {} end))
+        options: (if $base_url != "" then {baseURL: $base_url} else {} end)
       }
     }
   }
@@ -106,9 +109,24 @@ fi
 
 install -m 600 "$merged_config" "$config_dir/opencode.json"
 
+auth_file="$data_dir/auth.json"
+if [ -s "$auth_file" ]; then
+  jq --arg provider "$provider" --arg api_key "$api_key" \
+    '. + {($provider): {type: "api", key: $api_key}}' \
+    "$auth_file" > "$auth_config"
+else
+  jq -n --arg provider "$provider" --arg api_key "$api_key" \
+    '{($provider): {type: "api", key: $api_key}}' \
+    > "$auth_config"
+fi
+install -m 600 "$auth_config" "$auth_file"
+
 /usr/local/bin/opencode --version
 jq -e \
-  --arg provider "$provider" \
   --arg model "$model" \
-  '.model == $model and (.provider[$provider].options.apiKey | type == "string" and length > 0)' \
+  '.model == $model' \
   "$config_dir/opencode.json" >/dev/null
+jq -e \
+  --arg provider "$provider" \
+  '.[$provider].type == "api" and (.[$provider].key | type == "string" and length > 0)' \
+  "$auth_file" >/dev/null
