@@ -12,10 +12,11 @@
     "typecheck": "astro check"
   },
   "dependencies": {
+    "@astrojs/cloudflare": "^13.5.4",
     "@astrojs/starlight": "^0.38.4",
     "@fontsource/geist-mono": "^5.2.5",
     "@fontsource/geist-sans": "^5.2.5",
-    "astro": "^6.1.9",
+    "astro": "^6.3.7",
     "lottie-web": "^5.13.0",
     "sharp": "^0.34.5",
     "starlight-theme-black": "^0.6.0"
