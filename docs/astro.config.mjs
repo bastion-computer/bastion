@@ -1,10 +1,20 @@
 // @ts-check
-import { defineConfig } from "astro/config";
+import { defineConfig, sessionDrivers } from "astro/config";
 import starlight from "@astrojs/starlight";
+import cloudflare from "@astrojs/cloudflare";
 import starlightThemeBlack from "starlight-theme-black";
 
 // https://astro.build/config
 export default defineConfig({
+  site: "https://bastion.computer",
+  session: {
+    driver: sessionDrivers.lruCache(),
+  },
+  adapter: cloudflare({
+    configPath: process.env.SST_WRANGLER_PATH,
+    imageService: "compile",
+    prerenderEnvironment: "node",
+  }),
   integrations: [
     starlight({
       plugins: [

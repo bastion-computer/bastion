@@ -1,11 +1,8 @@
 import type { APIRoute, GetStaticPaths } from "astro";
-import { readFile } from "node:fs/promises";
+import templateSchema from "../../../../core/internal/schema/template.json?raw";
 
 const schemas = {
-  template: new URL(
-    "../../../../core/internal/schema/template.json",
-    import.meta.url,
-  ),
+  template: templateSchema,
 } as const;
 
 export const getStaticPaths = (() =>
@@ -20,9 +17,7 @@ export const GET: APIRoute = async ({ params }) => {
     return new Response(null, { status: 404 });
   }
 
-  const contents = await readFile(schema, "utf8");
-
-  return new Response(contents.endsWith("\n") ? contents : `${contents}\n`, {
+  return new Response(schema.endsWith("\n") ? schema : `${schema}\n`, {
     headers: { "Content-Type": "application/json" },
   });
 };

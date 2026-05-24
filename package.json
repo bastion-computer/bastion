@@ -8,7 +8,8 @@
     "docs"
   ],
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "sst": "^4.14.3"
   },
   "peerDependencies": {
     "typescript": "^5"
