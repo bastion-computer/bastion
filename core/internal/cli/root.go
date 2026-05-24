@@ -27,7 +27,7 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:           "bastion",
-		Short:         "An orchestration platform to run many opencode agents in isolated and reproducible dev environments.",
+		Short:         "Bastion replicates agentic coding environments into isolated VMs.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
