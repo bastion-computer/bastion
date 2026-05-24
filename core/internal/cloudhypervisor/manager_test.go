@@ -57,6 +57,7 @@ func TestPrepareWorkspaceUsesResourceVolumeSize(t *testing.T) {
 	writeTestCloudHypervisorAssets(t, dataDir)
 
 	rootfsSize := strconv.FormatInt(5*gibBytes, 10)
+
 	var resizeArgs []string
 
 	manager := Manager{DataDir: dataDir, run: func(_ context.Context, name string, args ...string) error {

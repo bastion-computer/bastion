@@ -69,12 +69,7 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, errors.New("environment id is required")
 	}
 
-	templateResources, err := parseTemplateResources(req.Template.Config)
-	if err != nil {
-		return VM{}, err
-	}
-
-	resources, err := templateResources.resolve()
+	resources, err := resolveTemplateResources(req.Template.Config)
 	if err != nil {
 		return VM{}, err
 	}

@@ -80,6 +80,15 @@ func parseTemplateResources(config json.RawMessage) (templateResources, error) {
 	return parsed.Resources, nil
 }
 
+func resolveTemplateResources(config json.RawMessage) (resolvedResources, error) {
+	resources, err := parseTemplateResources(config)
+	if err != nil {
+		return resolvedResources{}, err
+	}
+
+	return resources.resolve()
+}
+
 func parseTemplateConfig(config json.RawMessage) (templateConfig, error) {
 	if len(config) == 0 {
 		return templateConfig{}, nil
@@ -120,6 +129,7 @@ func (r templateResources) resolve() (resolvedResources, error) {
 	}
 
 	memoryBytes := vmMemoryBytes()
+
 	if r.Memory != nil {
 		value, err := resourceGiBBytes(*r.Memory, "memory")
 		if err != nil {
@@ -130,6 +140,7 @@ func (r templateResources) resolve() (resolvedResources, error) {
 	}
 
 	rootfsSize := defaultRootfsSize
+
 	if r.Volume != nil {
 		value, err := resourceGiBBytes(*r.Volume, "volume")
 		if err != nil {
