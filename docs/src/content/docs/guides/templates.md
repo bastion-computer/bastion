@@ -61,10 +61,10 @@ environment is marked `error`.
 
 Each action must be one of:
 
-| Action | Description                                                            |
-| ------ | ---------------------------------------------------------------------- |
-| `run`  | Shell command executed inside the guest.                               |
-| `use`  | Local preset action package copied into and executed inside the guest. |
+| Action | Description                                                     |
+| ------ | --------------------------------------------------------------- |
+| `run`  | Shell command executed inside the guest.                        |
+| `use`  | Local action package copied into and executed inside the guest. |
 
 ### Run Actions
 
@@ -87,7 +87,7 @@ Use `run` for one-off shell commands:
 
 Commands run as `root` in the guest through `sh -c`.
 
-### Preset Actions
+### Action Packages
 
 Use `use` for reusable setup packages stored under `<data-dir>/actions`:
 
@@ -111,8 +111,11 @@ underscores, and hyphens. Values under `with` can be strings, numbers, or
 booleans. Input names must start with a letter and can contain letters,
 numbers, and underscores.
 
-See [Preset Actions](/ecosystem/preset-actions/) for built-ins and custom action
-package layout.
+See [Custom Actions](/ecosystem/custom-actions/) for custom action package
+layout. Built-in actions are documented by category under
+[Coding Agents](/ecosystem/built-ins/coding-agents/),
+[Utility Tools](/ecosystem/built-ins/utility-tools/), and
+[Runtimes](/ecosystem/built-ins/runtimes/).
 
 ## Environment Substitution
 
@@ -136,7 +139,7 @@ value from the `bastion start` process environment. If the variable is not set,
 environment creation fails.
 
 Substitution works anywhere a string appears in the template JSON, including
-`run` commands and preset action inputs.
+`run` commands and action package inputs.
 
 ## Create a Template
 

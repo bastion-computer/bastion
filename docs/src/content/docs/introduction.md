@@ -10,13 +10,13 @@ from every other environment.
 
 The launch scope is intentionally small:
 
-| Concept        | What it does                                                          |
-| -------------- | --------------------------------------------------------------------- |
-| Templates      | JSON definitions for VM resources and ordered initialization actions. |
-| Environments   | Running VM instances created from templates.                          |
-| Preset actions | Reusable setup steps such as `setup_node` and `setup_mise`.           |
-| SSH            | Interactive shell and command execution inside running environments.  |
-| System setup   | Host checks and Cloud Hypervisor asset installation.                  |
+| Concept      | What it does                                                           |
+| ------------ | ---------------------------------------------------------------------- |
+| Templates    | JSON definitions for VM resources and ordered initialization actions.  |
+| Environments | Running VM instances created from templates.                           |
+| Actions      | Built-in and custom setup steps such as `setup_node` and `setup_mise`. |
+| SSH          | Interactive shell and command execution inside running environments.   |
+| System setup | Host checks and Cloud Hypervisor asset installation.                   |
 
 ## Architecture
 
@@ -58,7 +58,7 @@ Actions can be inline shell commands:
 }
 ```
 
-Actions can also reference local preset action packages:
+Actions can also reference built-in or custom action packages:
 
 ```json
 {

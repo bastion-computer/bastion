@@ -40,7 +40,16 @@ export default defineConfig({
         {
           label: "Ecosystem",
           items: [
-            { label: "Preset Actions", slug: "ecosystem/preset-actions" },
+            { label: "Custom Actions", slug: "ecosystem/custom-actions" },
+            {
+              label: "Coding Agents",
+              slug: "ecosystem/built-ins/coding-agents",
+            },
+            {
+              label: "Utility Tools",
+              slug: "ecosystem/built-ins/utility-tools",
+            },
+            { label: "Runtimes", slug: "ecosystem/built-ins/runtimes" },
           ],
         },
         {

@@ -28,7 +28,7 @@ Bastion checks for these host utilities:
 | ------------ | --------------------------------------------------------------- |
 | `ssh-keygen` | Generate the guest SSH key used by environments.                |
 | `ssh`        | Run template init commands inside the guest.                    |
-| `scp`        | Copy preset action packages into the guest.                     |
+| `scp`        | Copy action packages into the guest.                            |
 | `qemu-img`   | Prepare root file system images.                                |
 | `mkfs.vfat`  | Build cloud-init seed media.                                    |
 | `mcopy`      | Write cloud-init files into seed media.                         |

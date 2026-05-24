@@ -98,7 +98,7 @@ Important paths:
 | Path                               | Description                                                   |
 | ---------------------------------- | ------------------------------------------------------------- |
 | `<data-dir>/sqlite.db`             | Host API metadata database.                                   |
-| `<data-dir>/actions`               | Built-in and custom preset actions.                           |
+| `<data-dir>/actions`               | Built-in and custom action packages.                          |
 | `<data-dir>/cloud-hypervisor`      | Cloud Hypervisor binary, guest images, SSH key, and manifest. |
 | `<data-dir>/environments/<env-id>` | Persistent per-environment VM files and metadata.             |
 | `/run/bastion/vms/<vm-id>`         | Runtime symlink and socket files for live VMs.                |
