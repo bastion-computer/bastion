@@ -1,0 +1,44 @@
+{
+  "inputs": {
+    "provider": {
+      "type": "string",
+      "description": "OpenCode provider id, for example anthropic or openai.",
+      "required": true
+    },
+    "model": {
+      "type": "string",
+      "description": "OpenCode model id in provider/model format.",
+      "required": true
+    },
+    "api_key": {
+      "type": "string",
+      "description": "Provider API key to write into the OpenCode config.",
+      "required": true
+    },
+    "small_model": {
+      "type": "string",
+      "description": "Optional small model id for lightweight OpenCode tasks."
+    },
+    "base_url": {
+      "type": "string",
+      "description": "Optional provider baseURL override."
+    },
+    "share": {
+      "type": "string",
+      "description": "OpenCode sharing mode: manual, auto, or disabled."
+    },
+    "permission": {
+      "type": "string",
+      "description": "Default OpenCode permission mode: ask, allow, or deny."
+    },
+    "version": {
+      "type": "string",
+      "description": "Optional OpenCode version to install, for example 1.0.180. Defaults to latest."
+    },
+    "config": {
+      "type": "string",
+      "description": "Optional JSON object merged over the generated OpenCode config."
+    }
+  },
+  "run": "sh ./install_opencode.sh"
+}

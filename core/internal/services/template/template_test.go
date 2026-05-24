@@ -75,6 +75,8 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		{key: "preset-actions", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`)},
 		{key: "resources", config: json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`)},
 		{key: "mise-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
+		{key: "github-cli-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
+		{key: "opencode-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_opencode","with":{"provider":"anthropic","model":"anthropic/claude-sonnet-4-5","api_key":"test-key","share":"disabled","permission":"allow"}}]}}`)},
 	}
 
 	for _, tc := range cases {

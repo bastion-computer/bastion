@@ -1,0 +1,18 @@
+{
+  "inputs": {
+    "token": {
+      "type": "string",
+      "description": "GitHub personal access token used by gh in the guest VM.",
+      "required": true
+    },
+    "hostname": {
+      "type": "string",
+      "description": "GitHub hostname to target. Defaults to github.com."
+    },
+    "git_protocol": {
+      "type": "string",
+      "description": "Git protocol for gh operations: https or ssh. Defaults to https."
+    }
+  },
+  "run": "sh ./install_github_cli.sh"
+}
