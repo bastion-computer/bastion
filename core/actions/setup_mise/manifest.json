@@ -1,0 +1,9 @@
+{
+  "inputs": {
+    "version": {
+      "type": "string",
+      "description": "mise version to install, for example v2025.12.0. Defaults to latest."
+    }
+  },
+  "run": "sh ./install_mise.sh"
+}
