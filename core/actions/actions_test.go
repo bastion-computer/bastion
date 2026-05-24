@@ -17,16 +17,26 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 		t.Fatalf("seed actions: %v", err)
 	}
 
-	for _, name := range []string{"manifest.json", "install_node.sh"} {
-		path := filepath.Join(dataDir, actions.DirName, "setup_node", name)
+	expected := []struct {
+		action string
+		files  []string
+	}{
+		{action: "setup_node", files: []string{"manifest.json", "install_node.sh"}},
+		{action: "setup_mise", files: []string{"manifest.json", "install_mise.sh"}},
+	}
 
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("stat seeded file %s: %v", name, err)
-		}
+	for _, preset := range expected {
+		for _, name := range preset.files {
+			path := filepath.Join(dataDir, actions.DirName, preset.action, name)
 
-		if !info.Mode().IsRegular() {
-			t.Fatalf("seeded file %s is not regular", name)
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("stat seeded file %s/%s: %v", preset.action, name, err)
+			}
+
+			if !info.Mode().IsRegular() {
+				t.Fatalf("seeded file %s/%s is not regular", preset.action, name)
+			}
 		}
 	}
 }

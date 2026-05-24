@@ -32,9 +32,21 @@ run_cli() {
 
 cleanup() {
   local status=$?
-  local removed_env_ids=" "
-  local env_id
   set +e
+
+  if [ "$status" -ne 0 ] && [ "${BASTION_E2E_KEEP_FAILED:-}" = "1" ]; then
+    log "preserving failed run resources: environments=${ENV_IDS[*]:-} templates=${TEMPLATE_KEYS[*]:-}"
+    exit "$status"
+  fi
+
+  cleanup_resources
+
+  exit "$status"
+}
+
+collect_template_environments() {
+  local template_id
+  local env_id
 
   for template_id in "${TEMPLATE_IDS[@]}"; do
     if [ -n "$template_id" ]; then
@@ -45,6 +57,11 @@ cleanup() {
       done < <(run_cli env list --limit 5000 2>/dev/null | jq -r --arg template_id "$template_id" '.entries[] | select(.templateId == $template_id) | .id' 2>/dev/null || true)
     fi
   done
+}
+
+cleanup_environments() {
+  local removed_env_ids=" "
+  local env_id
 
   for env_id in "${ENV_IDS[@]}"; do
     if [ -n "$env_id" ]; then
@@ -57,13 +74,35 @@ cleanup() {
     fi
   done
 
+  ENV_IDS=()
+}
+
+cleanup_templates() {
+  local template_key
+
   for template_key in "${TEMPLATE_KEYS[@]}"; do
     if [ -n "$template_key" ]; then
       run_cli templates remove --key "$template_key" >/dev/null 2>&1 || log "cleanup: template $template_key was not removed"
     fi
   done
 
-  exit "$status"
+  TEMPLATE_KEYS=()
+  TEMPLATE_IDS=()
+}
+
+cleanup_resources() {
+  collect_template_environments
+  cleanup_environments
+  cleanup_templates
+
+  CREATED_TEMPLATE_ID=""
+  CREATED_ENV_ID=""
+  CREATED_ENV_OUTPUT=""
+}
+
+run_case() {
+  "$@"
+  cleanup_resources
 }
 
 require_command() {
@@ -220,6 +259,16 @@ preset_setup_node_config() {
   }'
 }
 
+preset_setup_mise_config() {
+  jq -nc '{
+    actions: {
+      init: [
+        {use: "setup_mise"}
+      ]
+    }
+  }'
+}
+
 env_substitution_config() {
   jq -nc '{
     actions: {
@@ -277,6 +326,8 @@ run_basic_setup_case() {
     fail "run-id file mode in $first_env is $run_id_mode, want 600"
   fi
 
+  cleanup_environments
+
   create_environment "$key"
   second_env="$CREATED_ENV_ID"
   assert_environment_running "$second_env"
@@ -316,6 +367,24 @@ run_preset_setup_node_case() {
   ssh_env "$env_id" test -s /opt/bastion-e2e-preset/npm-version
 
   log "preset setup_node case passed for $env_id"
+}
+
+run_preset_setup_mise_case() {
+  local key="$RUN_ID-preset-mise"
+  local env_id
+  local version
+
+  create_template "$key" "$(preset_setup_mise_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  version="$(ssh_env "$env_id" mise --version)"
+  if [[ ! "$version" =~ ^(mise[[:space:]])?[0-9] ]]; then
+    fail "mise --version returned unexpected output: $version"
+  fi
+
+  log "preset setup_mise case passed for $env_id"
 }
 
 run_env_substitution_case() {
@@ -381,11 +450,12 @@ main() {
 
   log "starting environment e2e run $RUN_ID"
   assert_template_rejected
-  run_basic_setup_case
-  run_env_substitution_case
-  run_preset_setup_node_case
-  run_node_docker_case
-  run_failure_case
+  run_case run_basic_setup_case
+  run_case run_env_substitution_case
+  run_case run_preset_setup_node_case
+  run_case run_preset_setup_mise_case
+  run_case run_node_docker_case
+  run_case run_failure_case
   log "environment e2e run passed"
 }
 
