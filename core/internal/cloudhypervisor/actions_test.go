@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -296,6 +297,43 @@ func TestLoadPresetActionRejectsInvalidManifest(t *testing.T) {
 	_, err := loadPresetAction(dataDir, "bad_action")
 	if err == nil || !strings.Contains(err.Error(), "manifest input name \"bad-name\" is invalid") {
 		t.Fatalf("load preset action error = %v, want invalid input name", err)
+	}
+}
+
+func TestResolveTemplateResourcesUsesTemplateValuesInGiB(t *testing.T) {
+	t.Parallel()
+
+	resources, err := parseTemplateResources(json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`))
+	if err != nil {
+		t.Fatalf("parse template resources: %v", err)
+	}
+
+	resolved, err := resources.resolve()
+	if err != nil {
+		t.Fatalf("resolve template resources: %v", err)
+	}
+
+	if resolved.cpus != 3 || resolved.memoryBytes != 4*gibBytes || resolved.rootfsSize != strconv.FormatInt(5*gibBytes, 10) {
+		t.Fatalf("resolved resources = %#v, want 3 cpu, 4 GiB memory, 5 GiB rootfs", resolved)
+	}
+}
+
+func TestResolveTemplateResourcesUsesRuntimeDefaults(t *testing.T) {
+	t.Setenv(vmCPUsEnv, "7")
+	t.Setenv(vmMemoryBytesEnv, "12345")
+
+	resources, err := parseTemplateResources(json.RawMessage(`{"actions":{"init":[]}}`))
+	if err != nil {
+		t.Fatalf("parse template resources: %v", err)
+	}
+
+	resolved, err := resources.resolve()
+	if err != nil {
+		t.Fatalf("resolve template resources: %v", err)
+	}
+
+	if resolved.cpus != 7 || resolved.memoryBytes != 12345 || resolved.rootfsSize != defaultRootfsSize {
+		t.Fatalf("resolved default resources = %#v, want runtime defaults", resolved)
 	}
 }
 

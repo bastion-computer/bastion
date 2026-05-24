@@ -110,7 +110,7 @@ func TestServiceSubstitutesTemplateEnvironmentVariables(t *testing.T) {
 
 	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
 		Key:    "substitution-template",
-		Config: json.RawMessage(`{"env":{"VALUE":"${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"},"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}]}}`),
+		Config: json.RawMessage(`{"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
@@ -125,7 +125,6 @@ func TestServiceSubstitutesTemplateEnvironmentVariables(t *testing.T) {
 	}
 
 	var launched struct {
-		Env     map[string]string `json:"env"`
 		Actions struct {
 			Init []struct {
 				Run string `json:"run"`
@@ -136,7 +135,7 @@ func TestServiceSubstitutesTemplateEnvironmentVariables(t *testing.T) {
 		t.Fatalf("unmarshal launched template config: %v", err)
 	}
 
-	if launched.Env["VALUE"] != "substituted-value" || len(launched.Actions.Init) != 1 || launched.Actions.Init[0].Run != "printf 'substituted-value'" {
+	if len(launched.Actions.Init) != 1 || launched.Actions.Init[0].Run != "printf 'substituted-value'" {
 		t.Fatalf("launched template config = %s, want substituted env values", orchestrator.templates[0].Config)
 	}
 
@@ -147,6 +146,46 @@ func TestServiceSubstitutesTemplateEnvironmentVariables(t *testing.T) {
 
 	if !strings.Contains(string(stored.Config), "${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}") {
 		t.Fatalf("stored template config = %s, want unresolved placeholder", stored.Config)
+	}
+}
+
+func TestServicePreservesTemplateResourcesForOrchestration(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	orchestrator := newFakeOrchestrator()
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	if _, err := templates.Create(ctx, template.CreateRequest{
+		Key:    "resource-template",
+		Config: json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`),
+	}); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	if _, err := service.Create(ctx, environment.CreateRequest{TemplateKey: "resource-template"}); err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+
+	if len(orchestrator.templates) != 1 {
+		t.Fatalf("launch templates = %d, want 1", len(orchestrator.templates))
+	}
+
+	var launched struct {
+		Resources struct {
+			VCPU   int `json:"vcpu"`
+			Memory int `json:"memory"`
+			Volume int `json:"volume"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(orchestrator.templates[0].Config, &launched); err != nil {
+		t.Fatalf("unmarshal launched template config: %v", err)
+	}
+
+	if launched.Resources.VCPU != 3 || launched.Resources.Memory != 4 || launched.Resources.Volume != 5 {
+		t.Fatalf("launched resources = %#v, want template resources", launched.Resources)
 	}
 }
 

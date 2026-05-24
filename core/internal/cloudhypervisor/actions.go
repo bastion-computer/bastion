@@ -15,7 +15,20 @@ import (
 var ErrVMInitFailed = errors.New("vm init failed")
 
 type templateConfig struct {
-	Actions templateActions `json:"actions"`
+	Resources templateResources `json:"resources"`
+	Actions   templateActions   `json:"actions"`
+}
+
+type templateResources struct {
+	VCPU   *int   `json:"vcpu,omitempty"`
+	Memory *int64 `json:"memory,omitempty"`
+	Volume *int64 `json:"volume,omitempty"`
+}
+
+type resolvedResources struct {
+	cpus        int
+	memoryBytes int64
+	rootfsSize  string
 }
 
 type templateActions struct {
@@ -46,8 +59,30 @@ func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessa
 }
 
 func parseInitActions(config json.RawMessage) ([]templateAction, error) {
+	parsed, err := parseTemplateConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return parsed.Actions.Init, nil
+}
+
+func parseTemplateResources(config json.RawMessage) (templateResources, error) {
+	parsed, err := parseTemplateConfig(config)
+	if err != nil {
+		return templateResources{}, err
+	}
+
+	if err := parsed.Resources.validate(); err != nil {
+		return templateResources{}, err
+	}
+
+	return parsed.Resources, nil
+}
+
+func parseTemplateConfig(config json.RawMessage) (templateConfig, error) {
 	if len(config) == 0 {
-		return nil, nil
+		return templateConfig{}, nil
 	}
 
 	var parsed templateConfig
@@ -56,10 +91,65 @@ func parseInitActions(config json.RawMessage) ([]templateAction, error) {
 	decoder.UseNumber()
 
 	if err := decoder.Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("parse template config: %w", err)
+		return templateConfig{}, fmt.Errorf("parse template config: %w", err)
 	}
 
-	return parsed.Actions.Init, nil
+	return parsed, nil
+}
+
+func (r templateResources) validate() error {
+	if r.VCPU != nil && *r.VCPU < 1 {
+		return errors.New("template resource vcpu must be at least 1")
+	}
+
+	if r.Memory != nil && *r.Memory < 1 {
+		return errors.New("template resource memory must be at least 1 GiB")
+	}
+
+	if r.Volume != nil && *r.Volume < 1 {
+		return errors.New("template resource volume must be at least 1 GiB")
+	}
+
+	return nil
+}
+
+func (r templateResources) resolve() (resolvedResources, error) {
+	cpus := vmCPUs()
+	if r.VCPU != nil {
+		cpus = *r.VCPU
+	}
+
+	memoryBytes := vmMemoryBytes()
+	if r.Memory != nil {
+		value, err := resourceGiBBytes(*r.Memory, "memory")
+		if err != nil {
+			return resolvedResources{}, err
+		}
+
+		memoryBytes = value
+	}
+
+	rootfsSize := defaultRootfsSize
+	if r.Volume != nil {
+		value, err := resourceGiBBytes(*r.Volume, "volume")
+		if err != nil {
+			return resolvedResources{}, err
+		}
+
+		rootfsSize = strconv.FormatInt(value, 10)
+	}
+
+	return resolvedResources{cpus: cpus, memoryBytes: memoryBytes, rootfsSize: rootfsSize}, nil
+}
+
+func resourceGiBBytes(value int64, name string) (int64, error) {
+	const maxInt64 = int64(1<<63 - 1)
+
+	if value > maxInt64/gibBytes {
+		return 0, fmt.Errorf("template resource %s is too large", name)
+	}
+
+	return value * gibBytes, nil
 }
 
 func (m Manager) runInitAction(ctx context.Context, vm VM, index int, action templateAction, logs io.Writer) error {
