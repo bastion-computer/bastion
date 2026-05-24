@@ -9,6 +9,8 @@ import (
 	"github.com/bastion-computer/bastion/core/actions"
 )
 
+const testManifestFileName = "manifest.json"
+
 func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 	t.Parallel()
 
@@ -21,8 +23,10 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 		action string
 		files  []string
 	}{
-		{action: "setup_node", files: []string{"manifest.json", "install_node.sh"}},
-		{action: "setup_mise", files: []string{"manifest.json", "install_mise.sh"}},
+		{action: "setup_node", files: []string{testManifestFileName, "install_node.sh"}},
+		{action: "setup_mise", files: []string{testManifestFileName, "install_mise.sh"}},
+		{action: "setup_github_cli", files: []string{testManifestFileName, "install_github_cli.sh"}},
+		{action: "setup_opencode", files: []string{testManifestFileName, "install_opencode.sh"}},
 	}
 
 	for _, preset := range expected {
@@ -46,7 +50,7 @@ func TestSeedDoesNotOverwriteExistingPresetAction(t *testing.T) {
 
 	dataDir := t.TempDir()
 
-	manifestPath := filepath.Join(dataDir, actions.DirName, "setup_node", "manifest.json")
+	manifestPath := filepath.Join(dataDir, actions.DirName, "setup_node", testManifestFileName)
 	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o750); err != nil {
 		t.Fatalf("create existing action dir: %v", err)
 	}

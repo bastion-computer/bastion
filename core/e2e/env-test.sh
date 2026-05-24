@@ -269,6 +269,32 @@ preset_setup_mise_config() {
   }'
 }
 
+preset_setup_github_cli_config() {
+  local token="github-cli-e2e-${RUN_ID}"
+
+  jq -nc --arg token "$token" '{
+    actions: {
+      init: [
+        {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-github-cli\ngh --version > /opt/bastion-e2e-github-cli/version\ngh config get git_protocol --host github.com > /opt/bastion-e2e-github-cli/git-protocol\ntest -n \"$(gh auth token --hostname github.com)\"\nprintf github-cli-ready > /opt/bastion-e2e-github-cli/auth"}
+      ]
+    }
+  }'
+}
+
+preset_setup_opencode_config() {
+  local api_key="opencode-e2e-${RUN_ID}"
+
+  jq -nc --arg api_key "$api_key" '{
+    actions: {
+      init: [
+        {use: "setup_opencode", with: {provider: "anthropic", model: "anthropic/claude-sonnet-4-5", api_key: $api_key, small_model: "anthropic/claude-haiku-4-5", share: "disabled", permission: "allow", config: "{\"autoupdate\":false}"}},
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-opencode\nopencode --version > /opt/bastion-e2e-opencode/version\njq -e '\''.model == \"anthropic/claude-sonnet-4-5\" and .small_model == \"anthropic/claude-haiku-4-5\" and .share == \"disabled\" and .permission == \"allow\" and .autoupdate == false and (.provider.anthropic.options.apiKey? == null)'\'' /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-ok\njq -e '\''.anthropic.type == \"api\" and (.anthropic.key | length > 0)'\'' /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-ok\nstat -c %a /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-mode\nstat -c %a /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-mode"}
+      ]
+    }
+  }'
+}
+
 env_substitution_config() {
   jq -nc '{
     actions: {
@@ -387,6 +413,49 @@ run_preset_setup_mise_case() {
   log "preset setup_mise case passed for $env_id"
 }
 
+run_preset_setup_github_cli_case() {
+  local key="$RUN_ID-preset-github-cli"
+  local env_id
+
+  create_template "$key" "$(preset_setup_github_cli_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" "grep -q '^gh version' /opt/bastion-e2e-github-cli/version"
+  ssh_env "$env_id" grep -q '^https$' /opt/bastion-e2e-github-cli/git-protocol
+  ssh_env "$env_id" grep -q github-cli-ready /opt/bastion-e2e-github-cli/auth
+
+  log "preset setup_github_cli case passed for $env_id"
+}
+
+run_preset_setup_opencode_case() {
+  local key="$RUN_ID-preset-opencode"
+  local env_id
+  local config_mode
+  local auth_mode
+
+  create_template "$key" "$(preset_setup_opencode_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" test -s /opt/bastion-e2e-opencode/version
+  ssh_env "$env_id" grep -q true /opt/bastion-e2e-opencode/config-ok
+  ssh_env "$env_id" grep -q true /opt/bastion-e2e-opencode/auth-ok
+  config_mode="$(ssh_env "$env_id" stat -c %a /root/.config/opencode/opencode.json)"
+  if [ "$config_mode" != "600" ]; then
+    fail "opencode config mode in $env_id is $config_mode, want 600"
+  fi
+
+  auth_mode="$(ssh_env "$env_id" stat -c %a /root/.local/share/opencode/auth.json)"
+  if [ "$auth_mode" != "600" ]; then
+    fail "opencode auth mode in $env_id is $auth_mode, want 600"
+  fi
+
+  log "preset setup_opencode case passed for $env_id"
+}
+
 run_env_substitution_case() {
   local key="$RUN_ID-env-substitution"
   local env_id
@@ -454,6 +523,8 @@ main() {
   run_case run_env_substitution_case
   run_case run_preset_setup_node_case
   run_case run_preset_setup_mise_case
+  run_case run_preset_setup_github_cli_case
+  run_case run_preset_setup_opencode_case
   run_case run_node_docker_case
   run_case run_failure_case
   log "environment e2e run passed"
