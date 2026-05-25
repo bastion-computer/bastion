@@ -3,15 +3,16 @@ title: SSH
 description: Connect to Bastion environments interactively or run commands.
 ---
 
-Bastion exposes environment SSH through the host API. The CLI does not require
-you to know the guest IP address or SSH key path.
+Bastion exposes environment SSH through the host API. The CLI accepts an
+environment ID or key and does not require you to know the guest IP address or
+SSH key path.
 
 ## Interactive Shell
 
 Open a shell in a running environment:
 
 ```sh
-bastion ssh env_xxxxxx
+bastion ssh --id env_xxxxxx
 ```
 
 When stdin and stdout are terminals, Bastion requests a PTY, forwards terminal
@@ -22,13 +23,19 @@ resizes, and restores your terminal mode when the session exits.
 Run a command and return its exit status:
 
 ```sh
-bastion ssh env_xxxxxx -- uname -a
+bastion ssh --id env_xxxxxx -- uname -a
+```
+
+If the environment has a key, you can reference it by key instead:
+
+```sh
+bastion ssh --key dev-env -- uname -a
 ```
 
 Use `--` before commands that include flags:
 
 ```sh
-bastion ssh env_xxxxxx -- sh -lc 'cd /workspace && ls -la'
+bastion ssh --id env_xxxxxx -- sh -lc 'cd /workspace && ls -la'
 ```
 
 Stdout and stderr from the guest are forwarded separately to the local process.

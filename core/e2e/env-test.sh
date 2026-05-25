@@ -257,7 +257,7 @@ ssh_env() {
   local env_id=$1
   shift
 
-  run_cli ssh "$env_id" -- "$@"
+  run_cli ssh --id "$env_id" -- "$@"
 }
 
 basic_setup_config() {

@@ -85,6 +85,6 @@ Supported command groups are intentionally limited to the current product scope:
 
 - `bastion templates ...`
 - `bastion env ...`
-- `bastion ssh ENVIRONMENT_ID [-- COMMAND...]`
+- `bastion ssh (--id ID | --key KEY) [-- COMMAND...]`
 
 Logs and diagnostics go to stderr. Host API logs are structured and include fields such as `request_id`, `method`, `route`, `status`, `duration`, `client_ip`, and `body_size`. The default format is JSON for machine parsing; the Air dev entrypoint uses `--log-format text` for readable local logs. API responses echo or generate `X-Request-ID` so request logs can be correlated with callers. JSON command output goes to stdout.

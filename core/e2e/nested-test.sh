@@ -126,14 +126,14 @@ copy_repo_to_outer() {
     --exclude='./.bastion' \
 	    --exclude='./node_modules' \
 	    -C "$REPO_DIR" \
-	    -cf - . | run_cli ssh "$env_id" -- 'rm -rf /root/bastion && mkdir -p /root/bastion && tar -xf - -C /root/bastion'
+	    -cf - . | run_cli ssh --id "$env_id" -- 'rm -rf /root/bastion && mkdir -p /root/bastion && tar -xf - -C /root/bastion'
 }
 
 run_inner_bastion() {
   local env_id=$1
 
   log "running Bastion inside $env_id"
-  run_cli ssh "$env_id" -- bash -s <<'INNER'
+  run_cli ssh --id "$env_id" -- bash -s <<'INNER'
 set -euo pipefail
 
 cd /root/bastion
@@ -201,7 +201,7 @@ if [ -z "$CHILD_ENV_ID" ]; then
 fi
 printf 'inner-child-created:%s\n' "$CHILD_ENV_ID"
 
-./core/tmp/bastion --api-url "$INNER_API" ssh "$CHILD_ENV_ID" -- grep -q nested-ok /root/nested-ok
+./core/tmp/bastion --api-url "$INNER_API" ssh --id "$CHILD_ENV_ID" -- grep -q nested-ok /root/nested-ok
 printf 'nested-bastion-ok\n'
 INNER
 }

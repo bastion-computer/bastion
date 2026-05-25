@@ -28,14 +28,43 @@ func newSSHCommandWithRunner(opts *rootOptions, runner sshRunner) *cobra.Command
 		runner = runAPISSH
 	}
 
-	return &cobra.Command{
-		Use:   "ssh ENVIRONMENT_ID [-- COMMAND...]",
+	var (
+		id  string
+		key string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "ssh [--id ID | --key KEY] [-- COMMAND...]",
 		Short: "Connect to an environment over SSH",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), apiClient(opts), args[0], args[1:])
+			if err := requireIDOrKey(id, key); err != nil {
+				return err
+			}
+
+			api := apiClient(opts)
+			environmentID := id
+
+			if key != "" {
+				environment, err := api.GetEnvironmentByKey(cmd.Context(), key)
+				if err != nil {
+					return err
+				}
+
+				if environment.ID == "" {
+					return errors.New("environment key lookup returned empty id")
+				}
+
+				environmentID = environment.ID
+			}
+
+			return runner(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), api, environmentID, args)
 		},
 	}
+	cmd.Flags().StringVar(&id, "id", "", "environment ID")
+	cmd.Flags().StringVar(&key, "key", "", "environment key")
+
+	return cmd
 }
 
 func runAPISSH(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, api *client.Client, environmentID string, command []string) error {

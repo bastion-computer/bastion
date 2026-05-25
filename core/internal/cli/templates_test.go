@@ -42,7 +42,7 @@ func TestTemplatesCreateCommandSendsOptionalKey(t *testing.T) {
 	cmd := newTemplatesCreateCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--key", templateCreateTestKey, "--config", templateCreateTestConfig})
+	cmd.SetArgs([]string{cliTestKeyFlag, templateCreateTestKey, "--config", templateCreateTestConfig})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

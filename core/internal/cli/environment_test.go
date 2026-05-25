@@ -31,7 +31,7 @@ func TestEnvironmentCreateCommandSendsTags(t *testing.T) {
 	cmd := newEnvironmentCreateCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--template-key", cliTestTemplateKey, "--key", cliTestEnvironmentKey, "-t", cliTestProdTag, "--tag", cliTestGPUTag})
+	cmd.SetArgs([]string{"--template-key", cliTestTemplateKey, cliTestKeyFlag, cliTestEnvironmentKey, "-t", cliTestProdTag, "--tag", cliTestGPUTag})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -66,7 +66,7 @@ func TestEnvironmentGetCommandUsesKey(t *testing.T) {
 	cmd := newEnvironmentGetCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--key", cliTestEnvironmentKey})
+	cmd.SetArgs([]string{cliTestKeyFlag, cliTestEnvironmentKey})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

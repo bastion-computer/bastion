@@ -9,8 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
 )
+
+const sshTestCommandTrue = "true"
 
 func TestSSHCommandUsesAPIManagedSSH(t *testing.T) {
 	t.Parallel()
@@ -25,14 +28,43 @@ func TestSSHCommandUsesAPIManagedSSH(t *testing.T) {
 	cmd.SetIn(bytes.NewBuffer(nil))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"env_123", "true"})
+	cmd.SetArgs([]string{"--id", "env_123", "--", sshTestCommandTrue})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 
 	got := <-gotReq
-	if len(got.Command) != 1 || got.Command[0] != "true" || got.PTY {
+	if len(got.Command) != 1 || got.Command[0] != sshTestCommandTrue || got.PTY {
+		t.Fatalf("SSH request = %#v, want command true without pty", got)
+	}
+
+	if stdout.String() != "ok\n" {
+		t.Fatalf("stdout = %q, want ok", stdout.String())
+	}
+}
+
+func TestSSHCommandUsesEnvironmentKey(t *testing.T) {
+	t.Parallel()
+
+	gotReq := make(chan sshtunnel.Request, 1)
+	server := newSSHCommandKeyTestServer(t, gotReq)
+	t.Cleanup(server.Close)
+
+	var stdout bytes.Buffer
+
+	cmd := newSSHCommand(&rootOptions{apiURL: server.URL})
+	cmd.SetIn(bytes.NewBuffer(nil))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{cliTestKeyFlag, cliTestEnvironmentKey, "--", sshTestCommandTrue})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	got := <-gotReq
+	if len(got.Command) != 1 || got.Command[0] != sshTestCommandTrue || got.PTY {
 		t.Fatalf("SSH request = %#v, want command true without pty", got)
 	}
 
@@ -73,6 +105,29 @@ func newSSHCommandTestServer(t *testing.T, gotReq chan<- sshtunnel.Request) *htt
 		defer func() { _ = conn.Close() }()
 
 		writeSSHCommandResponse(t, conn)
+	}))
+}
+
+func newSSHCommandKeyTestServer(t *testing.T, gotReq chan<- sshtunnel.Request) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/environments/by-key/"+cliTestEnvironmentKey:
+			key := cliTestEnvironmentKey
+			if err := json.NewEncoder(w).Encode(environment.Environment{ID: "env_keyed", Key: &key}); err != nil {
+				t.Fatalf("encode get response: %v", err)
+			}
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/environments/env_keyed/ssh":
+			gotReq <- decodeSSHCommandRequest(t, r)
+
+			conn := hijackSSHCommandResponse(t, w)
+			defer func() { _ = conn.Close() }()
+
+			writeSSHCommandResponse(t, conn)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
 	}))
 }
 
