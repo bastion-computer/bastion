@@ -91,8 +91,8 @@ requires a keyed template; use `--template-id ID` for unkeyed templates.
 Connects to an environment through the host API.
 
 ```sh
-bastion ssh ENVIRONMENT_ID
-bastion ssh ENVIRONMENT_ID -- COMMAND [ARG...]
+bastion ssh (--id ID | --key KEY)
+bastion ssh (--id ID | --key KEY) -- COMMAND [ARG...]
 ```
 
 With no command and terminal stdin/stdout, the CLI opens an interactive PTY. With

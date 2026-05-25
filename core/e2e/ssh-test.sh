@@ -48,6 +48,24 @@ cleanup() {
   exit "$status"
 }
 
+remove_environment() {
+  local env_id=$1
+  local kept_env_ids=()
+  local existing_env_id
+
+  if [ -n "$env_id" ]; then
+    run_cli env remove "$env_id" >/dev/null 2>&1 || log "cleanup: environment $env_id was not removed"
+  fi
+
+  for existing_env_id in "${ENV_IDS[@]}"; do
+    if [ "$existing_env_id" != "$env_id" ]; then
+      kept_env_ids+=("$existing_env_id")
+    fi
+  done
+
+  ENV_IDS=("${kept_env_ids[@]}")
+}
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     fail "$1 is required"
@@ -111,9 +129,15 @@ create_template() {
 
 create_environment() {
   local key=$1
+  local env_key=$2
+  local args=(--template-key "$key")
+
+  if [ -n "$env_key" ]; then
+    args+=(--key "$env_key")
+  fi
 
   log "creating environment from $key"
-  CREATE_OUTPUT="$(run_cli env create --template-key "$key")"
+  CREATE_OUTPUT="$(run_cli env create "${args[@]}")"
   CREATED_ENV_ID="$(json_get '.id' <<<"$CREATE_OUTPUT")"
 
   if [ -z "$CREATED_ENV_ID" ] || [ "$CREATED_ENV_ID" = "null" ]; then
@@ -142,7 +166,14 @@ ssh_env() {
   local env_id=$1
   shift
 
-  run_cli ssh "$env_id" -- "$@"
+  run_cli ssh --id "$env_id" -- "$@"
+}
+
+ssh_env_by_key() {
+  local env_key=$1
+  shift
+
+  run_cli ssh --key "$env_key" -- "$@"
 }
 
 run_command_case() {
@@ -158,7 +189,19 @@ run_command_case() {
   ssh_env "$env_id" grep -q "$RUN_ID" /opt/bastion-ssh-e2e/api-ssh
   ssh_env "$env_id" grep -q "$RUN_ID" /opt/bastion-ssh-e2e/init-run
 
-  log "command SSH case passed for $env_id"
+  log "command SSH id case passed for $env_id"
+}
+
+run_key_reference_case() {
+  local env_key=$1
+  local output
+
+  output="$(ssh_env_by_key "$env_key" printf api-ssh-key-ok)"
+  if [ "$output" != "api-ssh-key-ok" ]; then
+    fail "ssh key command output was $output, want api-ssh-key-ok"
+  fi
+
+  log "command SSH key case passed for $env_key"
 }
 
 run_exit_status_case() {
@@ -180,7 +223,7 @@ run_interactive_case() {
   local env_id=$1
   local output
 
-  output="$(printf 'test -t 0 && echo bastion-pty-ok\nstty size\nexit\n' | script -qfec "$BASTION --api-url $API_URL ssh $env_id" /dev/null)"
+  output="$(printf 'test -t 0 && echo bastion-pty-ok\nstty size\nexit\n' | script -qfec "$BASTION --api-url $API_URL ssh --id $env_id" /dev/null)"
   if [[ "$output" != *"bastion-pty-ok"* ]]; then
     fail "interactive SSH session did not report a TTY: $output"
   fi
@@ -190,19 +233,28 @@ run_interactive_case() {
 
 main() {
   local key="$RUN_ID-template"
-  local env_id
+  local env_key="$RUN_ID-env"
+  local key_env_id
+  local id_env_id
 
   precheck
   trap cleanup EXIT
 
   log "starting SSH e2e run $RUN_ID"
   create_template "$key"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running_without_ssh_fields "$env_id"
-  run_command_case "$env_id"
-  run_exit_status_case "$env_id"
-  run_interactive_case "$env_id"
+
+  create_environment "$key" "$env_key"
+  key_env_id="$CREATED_ENV_ID"
+  assert_environment_running_without_ssh_fields "$key_env_id"
+  run_key_reference_case "$env_key"
+  remove_environment "$key_env_id"
+
+  create_environment "$key" ""
+  id_env_id="$CREATED_ENV_ID"
+  assert_environment_running_without_ssh_fields "$id_env_id"
+  run_command_case "$id_env_id"
+  run_exit_status_case "$id_env_id"
+  run_interactive_case "$id_env_id"
   log "SSH e2e run passed"
 }
 

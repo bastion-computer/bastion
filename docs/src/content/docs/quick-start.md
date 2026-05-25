@@ -131,13 +131,13 @@ Example response:
 Run a command inside the environment:
 
 ```sh
-bastion ssh env_xxxxxx -- cat /workspace/README.md
+bastion ssh --id env_xxxxxx -- cat /workspace/README.md
 ```
 
 Open an interactive shell:
 
 ```sh
-bastion ssh env_xxxxxx
+bastion ssh --id env_xxxxxx
 ```
 
 ## Clean Up
