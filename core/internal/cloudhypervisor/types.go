@@ -42,7 +42,7 @@ const (
 // It is accepted now so the runtime API can evolve without changing callers.
 type Template struct {
 	ID     string          `json:"id"`
-	Key    string          `json:"key"`
+	Key    *string         `json:"key,omitempty"`
 	Config json.RawMessage `json:"config"`
 }
 

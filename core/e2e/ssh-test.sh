@@ -99,7 +99,7 @@ create_template() {
   local output
 
   log "creating template $key"
-  output="$(run_cli templates create "$key" --config "$(ssh_template_config)")"
+  output="$(run_cli templates create --key "$key" --config "$(ssh_template_config)")"
   CREATED_TEMPLATE_ID="$(json_get '.id' <<<"$output")"
 
   if [ -z "$CREATED_TEMPLATE_ID" ] || [ "$CREATED_TEMPLATE_ID" = "null" ]; then
@@ -113,7 +113,7 @@ create_environment() {
   local key=$1
 
   log "creating environment from $key"
-  CREATE_OUTPUT="$(run_cli env create --template "$key")"
+  CREATE_OUTPUT="$(run_cli env create --template-key "$key")"
   CREATED_ENV_ID="$(json_get '.id' <<<"$CREATE_OUTPUT")"
 
   if [ -z "$CREATED_ENV_ID" ] || [ "$CREATED_ENV_ID" = "null" ]; then

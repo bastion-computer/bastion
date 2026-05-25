@@ -49,36 +49,42 @@ bastion system [--data-dir DIR] remove cloud-hypervisor
 Creates and manages environment templates.
 
 ```sh
-bastion templates create KEY (--config JSON | --file PATH)
+bastion templates create [--key KEY] (--config JSON | --file PATH)
 bastion templates list [--limit N] [--cursor CURSOR]
 bastion templates get (--id ID | --key KEY)
 bastion templates remove (--id ID | --key KEY)
 ```
 
-| Command  | Description                               |
-| -------- | ----------------------------------------- |
-| `create` | Validate and store an immutable template. |
-| `list`   | Return paginated template metadata.       |
-| `get`    | Return one template with full config.     |
-| `remove` | Delete one template by ID or key.         |
+| Command  | Description                                                    |
+| -------- | -------------------------------------------------------------- |
+| `create` | Validate and store an immutable template with an optional key. |
+| `list`   | Return paginated template metadata.                            |
+| `get`    | Return one template with full config.                          |
+| `remove` | Delete one template by ID or key.                              |
+
+Template keys are optional. When set, they must be unique. Unkeyed templates are
+referenced by ID.
 
 ## `bastion env`
 
 Creates and manages environments.
 
 ```sh
-bastion env create (--template-id ID | --template KEY) [--tag TAG...]
+bastion env create (--template-id ID | --template-key KEY) [--key KEY] [--tag TAG...]
 bastion env list [--limit N] [--cursor CURSOR] [--tag TAG...]
-bastion env get ENVIRONMENT_ID
-bastion env remove ENVIRONMENT_ID
+bastion env get [ENVIRONMENT_ID | --key KEY]
+bastion env remove [ENVIRONMENT_ID | --key KEY]
 ```
 
 | Command  | Description                                                          |
 | -------- | -------------------------------------------------------------------- |
-| `create` | Launch a VM from a template. Streams init logs.                      |
+| `create` | Launch a VM from a template with an optional environment key.        |
 | `list`   | Return paginated environments, optionally filtered by repeated tags. |
 | `get`    | Return one environment after reconciling with the daemon.            |
 | `remove` | Tear down and delete an environment.                                 |
+
+Environment keys are optional. When set, they must be unique. `--template-key KEY`
+requires a keyed template; use `--template-id ID` for unkeyed templates.
 
 ## `bastion ssh`
 

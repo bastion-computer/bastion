@@ -95,7 +95,7 @@ create_template() {
   local output
 
   log "creating nested template $key"
-  output="$(run_cli templates create "$key" --config "$(nested_template_config)")"
+  output="$(run_cli templates create --key "$key" --config "$(nested_template_config)")"
   if [ "$(jq -r '.id // empty' <<<"$output")" = "" ]; then
     fail "template $key did not return an id"
   fi
@@ -108,7 +108,7 @@ create_outer_environment() {
   local output
 
   log "creating outer environment from $key"
-  output="$(run_cli env create --template "$key")"
+  output="$(run_cli env create --template-key "$key")"
   CREATED_ENV_ID="$(jq -r '.id // empty' <<<"$output")"
   if [ -z "$CREATED_ENV_ID" ]; then
     fail "outer environment did not return an id"
@@ -190,10 +190,10 @@ done
 
 ./core/tmp/bastion --api-url "$INNER_API" templates list >/dev/null
 printf 'inner-api-ready\n'
-./core/tmp/bastion --api-url "$INNER_API" templates create "$CHILD_KEY" --config '{"actions":{"init":[{"run":"set -eu\nprintf nested-ok > /root/nested-ok"}]}}' >/dev/null
+./core/tmp/bastion --api-url "$INNER_API" templates create --key "$CHILD_KEY" --config '{"actions":{"init":[{"run":"set -eu\nprintf nested-ok > /root/nested-ok"}]}}' >/dev/null
 printf 'inner-child-template-created\n'
 
-CHILD_ENV_OUTPUT="$(./core/tmp/bastion --api-url "$INNER_API" env create --template "$CHILD_KEY")"
+CHILD_ENV_OUTPUT="$(./core/tmp/bastion --api-url "$INNER_API" env create --template-key "$CHILD_KEY")"
 CHILD_ENV_ID="$(jq -r '.id // empty' <<<"$CHILD_ENV_OUTPUT")"
 if [ -z "$CHILD_ENV_ID" ]; then
 	printf 'child environment output missing id: %s\n' "$CHILD_ENV_OUTPUT" >&2

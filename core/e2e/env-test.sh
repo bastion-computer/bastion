@@ -35,7 +35,7 @@ cleanup() {
   set +e
 
   if [ "$status" -ne 0 ] && [ "${BASTION_E2E_KEEP_FAILED:-}" = "1" ]; then
-    log "preserving failed run resources: environments=${ENV_IDS[*]:-} templates=${TEMPLATE_KEYS[*]:-}"
+    log "preserving failed run resources: environments=${ENV_IDS[*]:-} templates=${TEMPLATE_IDS[*]:-} template_keys=${TEMPLATE_KEYS[*]:-}"
     exit "$status"
   fi
 
@@ -78,11 +78,11 @@ cleanup_environments() {
 }
 
 cleanup_templates() {
-  local template_key
+  local template_id
 
-  for template_key in "${TEMPLATE_KEYS[@]}"; do
-    if [ -n "$template_key" ]; then
-      run_cli templates remove --key "$template_key" >/dev/null 2>&1 || log "cleanup: template $template_key was not removed"
+  for template_id in "${TEMPLATE_IDS[@]}"; do
+    if [ -n "$template_id" ]; then
+      run_cli templates remove --id "$template_id" >/dev/null 2>&1 || log "cleanup: template $template_id was not removed"
     fi
   done
 
@@ -137,14 +137,34 @@ create_template() {
   local output
 
   log "creating template $key"
-  output="$(run_cli templates create "$key" --config "$config")"
+  output="$(run_cli templates create --key "$key" --config "$config")"
   CREATED_TEMPLATE_ID="$(json_get '.id' <<<"$output")"
 
   if [ -z "$CREATED_TEMPLATE_ID" ] || [ "$CREATED_TEMPLATE_ID" = "null" ]; then
     fail "template $key did not return an id"
   fi
 
+  if ! jq -e --arg key "$key" '.key == $key' <<<"$output" >/dev/null; then
+    fail "template $key response key is $(jq -c '.key // null' <<<"$output"), want $key"
+  fi
+
   TEMPLATE_KEYS+=("$key")
+  TEMPLATE_IDS+=("$CREATED_TEMPLATE_ID")
+}
+
+create_unkeyed_template() {
+  local config=$1
+  local output
+
+  log "creating unkeyed template"
+  output="$(run_cli templates create --config "$config")"
+  CREATED_TEMPLATE_ID="$(json_get '.id' <<<"$output")"
+
+  if [ -z "$CREATED_TEMPLATE_ID" ] || [ "$CREATED_TEMPLATE_ID" = "null" ]; then
+    fail "unkeyed template did not return an id"
+  fi
+
+  assert_json_no_key "unkeyed template create" "$output"
   TEMPLATE_IDS+=("$CREATED_TEMPLATE_ID")
 }
 
@@ -154,7 +174,7 @@ create_environment() {
   local output
 
   log "creating environment from $key"
-  output="$(run_cli env create --template "$key" "$@")"
+  output="$(run_cli env create --template-key "$key" "$@")"
   CREATED_ENV_ID="$(json_get '.id' <<<"$output")"
   CREATED_ENV_OUTPUT="$output"
 
@@ -174,6 +194,25 @@ assert_json_tags() {
   expected="$(jq -nc '$ARGS.positional' --args "$@")"
   if ! jq -e --argjson expected "$expected" '.tags == $expected' <<<"$json" >/dev/null; then
     fail "$label tags are $(jq -c '.tags' <<<"$json"), want $expected"
+  fi
+}
+
+assert_json_key() {
+  local label=$1
+  local json=$2
+  local expected=$3
+
+  if ! jq -e --arg expected "$expected" '.key == $expected' <<<"$json" >/dev/null; then
+    fail "$label key is $(jq -c '.key // null' <<<"$json"), want $expected"
+  fi
+}
+
+assert_json_no_key() {
+  local label=$1
+  local json=$2
+
+  if jq -e 'has("key")' <<<"$json" >/dev/null; then
+    fail "$label unexpectedly has key: $(jq -c '.key' <<<"$json")"
   fi
 }
 
@@ -320,45 +359,73 @@ failing_action_config() {
 assert_template_rejected() {
   local key="$RUN_ID-rejected"
   local config='{"actions":{"init":[],"start":[{"run":"echo should-be-rejected"}]}}'
+  local output
 
   log "verifying schema rejects actions.start"
-  if run_cli templates create "$key" --config "$config" >/tmp/bastion-env-test-rejected.out 2>&1; then
+  if output="$(run_cli templates create --key "$key" --config "$config" 2>&1)"; then
+    CREATED_TEMPLATE_ID="$(json_get '.id // empty' <<<"$output")"
     TEMPLATE_KEYS+=("$key")
+    if [ -n "$CREATED_TEMPLATE_ID" ]; then
+      TEMPLATE_IDS+=("$CREATED_TEMPLATE_ID")
+    fi
     fail "template containing actions.start was accepted"
+  else
+    printf '%s\n' "$output" >/tmp/bastion-env-test-rejected.out
   fi
+}
+
+run_optional_template_key_case() {
+  local template_id
+  local output
+
+  create_unkeyed_template "$(basic_setup_config)"
+  template_id="$CREATED_TEMPLATE_ID"
+
+  output="$(run_cli templates get --id "$template_id")"
+  assert_json_no_key "unkeyed template get" "$output"
+
+  log "optional template key case passed for $template_id"
 }
 
 run_basic_setup_case() {
   local key="$RUN_ID-basic"
   local first_env
   local second_env
+  local first_env_key="$RUN_ID-basic-env"
+  local output
   local run_id_mode
   local first_env_tag="$RUN_ID-basic-first"
   local shared_tag="$RUN_ID-basic"
 
   create_template "$key" "$(basic_setup_config)"
 
-  create_environment "$key" -t "$shared_tag" --tag "$first_env_tag"
+  create_environment "$key" --key "$first_env_key" -t "$shared_tag" --tag "$first_env_tag"
   first_env="$CREATED_ENV_ID"
+  assert_json_key "env create $first_env" "$CREATED_ENV_OUTPUT" "$first_env_key"
   assert_json_tags "env create $first_env" "$CREATED_ENV_OUTPUT" "$shared_tag" "$first_env_tag"
   assert_environment_running "$first_env"
   assert_environment_tags "$first_env" "$shared_tag" "$first_env_tag"
   assert_environment_list_tags "$first_env" "$shared_tag" "$first_env_tag"
-  ssh_env "$first_env" grep -q "$RUN_ID" /opt/bastion-e2e/run-id
-  ssh_env "$first_env" grep -q basic-complete /opt/bastion-e2e/status
-  ssh_env "$first_env" id bastione2e >/dev/null
-  run_id_mode="$(ssh_env "$first_env" stat -c %a /opt/bastion-e2e/run-id)"
-  if [ "$run_id_mode" != "600" ]; then
-    fail "run-id file mode in $first_env is $run_id_mode, want 600"
+  output="$(run_cli env get --key "$first_env_key")"
+  if [ "$(json_get '.id' <<<"$output")" != "$first_env" ]; then
+    fail "environment key lookup returned $(json_get '.id' <<<"$output"), want $first_env"
   fi
+  assert_json_key "env get --key $first_env_key" "$output" "$first_env_key"
 
   cleanup_environments
 
   create_environment "$key"
   second_env="$CREATED_ENV_ID"
+  assert_json_no_key "env create $second_env" "$CREATED_ENV_OUTPUT"
   assert_environment_running "$second_env"
   ssh_env "$second_env" grep -q "$RUN_ID" /opt/bastion-e2e/run-id
+  ssh_env "$second_env" grep -q basic-complete /opt/bastion-e2e/status
+  ssh_env "$second_env" id bastione2e >/dev/null
   ssh_env "$second_env" test -s /opt/bastion-e2e/hostname
+  run_id_mode="$(ssh_env "$second_env" stat -c %a /opt/bastion-e2e/run-id)"
+  if [ "$run_id_mode" != "600" ]; then
+    fail "run-id file mode in $second_env is $run_id_mode, want 600"
+  fi
 
   log "basic setup case passed for $first_env and $second_env"
 }
@@ -485,7 +552,7 @@ run_failure_case() {
   template_id="$CREATED_TEMPLATE_ID"
 
   log "verifying failed init action marks environment error"
-  if output="$(run_cli env create --template "$key" 2>&1)"; then
+  if output="$(run_cli env create --template-key "$key" 2>&1)"; then
     CREATED_ENV_ID="$(json_get '.id' <<<"$output")"
     ENV_IDS+=("$CREATED_ENV_ID")
     fail "environment $CREATED_ENV_ID unexpectedly succeeded for failing template"
@@ -519,6 +586,7 @@ main() {
 
   log "starting environment e2e run $RUN_ID"
   assert_template_rejected
+  run_case run_optional_template_key_case
   run_case run_basic_setup_case
   run_case run_env_substitution_case
   run_case run_preset_setup_node_case

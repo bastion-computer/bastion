@@ -29,11 +29,23 @@ POST /v1/templates
 Content-Type: application/json
 ```
 
-Request:
+Request with an optional unique key:
 
 ```json
 {
   "key": "dev",
+  "config": {
+    "actions": {
+      "init": []
+    }
+  }
+}
+```
+
+Request without a key:
+
+```json
+{
   "config": {
     "actions": {
       "init": []
@@ -51,6 +63,8 @@ Response:
   "createdAt": "<iso_timestamp>"
 }
 ```
+
+If no key was provided, the `key` field is omitted from responses.
 
 ### List Templates
 
@@ -80,6 +94,8 @@ GET /v1/templates/tpl_xxxxxx
 GET /v1/templates/by-key/dev
 ```
 
+The by-key route only works for templates that have a key.
+
 Response:
 
 ```json
@@ -102,7 +118,8 @@ DELETE /v1/templates/tpl_xxxxxx
 DELETE /v1/templates/by-key/dev
 ```
 
-The response is the removed template record.
+The by-key route only works for templates that have a key. The response is the
+removed template record.
 
 ## Environments
 
@@ -119,6 +136,16 @@ Request by template key:
 ```json
 {
   "templateKey": "dev",
+  "tags": ["repo:bastion", "agent:review"]
+}
+```
+
+Request with an optional environment key:
+
+```json
+{
+  "key": "review-123",
+  "templateId": "tpl_xxxxxx",
   "tags": ["repo:bastion", "agent:review"]
 }
 ```
@@ -146,6 +173,7 @@ Result event:
   "type": "result",
   "environment": {
     "id": "env_xxxxxx",
+    "key": "review-123",
     "status": "running",
     "templateId": "tpl_xxxxxx",
     "tags": ["repo:bastion", "agent:review"],
@@ -154,6 +182,10 @@ Result event:
   }
 }
 ```
+
+If no environment key was provided, the `key` field is omitted from environment
+responses. `templateKey` only works for keyed templates; use `templateId` for
+unkeyed templates.
 
 Error event:
 
@@ -181,6 +213,7 @@ Response:
   "entries": [
     {
       "id": "env_xxxxxx",
+      "key": "review-123",
       "status": "running",
       "templateId": "tpl_xxxxxx",
       "tags": ["repo:bastion", "agent:review"],
@@ -195,6 +228,7 @@ Response:
 
 ```http
 GET /v1/environments/env_xxxxxx
+GET /v1/environments/by-key/review-123
 ```
 
 Response:
@@ -202,6 +236,7 @@ Response:
 ```json
 {
   "id": "env_xxxxxx",
+  "key": "review-123",
   "status": "running",
   "templateId": "tpl_xxxxxx",
   "tags": ["repo:bastion", "agent:review"],
@@ -214,6 +249,7 @@ Response:
 
 ```http
 DELETE /v1/environments/env_xxxxxx
+DELETE /v1/environments/by-key/review-123
 ```
 
 Response:
@@ -221,6 +257,7 @@ Response:
 ```json
 {
   "id": "env_xxxxxx",
+  "key": "review-123",
   "status": "removed",
   "templateId": "tpl_xxxxxx",
   "tags": ["repo:bastion", "agent:review"],
@@ -294,13 +331,13 @@ Non-streaming errors use this shape:
 
 Domain errors map to these statuses:
 
-| Status | Meaning                                               |
-| ------ | ----------------------------------------------------- |
-| `400`  | Invalid request or validation failure.                |
-| `404`  | Resource not found.                                   |
-| `409`  | Conflict, such as duplicate keys or in-use templates. |
-| `424`  | Failed dependency, such as a VM runtime issue.        |
-| `500`  | Unexpected server error.                              |
+| Status | Meaning                                                        |
+| ------ | -------------------------------------------------------------- |
+| `400`  | Invalid request or validation failure.                         |
+| `404`  | Resource not found.                                            |
+| `409`  | Conflict, such as duplicate non-null keys or in-use templates. |
+| `424`  | Failed dependency, such as a VM runtime issue.                 |
+| `500`  | Unexpected server error.                                       |
 
 ## Daemon API
 

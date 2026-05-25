@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
@@ -21,16 +22,18 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := service.Create(ctx, template.CreateRequest{
-		Key:    "dev-env",
+		Key:    new("dev-env"),
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
 	}
 
-	if created.ID == "" || created.Key != "dev-env" {
+	if created.ID == "" {
 		t.Fatalf("unexpected created template: %#v", created)
 	}
+
+	requireTemplateKey(t, created.Key, "dev-env")
 
 	page, err := service.List(ctx, 20, "")
 	if err != nil {
@@ -50,6 +53,8 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 		t.Fatalf("unexpected template: %#v", got)
 	}
 
+	requireTemplateKey(t, got.Key, "dev-env")
+
 	removed, err := service.Remove(ctx, created.ID, "")
 	if err != nil {
 		t.Fatalf("remove template: %v", err)
@@ -61,6 +66,70 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 
 	if _, err := service.Get(ctx, created.ID, ""); !errors.Is(err, failure.ErrNotFound) {
 		t.Fatalf("get removed template error = %v, want not found", err)
+	}
+}
+
+func TestServiceCreatesTemplatesWithOptionalKeys(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	service := template.NewService(db)
+	ctx := context.Background()
+	config := json.RawMessage(`{"actions":{"init":[]}}`)
+
+	keyed, err := service.Create(ctx, template.CreateRequest{Key: new("keyed-template"), Config: config})
+	if err != nil {
+		t.Fatalf("create keyed template: %v", err)
+	}
+
+	requireTemplateKey(t, keyed.Key, "keyed-template")
+
+	unkeyedOne, err := service.Create(ctx, template.CreateRequest{Config: config})
+	if err != nil {
+		t.Fatalf("create first unkeyed template: %v", err)
+	}
+
+	unkeyedTwo, err := service.Create(ctx, template.CreateRequest{Config: config})
+	if err != nil {
+		t.Fatalf("create second unkeyed template: %v", err)
+	}
+
+	requireNoTemplateKey(t, unkeyedOne.Key)
+	requireNoTemplateKey(t, unkeyedTwo.Key)
+
+	got, err := service.Get(ctx, unkeyedOne.ID, "")
+	if err != nil {
+		t.Fatalf("get unkeyed template: %v", err)
+	}
+
+	requireNoTemplateKey(t, got.Key)
+
+	encoded, err := json.Marshal(got.Metadata())
+	if err != nil {
+		t.Fatalf("marshal unkeyed template metadata: %v", err)
+	}
+
+	requireNoKeyJSON(t, encoded, "unkeyed template metadata")
+}
+
+func TestServiceRejectsDuplicateAndBlankTemplateKeys(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	service := template.NewService(db)
+	ctx := context.Background()
+	config := json.RawMessage(`{"actions":{"init":[]}}`)
+
+	if _, err := service.Create(ctx, template.CreateRequest{Key: new("keyed-template"), Config: config}); err != nil {
+		t.Fatalf("create keyed template: %v", err)
+	}
+
+	if _, err := service.Create(ctx, template.CreateRequest{Key: new("keyed-template"), Config: config}); !errors.Is(err, failure.ErrConflict) {
+		t.Fatalf("create duplicate keyed template error = %v, want conflict", err)
+	}
+
+	if _, err := service.Create(ctx, template.CreateRequest{Key: new(""), Config: config}); !errors.Is(err, failure.ErrInvalid) {
+		t.Fatalf("create blank-key template error = %v, want invalid", err)
 	}
 }
 
@@ -84,7 +153,7 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		service := template.NewService(db)
 		ctx := context.Background()
 
-		created, err := service.Create(ctx, template.CreateRequest{Key: tc.key, Config: tc.config})
+		created, err := service.Create(ctx, template.CreateRequest{Key: new(tc.key), Config: tc.config})
 		if err != nil {
 			t.Fatalf("%s: create template: %v", tc.key, err)
 		}
@@ -126,7 +195,7 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 
 	for i, tc := range cases {
 		_, err := service.Create(ctx, template.CreateRequest{
-			Key:    fmt.Sprintf("dev-env-%d", i),
+			Key:    new(fmt.Sprintf("dev-env-%d", i)),
 			Config: tc.config,
 		})
 		if !errors.Is(err, failure.ErrInvalid) {
@@ -153,7 +222,7 @@ func TestServiceRejectsRemovingTemplateInUseByEnvironment(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := templates.Create(ctx, template.CreateRequest{
-		Key:    "dev-env",
+		Key:    new("dev-env"),
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	})
 	if err != nil {
@@ -184,4 +253,28 @@ func openDB(t *testing.T) *database.Client {
 	t.Cleanup(func() { _ = db.Close() })
 
 	return db
+}
+
+func requireTemplateKey(t *testing.T, got *string, want string) {
+	t.Helper()
+
+	if got == nil || *got != want {
+		t.Fatalf("template key = %#v, want %q", got, want)
+	}
+}
+
+func requireNoTemplateKey(t *testing.T, got *string) {
+	t.Helper()
+
+	if got != nil {
+		t.Fatalf("template key = %#v, want nil", got)
+	}
+}
+
+func requireNoKeyJSON(t *testing.T, encoded []byte, label string) {
+	t.Helper()
+
+	if strings.Contains(string(encoded), `"key"`) {
+		t.Fatalf("%s JSON = %s, want omitted key", label, encoded)
+	}
 }

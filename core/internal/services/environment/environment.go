@@ -21,6 +21,7 @@ import (
 // Environment describes a managed opencode environment.
 type Environment struct {
 	ID         string   `json:"id"`
+	Key        *string  `json:"key,omitempty"`
 	Status     string   `json:"status"`
 	TemplateID string   `json:"templateId"`
 	Tags       []string `json:"tags"`
@@ -45,6 +46,7 @@ type environmentRecord struct {
 
 // CreateRequest contains the fields needed to create an environment.
 type CreateRequest struct {
+	Key         *string   `json:"key,omitempty"`
 	TemplateID  string    `json:"templateId,omitempty"`
 	TemplateKey string    `json:"templateKey,omitempty"`
 	Tags        []string  `json:"tags,omitempty"`
@@ -110,6 +112,10 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 		return Environment{}, err
 	}
 
+	if err := services.ValidateOptionalKey("environment", req.Key); err != nil {
+		return Environment{}, err
+	}
+
 	if err := validateTags(req.Tags); err != nil {
 		return Environment{}, err
 	}
@@ -134,7 +140,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	}
 
 	now := services.Now()
-	environment := Environment{ID: environmentID, Status: ch.StateCreating, TemplateID: template.ID, Tags: copyTags(req.Tags), CreatedAt: now, UpdatedAt: now}
+	environment := Environment{ID: environmentID, Key: services.CopyStringPtr(req.Key), Status: ch.StateCreating, TemplateID: template.ID, Tags: copyTags(req.Tags), CreatedAt: now, UpdatedAt: now}
 
 	if err := s.createRecord(ctx, environment); err != nil {
 		return Environment{}, err
@@ -144,7 +150,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 		EnvironmentID: environment.ID,
 		Template: ch.Template{
 			ID:     template.ID,
-			Key:    template.Key,
+			Key:    services.CopyStringPtr(template.Key),
 			Config: template.Config,
 		},
 		Logs: req.Logs,
@@ -189,7 +195,7 @@ func (s *Service) createRecord(ctx context.Context, environment Environment) err
 		}
 	}()
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO environments (id, status, template_id, created_at, updated_at, last_error) VALUES (?, ?, ?, ?, ?, ?)`, environment.ID, environment.Status, environment.TemplateID, environment.CreatedAt, environment.UpdatedAt, "")
+	_, err = tx.ExecContext(ctx, `INSERT INTO environments (id, key, status, template_id, created_at, updated_at, last_error) VALUES (?, ?, ?, ?, ?, ?, ?)`, environment.ID, services.OptionalStringValue(environment.Key), environment.Status, environment.TemplateID, environment.CreatedAt, environment.UpdatedAt, "")
 	if err != nil {
 		if database.IsConstraint(err) {
 			return fmt.Errorf("%w: environment already exists", failure.ErrConflict)
@@ -292,7 +298,20 @@ func (s *Service) List(ctx context.Context, limit int, cursor string, tags []str
 
 // Get returns an environment by ID.
 func (s *Service) Get(ctx context.Context, environmentID string) (Environment, error) {
-	environment, err := s.get(ctx, environmentID)
+	return s.getByIDOrKey(ctx, environmentID, "")
+}
+
+// GetByKey returns an environment by key.
+func (s *Service) GetByKey(ctx context.Context, key string) (Environment, error) {
+	return s.getByIDOrKey(ctx, "", key)
+}
+
+func (s *Service) getByIDOrKey(ctx context.Context, environmentID, key string) (Environment, error) {
+	if err := services.RequireIDOrKey(environmentID, key); err != nil {
+		return Environment{}, err
+	}
+
+	environment, err := s.get(ctx, environmentID, key)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Environment{}, fmt.Errorf("%w: environment not found", failure.ErrNotFound)
 	}
@@ -347,6 +366,20 @@ func (s *Service) Remove(ctx context.Context, environmentID string) (Environment
 		return Environment{}, err
 	}
 
+	return s.remove(ctx, environment)
+}
+
+// RemoveByKey deletes an environment by key and returns the removed record.
+func (s *Service) RemoveByKey(ctx context.Context, key string) (Environment, error) {
+	environment, err := s.GetByKey(ctx, key)
+	if err != nil {
+		return Environment{}, err
+	}
+
+	return s.remove(ctx, environment)
+}
+
+func (s *Service) remove(ctx context.Context, environment Environment) (Environment, error) {
 	if err := s.updateStatus(ctx, environment.ID, "removing", ""); err != nil {
 		return Environment{}, err
 	}
@@ -367,6 +400,7 @@ func (s *Service) Remove(ctx context.Context, environmentID string) (Environment
 
 	return Environment{
 		ID:         environment.ID,
+		Key:        services.CopyStringPtr(environment.Key),
 		Status:     "removed",
 		TemplateID: environment.TemplateID,
 		Tags:       environment.Tags,
@@ -377,7 +411,7 @@ func (s *Service) Remove(ctx context.Context, environmentID string) (Environment
 
 type resolvedTemplate struct {
 	ID     string
-	Key    string
+	Key    *string
 	Config json.RawMessage
 }
 
@@ -386,10 +420,11 @@ func (s *Service) resolveTemplate(ctx context.Context, templateID, templateKey s
 
 	var (
 		template resolvedTemplate
+		key      sql.NullString
 		config   string
 	)
 
-	err := s.db.QueryRowContext(ctx, `SELECT id, key, config FROM templates WHERE `+where, value).Scan(&template.ID, &template.Key, &config)
+	err := s.db.QueryRowContext(ctx, `SELECT id, key, config FROM templates WHERE `+where, value).Scan(&template.ID, &key, &config)
 	if errors.Is(err, sql.ErrNoRows) {
 		return resolvedTemplate{}, fmt.Errorf("%w: template not found", failure.ErrNotFound)
 	}
@@ -398,13 +433,14 @@ func (s *Service) resolveTemplate(ctx context.Context, templateID, templateKey s
 		return resolvedTemplate{}, fmt.Errorf("resolve template: %w", err)
 	}
 
+	template.Key = services.NullStringPtr(key)
 	template.Config = json.RawMessage(config)
 
 	return template, nil
 }
 
-func (s *Service) get(ctx context.Context, environmentID string) (Environment, error) {
-	record, err := s.getRecord(ctx, environmentID)
+func (s *Service) get(ctx context.Context, environmentID, key string) (Environment, error) {
+	record, err := s.getRecordByIDOrKey(ctx, environmentID, key)
 	if err != nil {
 		return Environment{}, err
 	}
@@ -420,7 +456,12 @@ func (s *Service) get(ctx context.Context, environmentID string) (Environment, e
 }
 
 func (s *Service) getRecord(ctx context.Context, environmentID string) (environmentRecord, error) {
-	row := s.db.QueryRowContext(ctx, environmentSelectQuery()+` WHERE e.id = ?`, environmentID)
+	return s.getRecordByIDOrKey(ctx, environmentID, "")
+}
+
+func (s *Service) getRecordByIDOrKey(ctx context.Context, environmentID, key string) (environmentRecord, error) {
+	where, value := services.LookupClause(environmentID, key, "e.id", "e.key")
+	row := s.db.QueryRowContext(ctx, environmentSelectQuery()+` WHERE `+where, value)
 
 	return scanEnvironmentRecord(row)
 }
@@ -448,7 +489,7 @@ func (s *Service) reconcile(ctx context.Context, environment Environment) (Envir
 			return Environment{}, err
 		}
 
-		return s.get(ctx, environment.ID)
+		return s.get(ctx, environment.ID, "")
 	}
 
 	if err := s.saveVM(ctx, vm); err != nil {
@@ -459,7 +500,7 @@ func (s *Service) reconcile(ctx context.Context, environment Environment) (Envir
 		return Environment{}, err
 	}
 
-	return s.get(ctx, environment.ID)
+	return s.get(ctx, environment.ID, "")
 }
 
 func (s *Service) saveVM(ctx context.Context, vm ch.VM) error {
@@ -540,7 +581,7 @@ func (s *Service) updateStatus(ctx context.Context, environmentID, status, lastE
 func environmentSelectQuery() string {
 	return `
 SELECT
-  e.id, e.status, e.template_id, e.created_at, e.updated_at, e.last_error,
+  e.id, e.key, e.status, e.template_id, e.created_at, e.updated_at, e.last_error,
   v.guest_ip, v.ssh_port, v.ssh_user, v.ssh_key_path, v.last_error
 FROM environments e
 LEFT JOIN environment_vms v ON v.environment_id = e.id`
@@ -553,6 +594,7 @@ type rowScanner interface {
 func scanEnvironmentRecord(row rowScanner) (environmentRecord, error) {
 	var (
 		record      environmentRecord
+		key         sql.NullString
 		sshHost     sql.NullString
 		sshPort     sql.NullInt64
 		sshUser     sql.NullString
@@ -562,6 +604,7 @@ func scanEnvironmentRecord(row rowScanner) (environmentRecord, error) {
 
 	if err := row.Scan(
 		&record.ID,
+		&key,
 		&record.Status,
 		&record.TemplateID,
 		&record.CreatedAt,
@@ -576,6 +619,7 @@ func scanEnvironmentRecord(row rowScanner) (environmentRecord, error) {
 		return environmentRecord{}, err
 	}
 
+	record.Key = services.NullStringPtr(key)
 	record.SSHConnection = SSHConnection{
 		Host:    nullString(sshHost),
 		Port:    int(sshPort.Int64),

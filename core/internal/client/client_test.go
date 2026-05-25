@@ -85,6 +85,37 @@ func TestListEnvironmentsIncludesTagFilters(t *testing.T) {
 	}
 }
 
+func TestEnvironmentByKeyPaths(t *testing.T) {
+	t.Parallel()
+
+	paths := make([]string, 0, 2)
+	client := &Client{
+		baseURL: "http://bastion.test",
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			paths = append(paths, req.Method+" "+req.URL.Path)
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Body:       io.NopCloser(bytes.NewBufferString(`{"id":"env_keyed","status":"running","templateId":"tpl_test","tags":[],"createdAt":"","updatedAt":""}`)),
+			}, nil
+		})},
+	}
+
+	if _, err := client.GetEnvironmentByKey(context.Background(), "dev-env"); err != nil {
+		t.Fatalf("get environment by key: %v", err)
+	}
+
+	if _, err := client.RemoveEnvironmentByKey(context.Background(), "dev-env"); err != nil {
+		t.Fatalf("remove environment by key: %v", err)
+	}
+
+	want := []string{"GET /v1/environments/by-key/dev-env", "DELETE /v1/environments/by-key/dev-env"}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("paths = %#v, want %#v", paths, want)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

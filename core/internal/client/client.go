@@ -175,10 +175,22 @@ func (c *Client) GetEnvironment(ctx context.Context, id string) (environment.Env
 	return out, c.do(ctx, http.MethodGet, "/v1/environments/"+url.PathEscape(id), nil, &out)
 }
 
+// GetEnvironmentByKey returns an environment by key.
+func (c *Client) GetEnvironmentByKey(ctx context.Context, key string) (environment.Environment, error) {
+	var out environment.Environment
+	return out, c.do(ctx, http.MethodGet, "/v1/environments/by-key/"+url.PathEscape(key), nil, &out)
+}
+
 // RemoveEnvironment deletes an environment.
 func (c *Client) RemoveEnvironment(ctx context.Context, id string) (environment.Environment, error) {
 	var out environment.Environment
 	return out, c.do(ctx, http.MethodDelete, "/v1/environments/"+url.PathEscape(id), nil, &out)
+}
+
+// RemoveEnvironmentByKey deletes an environment by key.
+func (c *Client) RemoveEnvironmentByKey(ctx context.Context, key string) (environment.Environment, error) {
+	var out environment.Environment
+	return out, c.do(ctx, http.MethodDelete, "/v1/environments/by-key/"+url.PathEscape(key), nil, &out)
 }
 
 // OpenSSH opens an upgraded API SSH tunnel for an environment.
