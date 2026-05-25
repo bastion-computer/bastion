@@ -96,9 +96,21 @@ func (h Handler) Get(c *gin.Context) {
 	handlers.Respond(c, environment, err, http.StatusOK)
 }
 
+// GetByKey handles environment lookup by key requests.
+func (h Handler) GetByKey(c *gin.Context) {
+	environment, err := h.environments.GetByKey(c.Request.Context(), c.Param("key"))
+	handlers.Respond(c, environment, err, http.StatusOK)
+}
+
 // Remove handles environment removal requests.
 func (h Handler) Remove(c *gin.Context) {
 	environment, err := h.environments.Remove(c.Request.Context(), c.Param("id"))
+	handlers.Respond(c, environment, err, http.StatusOK)
+}
+
+// RemoveByKey handles environment removal by key requests.
+func (h Handler) RemoveByKey(c *gin.Context) {
+	environment, err := h.environments.RemoveByKey(c.Request.Context(), c.Param("key"))
 	handlers.Respond(c, environment, err, http.StatusOK)
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/api"
@@ -37,8 +38,8 @@ func TestListRoutes(t *testing.T) {
 	templateOne := createTemplate(t, router, "template-list-1")
 	templateTwo := createTemplate(t, router, "template-list-2")
 
-	createEnvironment(t, router, templateOne.Key)
-	createEnvironment(t, router, templateTwo.Key)
+	createEnvironment(t, router, requireStringPtr(t, templateOne.Key))
+	createEnvironment(t, router, requireStringPtr(t, templateTwo.Key))
 
 	assertList[template.Metadata](t, router, "/v1/templates", 2)
 	assertList[environment.Environment](t, router, "/v1/environments", 2)
@@ -50,7 +51,7 @@ func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
 	router := newTestRouter(t, slog.New(slog.DiscardHandler))
 
 	res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{
-		Key:    "invalid-template",
+		Key:    new("invalid-template"),
 		Config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`),
 	})
 	if res.Code != http.StatusBadRequest {
@@ -63,13 +64,58 @@ func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
+func TestTemplateAndEnvironmentOptionalKeys(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
+
+	res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{Config: json.RawMessage(`{"actions":{"init":[]}}`)})
+	if res.Code != http.StatusOK {
+		t.Fatalf("create unkeyed template status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	if strings.Contains(res.Body.String(), `"key"`) {
+		t.Fatalf("unkeyed template response includes key: %s", res.Body.String())
+	}
+
+	var unkeyedTemplate template.Metadata
+	decode(t, res, &unkeyedTemplate)
+
+	if unkeyedTemplate.ID == "" || unkeyedTemplate.Key != nil {
+		t.Fatalf("unkeyed template = %#v, want id without key", unkeyedTemplate)
+	}
+
+	keyedEnv := createEnvironmentFromRequest(t, router, environment.CreateRequest{Key: new("api-environment-key"), TemplateID: unkeyedTemplate.ID})
+	if keyedEnv.Key == nil || *keyedEnv.Key != "api-environment-key" {
+		t.Fatalf("keyed environment key = %#v, want api-environment-key", keyedEnv.Key)
+	}
+
+	assertGet(t, router, "/v1/environments/by-key/api-environment-key", keyedEnv.ID)
+
+	unkeyedEnv := createEnvironmentFromRequest(t, router, environment.CreateRequest{TemplateID: unkeyedTemplate.ID})
+	if unkeyedEnv.Key != nil {
+		t.Fatalf("unkeyed environment key = %#v, want nil", unkeyedEnv.Key)
+	}
+
+	encoded, err := json.Marshal(unkeyedEnv)
+	if err != nil {
+		t.Fatalf("marshal unkeyed environment: %v", err)
+	}
+
+	if strings.Contains(string(encoded), `"key"`) {
+		t.Fatalf("unkeyed environment JSON includes key: %s", encoded)
+	}
+
+	assertDelete(t, router, "/v1/environments/by-key/api-environment-key")
+}
+
 func TestCreateEnvironmentForwardsFailedDependency(t *testing.T) {
 	t.Parallel()
 
 	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(failedDependencyOrchestrator{}))
 	template := createTemplate(t, router, "failed-dependency-template")
 
-	res := request(t, router, http.MethodPost, "/v1/environments", environment.CreateRequest{TemplateKey: template.Key})
+	res := request(t, router, http.MethodPost, "/v1/environments", environment.CreateRequest{TemplateKey: requireStringPtr(t, template.Key)})
 	if res.Code != http.StatusOK {
 		t.Fatalf("create environment status = %d, want streaming %d", res.Code, http.StatusOK)
 	}
@@ -88,8 +134,8 @@ func TestEnvironmentTagsCreateGetAndListRoutes(t *testing.T) {
 	router := newTestRouter(t, slog.New(slog.DiscardHandler))
 	template := createTemplate(t, router, "tagged-environment-template")
 
-	prodGPU := createEnvironment(t, router, template.Key, apiTestProdTag, apiTestGPUTag)
-	prodCPU := createEnvironment(t, router, template.Key, apiTestProdTag, apiTestCPUTag)
+	prodGPU := createEnvironment(t, router, requireStringPtr(t, template.Key), apiTestProdTag, apiTestGPUTag)
+	prodCPU := createEnvironment(t, router, requireStringPtr(t, template.Key), apiTestProdTag, apiTestCPUTag)
 
 	res := request(t, router, http.MethodGet, "/v1/environments/"+prodGPU.ID, nil)
 	if res.Code != http.StatusOK {
@@ -142,9 +188,9 @@ func TestGetRoutes(t *testing.T) {
 	assertGet(t, router, "/v1/templates/"+templateByID.ID, templateByID.ID)
 
 	templateByKey := createTemplate(t, router, "template-get-key")
-	assertGet(t, router, "/v1/templates/by-key/"+templateByKey.Key, templateByKey.ID)
+	assertGet(t, router, "/v1/templates/by-key/"+requireStringPtr(t, templateByKey.Key), templateByKey.ID)
 
-	env := createEnvironment(t, router, templateByID.Key)
+	env := createEnvironment(t, router, requireStringPtr(t, templateByID.Key))
 	assertGet(t, router, "/v1/environments/"+env.ID, env.ID)
 }
 
@@ -157,10 +203,10 @@ func TestDeleteRoutes(t *testing.T) {
 	assertDelete(t, router, "/v1/templates/"+templateByID.ID)
 
 	templateByKey := createTemplate(t, router, "template-delete-key")
-	assertDelete(t, router, "/v1/templates/by-key/"+templateByKey.Key)
+	assertDelete(t, router, "/v1/templates/by-key/"+requireStringPtr(t, templateByKey.Key))
 
 	templateForEnv := createTemplate(t, router, "environment-delete-source")
-	env := createEnvironment(t, router, templateForEnv.Key)
+	env := createEnvironment(t, router, requireStringPtr(t, templateForEnv.Key))
 	assertDelete(t, router, "/v1/environments/"+env.ID)
 }
 
@@ -190,7 +236,7 @@ func TestSSHRouteUpgradesAndRunsSSHRunner(t *testing.T) {
 		}),
 	)
 	template := createTemplate(t, router, "ssh-route-template")
-	env := createEnvironment(t, router, template.Key)
+	env := createEnvironment(t, router, requireStringPtr(t, template.Key))
 
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
@@ -246,7 +292,7 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 	t.Helper()
 
 	res := request(t, handler, http.MethodPost, "/v1/templates", template.CreateRequest{
-		Key:    key,
+		Key:    new(key),
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	})
 	if res.Code != http.StatusOK {
@@ -262,7 +308,13 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 func createEnvironment(t *testing.T, handler http.Handler, templateKey string, tags ...string) environment.Environment {
 	t.Helper()
 
-	res := request(t, handler, http.MethodPost, "/v1/environments", environment.CreateRequest{TemplateKey: templateKey, Tags: tags})
+	return createEnvironmentFromRequest(t, handler, environment.CreateRequest{TemplateKey: templateKey, Tags: tags})
+}
+
+func createEnvironmentFromRequest(t *testing.T, handler http.Handler, req environment.CreateRequest) environment.Environment {
+	t.Helper()
+
+	res := request(t, handler, http.MethodPost, "/v1/environments", req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("create environment status = %d, want %d", res.Code, http.StatusOK)
 	}
@@ -276,8 +328,8 @@ func createEnvironment(t *testing.T, handler http.Handler, templateKey string, t
 
 	created := *event.Environment
 
-	if created.Status != "running" || !slices.Equal(created.Tags, tags) {
-		t.Fatalf("created environment = %#v, want running with tags %#v", created, tags)
+	if created.Status != "running" || !slices.Equal(created.Tags, req.Tags) {
+		t.Fatalf("created environment = %#v, want running with tags %#v", created, req.Tags)
 	}
 
 	return created
@@ -358,6 +410,16 @@ func decode(t *testing.T, res *httptest.ResponseRecorder, value any) {
 	if err := json.NewDecoder(res.Body).Decode(value); err != nil {
 		t.Fatalf("decode response %q: %v", res.Body.String(), err)
 	}
+}
+
+func requireStringPtr(t *testing.T, value *string) string {
+	t.Helper()
+
+	if value == nil {
+		t.Fatal("string pointer is nil")
+	}
+
+	return *value
 }
 
 type failedDependencyOrchestrator struct{}

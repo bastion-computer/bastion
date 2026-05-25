@@ -86,8 +86,11 @@ Create a template file:
 Register it with Bastion:
 
 ```sh
-bastion templates create hello --file ./template.json
+bastion templates create --key hello --file ./template.json
 ```
+
+The `hello` key is optional, but it gives the template a stable human-friendly
+name for later commands.
 
 Example response:
 
@@ -104,7 +107,7 @@ Example response:
 Create an environment from the template:
 
 ```sh
-bastion env create --template hello --tag quickstart
+bastion env create --template-key hello --tag quickstart
 ```
 
 Environment creation streams init logs to stderr and prints the final JSON

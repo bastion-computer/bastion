@@ -27,15 +27,16 @@ func newTemplatesCommand(opts *rootOptions) *cobra.Command {
 
 func newTemplatesCreateCommand(opts *rootOptions) *cobra.Command {
 	var (
+		key         string
 		configValue string
 		file        string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "create KEY (--config JSON | --file PATH)",
+		Use:   "create [--key KEY] (--config JSON | --file PATH)",
 		Short: "Create an environment template",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if (configValue == "") == (file == "") {
 				return errors.New("specify exactly one of --config or --file")
 			}
@@ -51,8 +52,13 @@ func newTemplatesCreateCommand(opts *rootOptions) *cobra.Command {
 				contents = json.RawMessage(fileContents)
 			}
 
+			var templateKey *string
+			if cmd.Flags().Changed("key") {
+				templateKey = &key
+			}
+
 			template, err := apiClient(opts).CreateTemplate(cmd.Context(), template.CreateRequest{
-				Key:    args[0],
+				Key:    templateKey,
 				Config: contents,
 			})
 			if err != nil {
@@ -62,6 +68,7 @@ func newTemplatesCreateCommand(opts *rootOptions) *cobra.Command {
 			return writeJSON(cmd.OutOrStdout(), template)
 		},
 	}
+	cmd.Flags().StringVar(&key, "key", "", "optional unique template key")
 	cmd.Flags().StringVar(&configValue, "config", "", "inline template JSON")
 	cmd.Flags().StringVar(&file, "file", "", "template JSON file")
 

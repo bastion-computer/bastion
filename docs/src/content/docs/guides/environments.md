@@ -8,10 +8,10 @@ guest file system, process space, network interface, and SSH server.
 
 ## Create an Environment
 
-Create from a template key:
+Create from a keyed template:
 
 ```sh
-bastion env create --template dev
+bastion env create --template-key dev
 ```
 
 Create from a template ID:
@@ -20,10 +20,18 @@ Create from a template ID:
 bastion env create --template-id tpl_xxxxxx
 ```
 
+Use `--template-id` for unkeyed templates.
+
+Assign an optional unique environment key:
+
+```sh
+bastion env create --template-key dev --key review-123
+```
+
 Attach tags with repeated `--tag` flags:
 
 ```sh
-bastion env create --template dev --tag repo:bastion --tag agent:review
+bastion env create --template-key dev --tag repo:bastion --tag agent:review
 ```
 
 During creation, Bastion streams init logs to stderr and writes the final JSON
@@ -34,6 +42,7 @@ Example response:
 ```json
 {
   "id": "env_xxxxxx",
+  "key": "review-123",
   "status": "running",
   "templateId": "tpl_xxxxxx",
   "tags": ["repo:bastion", "agent:review"],
@@ -41,6 +50,8 @@ Example response:
   "updatedAt": "<iso_timestamp>"
 }
 ```
+
+Unkeyed environment responses omit `key`.
 
 ## List Environments
 
@@ -71,6 +82,7 @@ Example response:
   "entries": [
     {
       "id": "env_xxxxxx",
+      "key": "review-123",
       "status": "running",
       "templateId": "tpl_xxxxxx",
       "tags": ["repo:bastion", "agent:review"],
@@ -85,6 +97,7 @@ Example response:
 
 ```sh
 bastion env get env_xxxxxx
+bastion env get --key review-123
 ```
 
 `get` reconciles the stored environment record with the daemon before returning
@@ -94,6 +107,7 @@ the response.
 
 ```sh
 bastion env remove env_xxxxxx
+bastion env remove --key review-123
 ```
 
 Removal asks `bastiond` to tear down the VM, cleans up stored VM metadata, and
@@ -104,6 +118,7 @@ Example response:
 ```json
 {
   "id": "env_xxxxxx",
+  "key": "review-123",
   "status": "removed",
   "templateId": "tpl_xxxxxx",
   "tags": ["repo:bastion", "agent:review"],

@@ -5,6 +5,8 @@ description: Define reusable Bastion environment templates with JSON.
 
 Templates describe how Bastion should create an environment. They are stored as
 immutable JSON records and validated against the public template schema.
+Template keys are optional human-friendly aliases. When a key is set, it must be
+unique. Unkeyed templates are referenced by ID.
 
 The current schema is available at
 [`/schemas/template.json`](/schemas/template.json).
@@ -143,16 +145,22 @@ Substitution works anywhere a string appears in the template JSON, including
 
 ## Create a Template
 
-Create from inline JSON:
+Create an unkeyed template from inline JSON:
 
 ```sh
-bastion templates create dev --config '{"actions":{"init":[]}}'
+bastion templates create --config '{"actions":{"init":[]}}'
 ```
 
-Create from a file:
+Create a keyed template from inline JSON:
 
 ```sh
-bastion templates create dev --file ./template.json
+bastion templates create --key dev --config '{"actions":{"init":[]}}'
+```
+
+Create a keyed template from a file:
+
+```sh
+bastion templates create --key dev --file ./template.json
 ```
 
 Exactly one of `--config` or `--file` is required.
@@ -166,6 +174,8 @@ Example response:
   "createdAt": "<iso_timestamp>"
 }
 ```
+
+Unkeyed template responses omit `key`.
 
 ## List Templates
 
@@ -189,7 +199,7 @@ Example response:
 ```
 
 The list response contains metadata only. Use `get` to inspect the full
-configuration.
+configuration. Unkeyed entries omit `key`.
 
 ## Get a Template
 
@@ -198,6 +208,8 @@ Get by key:
 ```sh
 bastion templates get --key dev
 ```
+
+Key lookup only works for templates created with a key.
 
 Get by ID:
 
@@ -212,6 +224,8 @@ Remove by key:
 ```sh
 bastion templates remove --key dev
 ```
+
+Key removal only works for templates created with a key.
 
 Remove by ID:
 

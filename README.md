@@ -67,9 +67,9 @@ mise run dev:bastion templates list
 Examples:
 
 ```sh
-mise run dev:bastion secrets list
-mise run dev:bastion templates create dev-env --config '{"actions":{"init":[]}}'
-mise run dev:bastion sandbox create --from template --key dev-env
+mise run dev:bastion templates create --key dev-env --config '{"actions":{"init":[]}}'
+mise run dev:bastion env create --template-key dev-env
+mise run dev:bastion env list
 ```
 
 The task defaults to `http://localhost:3148`. Set `BASTION_API_URL` to target another host API:

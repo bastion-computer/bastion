@@ -71,7 +71,7 @@ func TestServicePersistsLaunchVMFailure(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := templates.Create(ctx, template.CreateRequest{
-		Key:    testTemplateKey,
+		Key:    new(testTemplateKey),
 		Config: json.RawMessage(`{"actions":{"init":[{"run":"false"}]}}`),
 	}); err != nil {
 		t.Fatalf("create template: %v", err)
@@ -109,7 +109,7 @@ func TestServiceSubstitutesTemplateEnvironmentVariables(t *testing.T) {
 	ctx := context.Background()
 
 	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
-		Key:    "substitution-template",
+		Key:    new("substitution-template"),
 		Config: json.RawMessage(`{"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}]}}`),
 	})
 	if err != nil {
@@ -159,7 +159,7 @@ func TestServicePreservesTemplateResourcesForOrchestration(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := templates.Create(ctx, template.CreateRequest{
-		Key:    "resource-template",
+		Key:    new("resource-template"),
 		Config: json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`),
 	}); err != nil {
 		t.Fatalf("create template: %v", err)
@@ -201,7 +201,7 @@ func TestServiceRejectsUnsetTemplateEnvironmentVariable(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := templates.Create(ctx, template.CreateRequest{
-		Key:    "missing-substitution-template",
+		Key:    new("missing-substitution-template"),
 		Config: json.RawMessage(`{"actions":{"init":[{"run":"echo ${{ env.BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2 }}"}]}}`),
 	}); err != nil {
 		t.Fatalf("create template: %v", err)
@@ -235,8 +235,8 @@ func TestServiceCreatesAndFiltersEnvironmentTags(t *testing.T) {
 	ctx := context.Background()
 
 	createdTemplate := createTaggedTestTemplate(ctx, t, templates)
-	prodGPU := createTaggedEnvironment(ctx, t, service, createdTemplate.Key, testProdTag, testGPUTag)
-	createTaggedEnvironment(ctx, t, service, createdTemplate.Key, testProdTag, testCPUTag)
+	prodGPU := createTaggedEnvironment(ctx, t, service, requireStringPtr(t, createdTemplate.Key), testProdTag, testGPUTag)
+	createTaggedEnvironment(ctx, t, service, requireStringPtr(t, createdTemplate.Key), testProdTag, testCPUTag)
 
 	assertStoredEnvironmentTags(ctx, t, service, prodGPU.ID, testProdTag, testGPUTag)
 	assertEnvironmentListCount(ctx, t, service, []string{testProdTag}, 2)
@@ -244,15 +244,118 @@ func TestServiceCreatesAndFiltersEnvironmentTags(t *testing.T) {
 	assertEnvironmentListCount(ctx, t, service, []string{"missing"}, 0)
 }
 
+func TestServiceCreatesAndGetsEnvironmentWithKey(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	service := environment.NewService(db, environment.WithOrchestrator(newFakeOrchestrator()))
+	ctx := context.Background()
+	createdTemplate := createUnkeyedTestTemplate(ctx, t, templates)
+
+	keyed, err := service.Create(ctx, environment.CreateRequest{Key: new("keyed-environment"), TemplateID: createdTemplate.ID})
+	if err != nil {
+		t.Fatalf("create keyed environment: %v", err)
+	}
+
+	if keyed.Key == nil || *keyed.Key != "keyed-environment" {
+		t.Fatalf("keyed environment key = %#v, want keyed-environment", keyed.Key)
+	}
+
+	gotByKey, err := service.GetByKey(ctx, "keyed-environment")
+	if err != nil {
+		t.Fatalf("get keyed environment: %v", err)
+	}
+
+	if gotByKey.ID != keyed.ID || gotByKey.Key == nil || *gotByKey.Key != "keyed-environment" {
+		t.Fatalf("environment by key = %#v, want %#v", gotByKey, keyed)
+	}
+
+	removed, err := service.RemoveByKey(ctx, "keyed-environment")
+	if err != nil {
+		t.Fatalf("remove keyed environment: %v", err)
+	}
+
+	if removed.ID != keyed.ID || removed.Key == nil || *removed.Key != "keyed-environment" {
+		t.Fatalf("removed keyed environment = %#v, want %#v", removed, keyed)
+	}
+}
+
+func TestServiceCreatesEnvironmentsWithoutKeys(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	service := environment.NewService(db, environment.WithOrchestrator(newFakeOrchestrator()))
+	ctx := context.Background()
+	createdTemplate := createUnkeyedTestTemplate(ctx, t, templates)
+
+	unkeyedOne, err := service.Create(ctx, environment.CreateRequest{TemplateID: createdTemplate.ID})
+	if err != nil {
+		t.Fatalf("create first unkeyed environment: %v", err)
+	}
+
+	unkeyedTwo, err := service.Create(ctx, environment.CreateRequest{TemplateID: createdTemplate.ID})
+	if err != nil {
+		t.Fatalf("create second unkeyed environment: %v", err)
+	}
+
+	if unkeyedOne.Key != nil || unkeyedTwo.Key != nil {
+		t.Fatalf("unkeyed environment keys = %#v/%#v, want nil", unkeyedOne.Key, unkeyedTwo.Key)
+	}
+
+	encoded, err := json.Marshal(unkeyedOne)
+	if err != nil {
+		t.Fatalf("marshal unkeyed environment: %v", err)
+	}
+
+	if strings.Contains(string(encoded), `"key"`) {
+		t.Fatalf("unkeyed environment JSON = %s, want omitted key", encoded)
+	}
+}
+
+func TestServiceRejectsDuplicateAndBlankEnvironmentKeys(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	service := environment.NewService(db, environment.WithOrchestrator(newFakeOrchestrator()))
+	ctx := context.Background()
+	createdTemplate := createUnkeyedTestTemplate(ctx, t, templates)
+
+	if _, err := service.Create(ctx, environment.CreateRequest{Key: new("keyed-environment"), TemplateID: createdTemplate.ID}); err != nil {
+		t.Fatalf("create keyed environment: %v", err)
+	}
+
+	if _, err := service.Create(ctx, environment.CreateRequest{Key: new("keyed-environment"), TemplateID: createdTemplate.ID}); !errors.Is(err, failure.ErrConflict) {
+		t.Fatalf("create duplicate keyed environment error = %v, want conflict", err)
+	}
+
+	if _, err := service.Create(ctx, environment.CreateRequest{Key: new(""), TemplateID: createdTemplate.ID}); !errors.Is(err, failure.ErrInvalid) {
+		t.Fatalf("create blank-key environment error = %v, want invalid", err)
+	}
+}
+
 func createTaggedTestTemplate(ctx context.Context, t *testing.T, templates *template.Service) template.Metadata {
 	t.Helper()
 
 	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
-		Key:    testTemplateKey,
+		Key:    new(testTemplateKey),
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
+	}
+
+	return createdTemplate
+}
+
+func createUnkeyedTestTemplate(ctx context.Context, t *testing.T, templates *template.Service) template.Metadata {
+	t.Helper()
+
+	createdTemplate, err := templates.Create(ctx, template.CreateRequest{Config: json.RawMessage(`{"actions":{"init":[]}}`)})
+	if err != nil {
+		t.Fatalf("create unkeyed template: %v", err)
 	}
 
 	return createdTemplate
@@ -316,7 +419,7 @@ func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates 
 	t.Helper()
 
 	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
-		Key:    testTemplateKey,
+		Key:    new(testTemplateKey),
 		Config: json.RawMessage(`{"actions":{"init":[]}}`),
 	})
 	if err != nil {
@@ -403,6 +506,16 @@ func openDB(t *testing.T) *database.Client {
 	t.Cleanup(func() { _ = db.Close() })
 
 	return db
+}
+
+func requireStringPtr(t *testing.T, value *string) string {
+	t.Helper()
+
+	if value == nil {
+		t.Fatal("string pointer is nil")
+	}
+
+	return *value
 }
 
 type fakeOrchestrator struct {

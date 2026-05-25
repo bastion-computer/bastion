@@ -37,6 +37,44 @@ func RequireIDOrKey(id, key string) error {
 	return nil
 }
 
+// ValidateOptionalKey rejects explicitly provided blank resource keys.
+func ValidateOptionalKey(resource string, key *string) error {
+	if key != nil && strings.TrimSpace(*key) == "" {
+		return fmt.Errorf("%w: %s key cannot be blank", failure.ErrInvalid, resource)
+	}
+
+	return nil
+}
+
+// OptionalStringValue returns a database value for an optional string.
+func OptionalStringValue(value *string) any {
+	if value == nil {
+		return nil
+	}
+
+	return *value
+}
+
+// NullStringPtr returns a string pointer for a nullable database string.
+func NullStringPtr(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+
+	return CopyStringPtr(&value.String)
+}
+
+// CopyStringPtr returns a copy of an optional string pointer.
+func CopyStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+
+	copied := *value
+
+	return &copied
+}
+
 // LookupClause returns the WHERE clause and value for an ID-or-key lookup.
 func LookupClause(id, key, idColumn, keyColumn string) (string, any) {
 	if id != "" {

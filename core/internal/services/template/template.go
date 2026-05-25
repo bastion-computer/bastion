@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
@@ -18,21 +17,21 @@ import (
 // Template contains an environment template and its JSON configuration.
 type Template struct {
 	ID        string          `json:"id"`
-	Key       string          `json:"key"`
+	Key       *string         `json:"key,omitempty"`
 	Config    json.RawMessage `json:"config"`
 	CreatedAt string          `json:"createdAt"`
 }
 
 // Metadata describes a template without its full configuration payload.
 type Metadata struct {
-	ID        string `json:"id"`
-	Key       string `json:"key"`
-	CreatedAt string `json:"createdAt"`
+	ID        string  `json:"id"`
+	Key       *string `json:"key,omitempty"`
+	CreatedAt string  `json:"createdAt"`
 }
 
 // CreateRequest contains the fields needed to create a template.
 type CreateRequest struct {
-	Key    string          `json:"key"`
+	Key    *string         `json:"key,omitempty"`
 	Config json.RawMessage `json:"config"`
 }
 
@@ -48,8 +47,8 @@ func NewService(db *database.Client) *Service {
 
 // Create stores a template and returns its metadata.
 func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, error) {
-	if strings.TrimSpace(req.Key) == "" {
-		return Metadata{}, fmt.Errorf("%w: template key is required", failure.ErrInvalid)
+	if err := services.ValidateOptionalKey("template", req.Key); err != nil {
+		return Metadata{}, err
 	}
 
 	if len(req.Config) == 0 || !json.Valid(req.Config) {
@@ -65,9 +64,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 		return Metadata{}, err
 	}
 
-	template := Template{ID: templateID, Key: req.Key, Config: append([]byte(nil), req.Config...), CreatedAt: services.Now()}
+	template := Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append([]byte(nil), req.Config...), CreatedAt: services.Now()}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, created_at) VALUES (?, ?, ?, ?)`, template.ID, template.Key, string(template.Config), template.CreatedAt)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, created_at) VALUES (?, ?, ?, ?)`, template.ID, services.OptionalStringValue(template.Key), string(template.Config), template.CreatedAt)
 	if err != nil {
 		if database.IsConstraint(err) {
 			return Metadata{}, fmt.Errorf("%w: template already exists", failure.ErrConflict)
@@ -93,10 +92,15 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (services.
 	entries := make([]Metadata, 0, limit+1)
 
 	for rows.Next() {
-		var template Metadata
-		if err := rows.Scan(&template.ID, &template.Key, &template.CreatedAt); err != nil {
+		var (
+			template Metadata
+			key      sql.NullString
+		)
+		if err := rows.Scan(&template.ID, &key, &template.CreatedAt); err != nil {
 			return services.Page[Metadata]{}, fmt.Errorf("scan template: %w", err)
 		}
+
+		template.Key = services.NullStringPtr(key)
 
 		entries = append(entries, template)
 	}
@@ -117,11 +121,12 @@ func (s *Service) Get(ctx context.Context, templateID, key string) (Template, er
 	where, value := services.LookupClause(templateID, key, "id", "key")
 
 	var (
-		template Template
-		config   string
+		template    Template
+		templateKey sql.NullString
+		config      string
 	)
 
-	err := s.db.QueryRowContext(ctx, `SELECT id, key, config, created_at FROM templates WHERE `+where, value).Scan(&template.ID, &template.Key, &config, &template.CreatedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT id, key, config, created_at FROM templates WHERE `+where, value).Scan(&template.ID, &templateKey, &config, &template.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Template{}, fmt.Errorf("%w: template not found", failure.ErrNotFound)
 	}
@@ -130,6 +135,7 @@ func (s *Service) Get(ctx context.Context, templateID, key string) (Template, er
 		return Template{}, fmt.Errorf("get template: %w", err)
 	}
 
+	template.Key = services.NullStringPtr(templateKey)
 	template.Config = json.RawMessage(config)
 
 	return template, nil
@@ -155,5 +161,5 @@ func (s *Service) Remove(ctx context.Context, templateID, key string) (Template,
 
 // Metadata returns the template's metadata view.
 func (t Template) Metadata() Metadata {
-	return Metadata{ID: t.ID, Key: t.Key, CreatedAt: t.CreatedAt}
+	return Metadata{ID: t.ID, Key: services.CopyStringPtr(t.Key), CreatedAt: t.CreatedAt}
 }
