@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: Bastion is a tool to deploy virtual machines for coding agents.
+description: Bastion deploys virtual computers for coding agents.
 ---
 
 Bastion is an orchestration tool for running many agentic coding environments on

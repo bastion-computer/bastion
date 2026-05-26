@@ -1,6 +1,6 @@
 # Bastion
 
-Bastion is a tool to deploy virtual machines for coding agents.
+Bastion deploys virtual computers for coding agents.
 
 **See the full documentation at [bastion.computer](https://bastion.computer).**
 

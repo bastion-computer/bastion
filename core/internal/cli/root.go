@@ -27,7 +27,7 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:           "bastion",
-		Short:         "Bastion is a tool to deploy virtual machines for coding agents.",
+		Short:         "Bastion deploys virtual computers for coding agents.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
