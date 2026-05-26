@@ -67,33 +67,33 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
 <Steps>
 
-1. Create a template to setup your agentic dev environment.
+1. Create a reusable template for configuring your agent's environment.
 
    ```sh
-   bastion templates create --key dev-env --file ./template.json
+   bastion templates create --key acme-app --file ./template.json
    # {
    #   "id": "tpl_123",
-   #   "key": "dev-env",
+   #   "key": "acme-app",
    #   "createdAt": "..."
    # }
    ```
 
-2. Deploy an instance of your environment.
+2. Deploy your agent.
 
    ```sh
-   bastion env create --template-key dev-env --key agent-1 --tag dev:agent
+   bastion env create --template-key acme-app --key agent-1 --tag issue-32
    # {
    #   "id": "env_abc",
    #   "key": "agent-1",
    #   "status": "running",
    #   "templateId": "tpl_123",
-   #   "tags": ["dev:agent"],
+   #   "tags": ["issue-32"],
    #   "createdAt": "...",
    #   "updatedAt": "..."
    # }
    ```
 
-3. Operate your agent from their own virtual computer.
+3. Let your agent operate from their own isolated virtual computer.
 
    ```sh
    bastion ssh --key agent-1
