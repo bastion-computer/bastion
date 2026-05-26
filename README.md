@@ -1,6 +1,6 @@
 # Bastion
 
-Bastion replicates agentic coding environments into isolated VMs.
+Bastion is a tool to deploy virtual machines for coding agents.
 
 **See the full documentation at [bastion.computer](https://bastion.computer).**
 

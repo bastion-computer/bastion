@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: Bastion replicates agentic coding environments into isolated VMs.
+description: Bastion is a tool to deploy virtual machines for coding agents.
 ---
 
 Bastion is an orchestration tool for running many agentic coding environments on
