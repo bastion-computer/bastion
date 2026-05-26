@@ -1,13 +1,13 @@
 ---
 title: Bastion
-description: Bastion replicates agentic coding environments into isolated VMs.
+description: Bastion deploys virtual computers for coding agents.
 head:
   - tag: title
     content: Bastion Computer
 template: splash
 editUrl: false
 hero:
-  tagline: Bastion replicates agentic coding environments into isolated VMs.
+  tagline: Bastion deploys virtual computers for coding agents.
   actions:
     - text: Quick Start
       link: /quick-start/
@@ -21,16 +21,13 @@ hero:
         rel: noopener noreferrer
 ---
 
-import { Card, CardGrid } from "@astrojs/starlight/components";
+import { Card, CardGrid, Steps } from "@astrojs/starlight/components";
 import { ContainerSection } from "starlight-theme-black/components";
-import AgentIsolationHero from "../../components/AgentIsolationHero.astro";
 import HeroAsciiArt from "../../components/HeroAsciiArt.astro";
 
 <HeroAsciiArt />
 
 <ContainerSection>
-
-<AgentIsolationHero />
 
 ```sh
 curl -fsSL https://bastion.computer/install.sh | bash
@@ -63,6 +60,47 @@ curl -fsSL https://bastion.computer/install.sh | bash
 </Card>
 
 </CardGrid>
+
+</ContainerSection>
+
+<ContainerSection>
+
+<Steps>
+
+1. Create a reusable template for configuring your agent's environment.
+
+   ```sh
+   bastion templates create --key acme-app --file ./template.json
+   # {
+   #   "id": "tpl_123",
+   #   "key": "acme-app",
+   #   "createdAt": "..."
+   # }
+   ```
+
+2. Deploy your agent.
+
+   ```sh
+   bastion env create --template-key acme-app --key agent-1 --tag issue-32
+   # {
+   #   "id": "env_abc",
+   #   "key": "agent-1",
+   #   "status": "running",
+   #   "templateId": "tpl_123",
+   #   "tags": ["issue-32"],
+   #   "createdAt": "...",
+   #   "updatedAt": "..."
+   # }
+   ```
+
+3. Let your agent operate from their own isolated virtual computer.
+
+   ```sh
+   bastion ssh --key agent-1
+   # > root@vm-xyz: $
+   ```
+
+</Steps>
 
 </ContainerSection>
 

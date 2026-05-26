@@ -17,7 +17,6 @@
     "@fontsource/geist-mono": "^5.2.5",
     "@fontsource/geist-sans": "^5.2.5",
     "astro": "^6.3.7",
-    "lottie-web": "^5.13.0",
     "sharp": "^0.34.5",
     "starlight-theme-black": "^0.6.0"
   },
