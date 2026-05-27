@@ -287,6 +287,16 @@ curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | bash -s -- --with
 grep -q 'checksum verified' /tmp/bastion-install.log || fail "installer did not verify the release checksum"
 command -v bastion >/dev/null || fail "bastion was not installed on PATH"
 command -v bastiond >/dev/null || fail "bastiond was not installed on PATH"
+test -f /etc/default/bastion || fail "/etc/default/bastion was not created"
+grep -q '^BASTION_DATA_DIR=' /etc/default/bastion || fail "service env file is missing BASTION_DATA_DIR"
+grep -q '^BASTIOND_SOCKET=' /etc/default/bastion || fail "service env file is missing BASTIOND_SOCKET"
+grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastiond.service || fail "bastiond.service does not read /etc/default/bastion"
+grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not read /etc/default/bastion"
+
+printf '\nBASTION_E2E_SENTINEL=preserve\n' >>/etc/default/bastion
+curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | bash -s -- --with-services 2>&1 | tee /tmp/bastion-reinstall.log
+grep -q '^BASTION_E2E_SENTINEL=preserve$' /etc/default/bastion || fail "installer overwrote the service environment file"
+grep -q 'preserving existing service environment file' /tmp/bastion-reinstall.log || fail "installer did not report preserving the service environment file"
 
 installed_version="$(bastion version)"
 if [ "$installed_version" != "$LATEST_VERSION" ]; then

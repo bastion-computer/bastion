@@ -21,6 +21,21 @@ These settings apply to `bastion start`.
 The host API creates the data directory if needed and stores SQLite data at
 `<data-dir>/sqlite.db`.
 
+## Systemd Services
+
+When installed with `--with-services`, Bastion creates `bastion-api.service` and
+`bastiond.service`. Both units read service environment values from
+`/etc/default/bastion`.
+
+The installer seeds `/etc/default/bastion` on first service setup and preserves
+the file during later installs or updates. Edit this file to customize values
+such as `BASTION_DATA_DIR`, `BASTION_ADDR`, and `BASTIOND_SOCKET`, then restart
+the services:
+
+```sh
+sudo systemctl restart bastiond.service bastion-api.service
+```
+
 ## CLI Client
 
 These settings apply to CLI commands that call the host API.

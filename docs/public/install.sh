@@ -5,6 +5,7 @@ readonly REPO="bastion-computer/bastion"
 readonly DEFAULT_INSTALL_DIR="/usr/local/bin"
 readonly TARGET="linux_x86_64"
 readonly SOCKET_PATH="/run/bastion/bastiond.sock"
+readonly SERVICE_ENV_FILE="${BASTION_SERVICE_ENV_FILE:-/etc/default/bastion}"
 
 WITH_SERVICES=0
 INSTALL_DIR="${BASTION_INSTALL_DIR:-}"
@@ -310,18 +311,13 @@ write_service_units() {
   local service_group=$2
   local service_uid=$3
   local service_gid=$4
-  local data_dir=$5
   local unit_dir
   local daemon_unit
   local api_unit
-  local quoted_data_dir
-  local quoted_socket_path
 
   unit_dir="$(mktemp -d)"
   daemon_unit="$unit_dir/bastiond.service"
   api_unit="$unit_dir/bastion-api.service"
-  quoted_data_dir="$(systemd_quote "$data_dir")"
-  quoted_socket_path="$(systemd_quote "$SOCKET_PATH")"
 
   cat >"$daemon_unit" <<EOF
 [Unit]
@@ -331,8 +327,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-Environment=BASTION_DATA_DIR=$quoted_data_dir
-ExecStart=$BASTIOND_BIN --data-dir $quoted_data_dir --socket $quoted_socket_path --socket-uid $service_uid --socket-gid $service_gid
+EnvironmentFile=$SERVICE_ENV_FILE
+ExecStart=$BASTIOND_BIN --socket-uid $service_uid --socket-gid $service_gid
 Restart=always
 RestartSec=2
 
@@ -351,9 +347,8 @@ Requires=bastiond.service
 Type=simple
 User=$service_user
 Group=$service_group
-Environment=BASTION_DATA_DIR=$quoted_data_dir
-Environment=BASTIOND_SOCKET=$quoted_socket_path
-ExecStart=$BASTION_BIN start --addr localhost:3148 --data-dir $quoted_data_dir --bastiond-socket $quoted_socket_path
+EnvironmentFile=$SERVICE_ENV_FILE
+ExecStart=$BASTION_BIN start
 Restart=always
 RestartSec=2
 
@@ -364,6 +359,41 @@ EOF
   run_as_root install -m 0644 "$daemon_unit" /etc/systemd/system/bastiond.service
   run_as_root install -m 0644 "$api_unit" /etc/systemd/system/bastion-api.service
   rm -rf "$unit_dir"
+}
+
+seed_service_environment_file() {
+  local data_dir=$1
+  local env_dir
+  local tmp_file
+  local quoted_data_dir
+  local quoted_socket_path
+
+  if run_as_root test -f "$SERVICE_ENV_FILE"; then
+    log "preserving existing service environment file at $SERVICE_ENV_FILE"
+    return
+  fi
+
+  env_dir="${SERVICE_ENV_FILE%/*}"
+  tmp_file="$(mktemp)"
+  quoted_data_dir="$(systemd_quote "$data_dir")"
+  quoted_socket_path="$(systemd_quote "$SOCKET_PATH")"
+
+  cat >"$tmp_file" <<EOF
+# Bastion systemd service environment.
+# This file is created by install.sh and preserved during updates.
+BASTION_ADDR="localhost:3148"
+BASTION_DATA_DIR=$quoted_data_dir
+BASTIOND_SOCKET=$quoted_socket_path
+BASTION_LOG_FORMAT="json"
+BASTION_LOG_LEVEL="info"
+BASTIOND_LOG_FORMAT="json"
+BASTIOND_LOG_LEVEL="info"
+EOF
+
+  run_as_root install -d -m 0755 "$env_dir"
+  run_as_root install -m 0644 "$tmp_file" "$SERVICE_ENV_FILE"
+  rm -f "$tmp_file"
+  log "created service environment file at $SERVICE_ENV_FILE"
 }
 
 setup_services() {
@@ -392,7 +422,8 @@ setup_services() {
 
   log "setting up systemd services for user $service_user"
   run_as_root install -d -m 0750 -o "$service_user" -g "$service_group" "$data_dir"
-  write_service_units "$service_user" "$service_group" "$service_uid" "$service_gid" "$data_dir"
+  seed_service_environment_file "$data_dir"
+  write_service_units "$service_user" "$service_group" "$service_uid" "$service_gid"
   run_as_root systemctl daemon-reload
   run_as_root systemctl enable bastiond.service bastion-api.service
   run_as_root systemctl restart bastiond.service bastion-api.service

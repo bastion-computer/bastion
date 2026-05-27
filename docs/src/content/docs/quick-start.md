@@ -33,6 +33,11 @@ daemon as systemd services, pass `--with-services`:
 curl -fsSL https://bastion.computer/install.sh | bash -s -- --with-services
 ```
 
+When services are installed, the installer seeds `/etc/default/bastion` with the
+service environment values such as `BASTION_DATA_DIR`, `BASTION_ADDR`, and
+`BASTIOND_SOCKET`. Edit that file to customize service settings; future installer
+runs preserve it.
+
 ## Prepare the Host
 
 Check host dependencies:
