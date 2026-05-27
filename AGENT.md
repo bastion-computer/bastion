@@ -18,6 +18,7 @@ IMPORTANT RULES:
 - [Codebase](.agents/docs/codebase/)
   - [Runtime](.agents/docs/codebase/runtime.md) - Runtime conventions and APIs
   - [New Packages](.agents/docs/codebase/new-packages.md) - Requirements for creating new monorepo packages
+  - [Release](.agents/docs/codebase/release.md) - Release workflow and tag procedure
   - [Testing](.agents/docs/codebase/testing.md) - Verification commands
 - [Dev](.agents/docs/dev/)
   - [Drizzle](.agents/docs/dev/drizzle.md) - Development-only database debugging tools
