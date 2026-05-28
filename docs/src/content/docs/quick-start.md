@@ -157,7 +157,7 @@ bastion ssh --id env_xxxxxx
 Remove the environment when you are done:
 
 ```sh
-bastion env remove env_xxxxxx
+bastion env remove --id env_xxxxxx
 ```
 
 Remove the template if you do not need it anymore:

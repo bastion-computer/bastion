@@ -38,7 +38,7 @@ cleanup() {
 
 	for env_id in "${ENV_IDS[@]}"; do
     if [ -n "$env_id" ]; then
-      run_cli env remove "$env_id" >/dev/null 2>&1 || log "cleanup: environment $env_id was not removed"
+      run_cli env remove --id "$env_id" >/dev/null 2>&1 || log "cleanup: environment $env_id was not removed"
     fi
   done
 
@@ -146,7 +146,7 @@ CHILD_KEY=nested-child
 cleanup_inner() {
   set +e
   if [ -n "${CHILD_ENV_ID:-}" ]; then
-    ./core/tmp/bastion --api-url "$INNER_API" env remove "$CHILD_ENV_ID" >/dev/null 2>&1 || true
+    ./core/tmp/bastion --api-url "$INNER_API" env remove --id "$CHILD_ENV_ID" >/dev/null 2>&1 || true
   fi
   ./core/tmp/bastion --api-url "$INNER_API" templates remove --key "$CHILD_KEY" >/dev/null 2>&1 || true
   if [ -n "${API_PID:-}" ]; then

@@ -67,7 +67,7 @@ cleanup() {
 
   for env_id in "${ENV_IDS[@]}"; do
     if [ -n "$env_id" ]; then
-      run_cli env remove "$env_id" >/dev/null 2>&1 || log "cleanup: environment $env_id was not removed"
+      run_cli env remove --id "$env_id" >/dev/null 2>&1 || log "cleanup: environment $env_id was not removed"
     fi
   done
 

@@ -106,7 +106,7 @@ the response.
 ## Remove an Environment
 
 ```sh
-bastion env remove env_xxxxxx
+bastion env remove --id env_xxxxxx
 bastion env remove --key review-123
 ```
 
