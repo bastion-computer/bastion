@@ -1,3 +1,6 @@
 package cli
 
-const cliTestKeyFlag = "--key"
+const (
+	cliTestEnvironmentID = "env_123"
+	cliTestKeyFlag       = "--key"
+)

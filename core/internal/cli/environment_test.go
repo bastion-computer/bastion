@@ -86,11 +86,11 @@ func TestEnvironmentRemoveCommandUsesID(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || r.URL.Path != "/v1/environments/env_123" {
-			t.Fatalf("request = %s %s, want DELETE /v1/environments/env_123", r.Method, r.URL.Path)
+		if r.Method != http.MethodDelete || r.URL.Path != "/v1/environments/"+cliTestEnvironmentID {
+			t.Fatalf("request = %s %s, want DELETE /v1/environments/%s", r.Method, r.URL.Path, cliTestEnvironmentID)
 		}
 
-		if err := json.NewEncoder(w).Encode(environment.Environment{ID: "env_123", Status: "removed"}); err != nil {
+		if err := json.NewEncoder(w).Encode(environment.Environment{ID: cliTestEnvironmentID, Status: "removed"}); err != nil {
 			t.Fatalf("encode remove response: %v", err)
 		}
 	}))
@@ -101,7 +101,7 @@ func TestEnvironmentRemoveCommandUsesID(t *testing.T) {
 	cmd := newEnvironmentRemoveCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--id", "env_123"})
+	cmd.SetArgs([]string{"--id", cliTestEnvironmentID})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -112,7 +112,7 @@ func TestEnvironmentRemoveCommandUsesID(t *testing.T) {
 		t.Fatalf("decode stdout: %v", err)
 	}
 
-	if got.ID != "env_123" || got.Status != "removed" {
+	if got.ID != cliTestEnvironmentID || got.Status != "removed" {
 		t.Fatalf("remove output = %#v, want removed environment", got)
 	}
 }
