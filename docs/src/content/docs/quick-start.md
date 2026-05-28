@@ -26,6 +26,18 @@ Install the `bastion` and `bastiond` binaries:
 curl -fsSL https://bastion.computer/install.sh | bash
 ```
 
+For non-interactive installs that should also configure the Bastion API and
+daemon as systemd services, pass `--with-services`:
+
+```sh
+curl -fsSL https://bastion.computer/install.sh | bash -s -- --with-services
+```
+
+When services are installed, the installer seeds `/etc/default/bastion` with the
+service environment values such as `BASTION_DATA_DIR`, `BASTION_ADDR`, and
+`BASTIOND_SOCKET`. Edit that file to customize service settings; future installer
+runs preserve it.
+
 ## Prepare the Host
 
 Check host dependencies:
