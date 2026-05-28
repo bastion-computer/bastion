@@ -80,6 +80,15 @@ export default defineConfig({
             },
           ],
         },
+        {
+          label: "Template Examples",
+          items: [
+            {
+              label: "Bastion Dev Environment",
+              slug: "template-examples/bastion-dev-environment",
+            },
+          ],
+        },
       ],
     }),
   ],
