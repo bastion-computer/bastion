@@ -28,7 +28,7 @@ func TestSSHCommandUsesAPIManagedSSH(t *testing.T) {
 	cmd.SetIn(bytes.NewBuffer(nil))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--id", "env_123", "--", sshTestCommandTrue})
+	cmd.SetArgs([]string{"--id", cliTestEnvironmentID, "--", sshTestCommandTrue})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -134,7 +134,7 @@ func newSSHCommandKeyTestServer(t *testing.T, gotReq chan<- sshtunnel.Request) *
 func assertSSHCommandRequest(t *testing.T, r *http.Request) {
 	t.Helper()
 
-	if r.Method != http.MethodPost || r.URL.Path != "/v1/environments/env_123/ssh" {
+	if r.Method != http.MethodPost || r.URL.Path != "/v1/environments/"+cliTestEnvironmentID+"/ssh" {
 		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 	}
 }

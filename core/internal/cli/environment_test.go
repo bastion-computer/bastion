@@ -82,6 +82,41 @@ func TestEnvironmentGetCommandUsesKey(t *testing.T) {
 	}
 }
 
+func TestEnvironmentRemoveCommandUsesID(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v1/environments/"+cliTestEnvironmentID {
+			t.Fatalf("request = %s %s, want DELETE /v1/environments/%s", r.Method, r.URL.Path, cliTestEnvironmentID)
+		}
+
+		if err := json.NewEncoder(w).Encode(environment.Environment{ID: cliTestEnvironmentID, Status: "removed"}); err != nil {
+			t.Fatalf("encode remove response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	var stdout bytes.Buffer
+
+	cmd := newEnvironmentRemoveCommand(&rootOptions{apiURL: server.URL})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--id", cliTestEnvironmentID})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	var got environment.Environment
+	if err := json.NewDecoder(&stdout).Decode(&got); err != nil {
+		t.Fatalf("decode stdout: %v", err)
+	}
+
+	if got.ID != cliTestEnvironmentID || got.Status != "removed" {
+		t.Fatalf("remove output = %#v, want removed environment", got)
+	}
+}
+
 func TestEnvironmentListCommandSendsTagFilters(t *testing.T) {
 	t.Parallel()
 

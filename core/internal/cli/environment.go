@@ -105,7 +105,7 @@ func newEnvironmentGetCommand(opts *rootOptions) *cobra.Command {
 }
 
 func newEnvironmentRemoveCommand(opts *rootOptions) *cobra.Command {
-	return newEnvironmentIDKeyCommand("remove [ENVIRONMENT_ID | --key KEY]", "Remove an environment", func(cmd *cobra.Command, id, key string) (any, error) {
+	return newIDKeyCommand(removeIDKeyUse, "Remove an environment", "environment ID", "environment key", func(cmd *cobra.Command, id, key string) (any, error) {
 		if key != "" {
 			return apiClient(opts).RemoveEnvironmentByKey(cmd.Context(), key)
 		}

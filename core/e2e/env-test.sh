@@ -70,7 +70,7 @@ cleanup_environments() {
       fi
 
       removed_env_ids+="$env_id "
-      run_cli env remove "$env_id" >/dev/null 2>&1 || log "cleanup: environment $env_id was not removed"
+      run_cli env remove --id "$env_id" >/dev/null 2>&1 || log "cleanup: environment $env_id was not removed"
     fi
   done
 
