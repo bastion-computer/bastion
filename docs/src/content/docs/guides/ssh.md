@@ -50,7 +50,7 @@ connecting.
 Check status with:
 
 ```sh
-bastion env get env_xxxxxx
+bastion env get --id env_xxxxxx
 ```
 
 If the environment is `error`, inspect `lastError` and remove or recreate the

@@ -96,7 +96,7 @@ Example response:
 ## Get an Environment
 
 ```sh
-bastion env get env_xxxxxx
+bastion env get --id env_xxxxxx
 bastion env get --key review-123
 ```
 
