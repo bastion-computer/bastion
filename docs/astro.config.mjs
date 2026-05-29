@@ -48,21 +48,6 @@ export default defineConfig({
           ],
         },
         {
-          label: "Ecosystem",
-          items: [
-            { label: "Custom Actions", slug: "ecosystem/custom-actions" },
-            {
-              label: "Coding Agents",
-              slug: "ecosystem/built-ins/coding-agents",
-            },
-            {
-              label: "Utility Tools",
-              slug: "ecosystem/built-ins/utility-tools",
-            },
-            { label: "Runtimes", slug: "ecosystem/built-ins/runtimes" },
-          ],
-        },
-        {
           label: "Reference",
           items: [
             { label: "CLI", slug: "reference/cli" },
@@ -71,22 +56,32 @@ export default defineConfig({
           ],
         },
         {
-          label: "Schemas",
+          label: "Templates",
           items: [
             {
-              label: "Template",
+              label: "Schema",
               link: "/schemas/template.json",
               attrs: { target: "_blank", rel: "noopener noreferrer" },
+            },
+            {
+              label: "Bastion dev env",
+              slug: "template-examples/bastion-dev-environment",
             },
           ],
         },
         {
-          label: "Template Examples",
+          label: "Actions",
           items: [
+            { label: "Custom Actions", slug: "actions/custom-actions" },
             {
-              label: "Bastion Dev Environment",
-              slug: "template-examples/bastion-dev-environment",
+              label: "Coding Agents",
+              slug: "actions/built-ins/coding-agents",
             },
+            {
+              label: "Utility Tools",
+              slug: "actions/built-ins/utility-tools",
+            },
+            { label: "Runtimes", slug: "actions/built-ins/runtimes" },
           ],
         },
       ],
