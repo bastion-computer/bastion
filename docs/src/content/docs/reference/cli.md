@@ -72,7 +72,7 @@ Creates and manages environments.
 ```sh
 bastion env create (--template-id ID | --template-key KEY) [--key KEY] [--tag TAG...]
 bastion env list [--limit N] [--cursor CURSOR] [--tag TAG...]
-bastion env get [ENVIRONMENT_ID | --key KEY]
+bastion env get (--id ID | --key KEY)
 bastion env remove (--id ID | --key KEY)
 ```
 

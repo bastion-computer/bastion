@@ -17,6 +17,7 @@ const (
 	cliTestEnvironmentKey = "dev-env"
 	cliTestProdTag        = "prod"
 	cliTestGPUTag         = "gpu"
+	cliTestRunningStatus  = "running"
 )
 
 func TestEnvironmentCreateCommandSendsTags(t *testing.T) {
@@ -47,15 +48,52 @@ func TestEnvironmentCreateCommandSendsTags(t *testing.T) {
 	assertCreatedEnvironmentOutput(t, created)
 }
 
+func TestEnvironmentGetCommandUsesID(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/environments/"+cliTestEnvironmentID {
+			t.Fatalf("request = %s %s, want GET /v1/environments/%s", r.Method, r.URL.Path, cliTestEnvironmentID)
+		}
+
+		if err := json.NewEncoder(w).Encode(environment.Environment{ID: cliTestEnvironmentID, Status: cliTestRunningStatus}); err != nil {
+			t.Fatalf("encode get response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	var stdout bytes.Buffer
+
+	cmd := newEnvironmentGetCommand(&rootOptions{apiURL: server.URL})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--id", cliTestEnvironmentID})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	var got environment.Environment
+	if err := json.NewDecoder(&stdout).Decode(&got); err != nil {
+		t.Fatalf("decode stdout: %v", err)
+	}
+
+	if got.ID != cliTestEnvironmentID {
+		t.Fatalf("get output = %#v, want environment ID %s", got, cliTestEnvironmentID)
+	}
+}
+
 func TestEnvironmentGetCommandUsesKey(t *testing.T) {
 	t.Parallel()
+
+	key := cliTestEnvironmentKey
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/environments/by-key/"+cliTestEnvironmentKey {
 			t.Fatalf("request = %s %s, want GET /v1/environments/by-key/%s", r.Method, r.URL.Path, cliTestEnvironmentKey)
 		}
 
-		if err := json.NewEncoder(w).Encode(environment.Environment{ID: "env_keyed", Key: new(cliTestEnvironmentKey), Status: "running"}); err != nil {
+		if err := json.NewEncoder(w).Encode(environment.Environment{ID: "env_keyed", Key: &key, Status: cliTestRunningStatus}); err != nil {
 			t.Fatalf("encode get response: %v", err)
 		}
 	}))
@@ -134,7 +172,7 @@ func TestEnvironmentListCommandSendsTagFilters(t *testing.T) {
 		gotTags <- query["tag"]
 
 		page := services.Page[environment.Environment]{
-			Entries: []environment.Environment{{ID: "env_tagged", Status: "running", Tags: []string{cliTestProdTag, cliTestGPUTag}}},
+			Entries: []environment.Environment{{ID: "env_tagged", Status: cliTestRunningStatus, Tags: []string{cliTestProdTag, cliTestGPUTag}}},
 		}
 
 		if err := json.NewEncoder(w).Encode(page); err != nil {
@@ -187,7 +225,7 @@ func newEnvironmentCreateTestServer(t *testing.T, gotReq chan<- environment.Crea
 
 		if err := json.NewEncoder(w).Encode(environment.CreateStreamEvent{
 			Type:        environment.StreamEventResult,
-			Environment: &environment.Environment{ID: "env_tagged", Key: req.Key, Status: "running", Tags: req.Tags},
+			Environment: &environment.Environment{ID: "env_tagged", Key: req.Key, Status: cliTestRunningStatus, Tags: req.Tags},
 		}); err != nil {
 			t.Fatalf("encode create stream: %v", err)
 		}

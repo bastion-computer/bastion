@@ -95,7 +95,7 @@ func newEnvironmentListCommand(opts *rootOptions) *cobra.Command {
 }
 
 func newEnvironmentGetCommand(opts *rootOptions) *cobra.Command {
-	return newEnvironmentIDKeyCommand("get [ENVIRONMENT_ID | --key KEY]", "Get an environment", func(cmd *cobra.Command, id, key string) (any, error) {
+	return newIDKeyCommand(getIDKeyUse, "Get an environment", "environment ID", "environment key", func(cmd *cobra.Command, id, key string) (any, error) {
 		if key != "" {
 			return apiClient(opts).GetEnvironmentByKey(cmd.Context(), key)
 		}
@@ -112,34 +112,4 @@ func newEnvironmentRemoveCommand(opts *rootOptions) *cobra.Command {
 
 		return apiClient(opts).RemoveEnvironment(cmd.Context(), id)
 	})
-}
-
-func newEnvironmentIDKeyCommand(use, short string, action idKeyCommandAction) *cobra.Command {
-	var key string
-
-	cmd := &cobra.Command{
-		Use:   use,
-		Short: short,
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			id := ""
-			if len(args) == 1 {
-				id = args[0]
-			}
-
-			if (id == "") == (key == "") {
-				return errors.New("specify exactly one of ENVIRONMENT_ID or --key")
-			}
-
-			value, err := action(cmd, id, key)
-			if err != nil {
-				return err
-			}
-
-			return writeJSON(cmd.OutOrStdout(), value)
-		},
-	}
-	cmd.Flags().StringVar(&key, "key", "", "environment key")
-
-	return cmd
 }

@@ -153,7 +153,7 @@ assert_environment_running_without_ssh_fields() {
   local output
   local status
 
-  output="$(run_cli env get "$env_id")"
+  output="$(run_cli env get --id "$env_id")"
   assert_no_ssh_fields "env get" "$output"
 
   status="$(json_get '.status' <<<"$output")"

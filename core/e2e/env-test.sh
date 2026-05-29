@@ -221,7 +221,7 @@ assert_environment_tags() {
   shift
   local output
 
-  output="$(run_cli env get "$env_id")"
+  output="$(run_cli env get --id "$env_id")"
   assert_json_tags "environment $env_id" "$output" "$@"
 }
 
@@ -247,7 +247,7 @@ assert_environment_running() {
   local env_id=$1
   local status
 
-  status="$(run_cli env get "$env_id" | json_get '.status')"
+  status="$(run_cli env get --id "$env_id" | json_get '.status')"
   if [ "$status" != "running" ]; then
     fail "environment $env_id status is $status, want running"
   fi
@@ -568,7 +568,7 @@ run_failure_case() {
   fi
 
   ENV_IDS+=("$failed_env_id")
-  last_error="$(run_cli env get "$failed_env_id" | json_get '.lastError // ""')"
+  last_error="$(run_cli env get --id "$failed_env_id" | json_get '.lastError // ""')"
   if [[ "$last_error" != *"init action 2 failed"* ]] || [[ "$last_error" != *"intentional e2e failure"* ]]; then
     fail "failed environment lastError was unexpected: $last_error"
   fi
