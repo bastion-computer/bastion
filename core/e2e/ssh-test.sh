@@ -97,7 +97,8 @@ ssh_template_config() {
   jq -nc --arg run_id "$RUN_ID" '{
     actions: {
       init: [
-        {run: "set -eu\nmkdir -p /opt/bastion-ssh-e2e\nprintf \"%s\\n\" \"\($run_id)\" > /opt/bastion-ssh-e2e/init-run"}
+        {run: "set -eu\nmkdir -p /opt/bastion-ssh-e2e/default-dir\nprintf \"%s\\n\" \"\($run_id)\" > /opt/bastion-ssh-e2e/init-run"},
+        {use: "set_default_ssh_directory", with: {path: "/opt/bastion-ssh-e2e/default-dir"}}
       ]
     }
   }'
@@ -223,9 +224,13 @@ run_interactive_case() {
   local env_id=$1
   local output
 
-  output="$(printf 'test -t 0 && echo bastion-pty-ok\nstty size\nexit\n' | script -qfec "$BASTION --api-url $API_URL ssh --id $env_id" /dev/null)"
+  output="$(printf 'test -t 0 && echo bastion-pty-ok\npwd\nstty size\nexit\n' | script -qfec "$BASTION --api-url $API_URL ssh --id $env_id" /dev/null)"
   if [[ "$output" != *"bastion-pty-ok"* ]]; then
     fail "interactive SSH session did not report a TTY: $output"
+  fi
+
+  if [[ "$output" != *"/opt/bastion-ssh-e2e/default-dir"* ]]; then
+    fail "interactive SSH session did not start in the default SSH directory: $output"
   fi
 
   log "interactive SSH case passed for $env_id"

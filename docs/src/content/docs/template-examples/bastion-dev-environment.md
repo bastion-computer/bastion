@@ -52,7 +52,10 @@ Create `template.json`:
         "working_directory": "/workspace/bastion"
       },
       {
-        "run": "printf '\nif [ -d /workspace/bastion ]; then\n  cd /workspace/bastion\nfi\n' >> /root/.bashrc"
+        "use": "set_default_ssh_directory",
+        "with": {
+          "path": "/workspace/bastion"
+        }
       }
     ]
   }
@@ -87,8 +90,8 @@ Open an interactive shell:
 bastion ssh --key bastion-dev-1
 ```
 
-The shell starts in `/workspace/bastion` because the template appends a guarded
-`cd /workspace/bastion` to `/root/.bashrc`.
+The shell starts in `/workspace/bastion` because the template configures that path
+as the default SSH directory.
 
 ## Change OpenCode Providers
 

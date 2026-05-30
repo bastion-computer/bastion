@@ -11,6 +11,36 @@ when the environment is created. The resolved values are then passed into the
 guest action and may be written to guest files by the action. Use scoped tokens
 appropriate for the environment.
 
+## `set_default_ssh_directory`
+
+`set_default_ssh_directory` configures interactive root SSH shells to start in a
+specific directory when that directory exists.
+
+| Input  | Required | Default | Description                                     |
+| ------ | -------- | ------- | ----------------------------------------------- |
+| `path` | Yes      | None    | Directory to use as the default SSH shell path. |
+
+Example:
+
+```json
+{
+  "actions": {
+    "init": [
+      {
+        "use": "set_default_ssh_directory",
+        "with": {
+          "path": "/workspace/bastion"
+        }
+      }
+    ]
+  }
+}
+```
+
+The action stores the configured path under `/etc/bastion` and updates
+`/root/.bashrc` with a guarded `cd`, so shells keep their normal start directory
+if the configured path does not exist.
+
 ## `setup_github_cli`
 
 `setup_github_cli` installs `gh` from GitHub's apt repository and configures it

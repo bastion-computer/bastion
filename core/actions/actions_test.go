@@ -23,6 +23,7 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 		action string
 		files  []string
 	}{
+		{action: "set_default_ssh_directory", files: []string{testManifestFileName, "set_default_ssh_directory.sh"}},
 		{action: "setup_node", files: []string{testManifestFileName, "install_node.sh"}},
 		{action: "setup_mise", files: []string{testManifestFileName, "install_mise.sh"}},
 		{action: "setup_github_cli", files: []string{testManifestFileName, "install_github_cli.sh"}},
