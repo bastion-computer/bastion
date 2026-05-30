@@ -46,6 +46,41 @@ func TestRunInitActionsRunsCommandsInOrder(t *testing.T) {
 	}
 }
 
+func TestRunInitActionsRunsCommandInWorkingDirectory(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+
+	manager := Manager{
+		stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
+			if name != "ssh" {
+				t.Fatalf("command name = %q, want ssh", name)
+			}
+
+			got = append(got, args[len(args)-1])
+
+			return nil
+		},
+	}
+
+	const (
+		dir = "/workspace/project dir"
+		run = `printf '%s' "$PWD" > pwd.txt`
+	)
+
+	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"printf '%s' \"$PWD\" > pwd.txt","working_directory":"/workspace/project dir"}]}}`), nil)
+	if err != nil {
+		t.Fatalf("run init actions: %v", err)
+	}
+
+	expectedGuestCommand := "mkdir -p " + shellQuote(dir) + " && cd " + shellQuote(dir) + " && sh -c " + shellQuote(run)
+	want := "sh -c " + shellQuote(expectedGuestCommand)
+
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("commands = %#v, want %#v", got, []string{want})
+	}
+}
+
 func TestRunInitActionsStreamsGuestCommandOutput(t *testing.T) {
 	t.Parallel()
 

@@ -80,7 +80,8 @@ Use `run` for one-off shell commands:
         "run": "apt-get update && apt-get install -y git"
       },
       {
-        "run": "mkdir -p /workspace"
+        "run": "printf 'ready\\n' > status.txt",
+        "working_directory": "/workspace"
       }
     ]
   }
@@ -88,6 +89,13 @@ Use `run` for one-off shell commands:
 ```
 
 Commands run as `root` in the guest through `sh -c`.
+
+Run actions support these fields:
+
+| Field               | Required | Description                                                   |
+| ------------------- | -------- | ------------------------------------------------------------- |
+| `run`               | Yes      | Shell command executed inside the guest.                      |
+| `working_directory` | No       | Guest directory to create if needed and run the command from. |
 
 ### Action Packages
 
@@ -141,7 +149,7 @@ value from the `bastion start` process environment. If the variable is not set,
 environment creation fails.
 
 Substitution works anywhere a string appears in the template JSON, including
-`run` commands and action package inputs.
+`run` commands, `working_directory`, and action package inputs.
 
 ## Create a Template
 

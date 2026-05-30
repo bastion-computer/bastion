@@ -36,9 +36,10 @@ type templateActions struct {
 }
 
 type templateAction struct {
-	Run  string         `json:"run,omitempty"`
-	Use  string         `json:"use,omitempty"`
-	With map[string]any `json:"with,omitempty"`
+	Run              string         `json:"run,omitempty"`
+	WorkingDirectory string         `json:"working_directory,omitempty"`
+	Use              string         `json:"use,omitempty"`
+	With             map[string]any `json:"with,omitempty"`
 }
 
 func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {
@@ -166,12 +167,22 @@ func resourceGiBBytes(value int64, name string) (int64, error) {
 func (m Manager) runInitAction(ctx context.Context, vm VM, index int, action templateAction, logs io.Writer) error {
 	switch {
 	case action.Run != "":
-		return m.runGuestCommand(ctx, vm, action.Run, logs)
+		return m.runGuestCommand(ctx, vm, runActionCommand(action), logs)
 	case action.Use != "":
 		return m.runPresetAction(ctx, vm, index, action, logs)
 	default:
 		return errors.New("init action must define run or use")
 	}
+}
+
+func runActionCommand(action templateAction) string {
+	if action.WorkingDirectory == "" {
+		return action.Run
+	}
+
+	dir := shellQuote(action.WorkingDirectory)
+
+	return "mkdir -p " + dir + " && cd " + dir + " && sh -c " + shellQuote(action.Run)
 }
 
 func (m Manager) runGuestCommand(ctx context.Context, vm VM, command string, logs io.Writer) error {

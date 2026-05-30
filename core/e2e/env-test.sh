@@ -344,6 +344,17 @@ env_substitution_config() {
   }'
 }
 
+working_directory_config() {
+  jq -nc --arg run_id "$RUN_ID" '{
+    actions: {
+      init: [
+        {run: "set -eu\nprintf \"run_id=\($run_id)\\n\" > run-id\npwd > pwd\nmkdir -p nested\nprintf working-directory-ready > nested/status", working_directory: "/opt/bastion-e2e-working/new-dir"},
+        {run: "set -eu\ntest -s run-id\ntest \"$(pwd)\" = \"/opt/bastion-e2e-working/new-dir\"\nprintf verified > verified", working_directory: "/opt/bastion-e2e-working/new-dir"}
+      ]
+    }
+  }'
+}
+
 failing_action_config() {
   jq -nc '{
     actions: {
@@ -541,6 +552,23 @@ run_env_substitution_case() {
   log "environment substitution case passed for $env_id"
 }
 
+run_working_directory_case() {
+  local key="$RUN_ID-working-directory"
+  local env_id
+
+  create_template "$key" "$(working_directory_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" grep -q "$RUN_ID" /opt/bastion-e2e-working/new-dir/run-id
+  ssh_env "$env_id" grep -q '^/opt/bastion-e2e-working/new-dir$' /opt/bastion-e2e-working/new-dir/pwd
+  ssh_env "$env_id" grep -q working-directory-ready /opt/bastion-e2e-working/new-dir/nested/status
+  ssh_env "$env_id" grep -q verified /opt/bastion-e2e-working/new-dir/verified
+
+  log "working_directory case passed for $env_id"
+}
+
 run_failure_case() {
   local key="$RUN_ID-fails"
   local template_id
@@ -589,6 +617,7 @@ main() {
   run_case run_optional_template_key_case
   run_case run_basic_setup_case
   run_case run_env_substitution_case
+  run_case run_working_directory_case
   run_case run_preset_setup_node_case
   run_case run_preset_setup_mise_case
   run_case run_preset_setup_github_cli_case
