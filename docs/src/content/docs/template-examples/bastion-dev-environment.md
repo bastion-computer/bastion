@@ -44,10 +44,12 @@ Create `template.json`:
         }
       },
       {
-        "run": "mkdir -p /workspace && gh repo clone bastion-computer/bastion /workspace/bastion"
+        "run": "gh repo clone bastion-computer/bastion bastion",
+        "working_directory": "/workspace"
       },
       {
-        "run": "cd /workspace/bastion && mise trust ./mise.toml && mise install"
+        "run": "mise trust ./mise.toml && mise install",
+        "working_directory": "/workspace/bastion"
       },
       {
         "run": "printf '\nif [ -d /workspace/bastion ]; then\n  cd /workspace/bastion\nfi\n' >> /root/.bashrc"

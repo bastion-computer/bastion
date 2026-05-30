@@ -141,6 +141,7 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		config json.RawMessage
 	}{
 		{key: "run-actions", config: json.RawMessage(`{"actions":{"init":[{"run":"echo node setup"},{"run":"echo docker setup"}]}}`)},
+		{key: "working-directory-run-action", config: json.RawMessage(`{"actions":{"init":[{"run":"pwd","working_directory":"/workspace/project"}]}}`)},
 		{key: "preset-actions", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`)},
 		{key: "resources", config: json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`)},
 		{key: "mise-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
@@ -187,6 +188,8 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 		{name: "invalid preset action name", config: json.RawMessage(`{"actions":{"init":[{"use":"example/action"}]}}`)},
 		{name: "removed start action", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo hi"}]}}`)},
 		{name: "invalid action", config: json.RawMessage(`{"actions":{"init":[{"run":"echo hi","use":"example/action"}]}}`)},
+		{name: "empty working directory", config: json.RawMessage(`{"actions":{"init":[{"run":"pwd","working_directory":""}]}}`)},
+		{name: "working directory on preset action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","working_directory":"/workspace"}]}}`)},
 		{name: "invalid with input name", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"node-version":24}}]}}`)},
 		{name: "invalid with input value", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":{}}}]}}`)},
 		{name: "unknown top-level property", config: json.RawMessage(`{"actions":{"init":[]},"legacy":{}}`)},
