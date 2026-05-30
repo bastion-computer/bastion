@@ -1,0 +1,10 @@
+{
+  "inputs": {
+    "path": {
+      "type": "string",
+      "description": "Directory to use as the default for interactive SSH shells.",
+      "required": true
+    }
+  },
+  "run": "sh ./set_default_ssh_directory.sh"
+}
