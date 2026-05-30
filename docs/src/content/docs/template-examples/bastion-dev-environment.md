@@ -37,9 +37,10 @@ Create `template.json`:
         "use": "setup_opencode",
         "with": {
           "provider": "openai",
-          "model": "openai/gpt-5",
+          "model": "openai/gpt-5.5",
           "api_key": "${{ env.OPENAI_API_KEY }}",
-          "permission": "allow"
+          "permission": "allow",
+          "config": "{\"agent\":{\"build\":{\"model\":\"openai/gpt-5.5\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"openai/gpt-5.5\",\"variant\":\"xhigh\"}}}"
         }
       },
       {
@@ -104,8 +105,10 @@ creating the environment:
 }
 ```
 
-For other providers, update `provider`, `model`, and `api_key`. Add `base_url`
-when the provider needs a custom API endpoint.
+For other providers, update `provider`, `model`, and `api_key`. Also update or
+remove the `config` agent model and variant overrides when they should not use
+OpenAI `gpt-5.5` with `xhigh`. Add `base_url` when the provider needs a custom
+API endpoint.
 
 Environment substitutions such as `${{ env.OPENAI_API_KEY }}` are resolved by
 Bastion when the environment is created. The resolved API key is written into the
