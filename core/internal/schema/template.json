@@ -51,6 +51,51 @@
       "items": {
         "$ref": "#/$defs/action"
       }
+    },
+    "functionTrigger": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "queue"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["type"],
+      "oneOf": [
+        {
+          "required": ["id"]
+        },
+        {
+          "required": ["key"]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "function": {
+      "type": "object",
+      "properties": {
+        "trigger": {
+          "$ref": "#/$defs/functionTrigger"
+        },
+        "with": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": ["string", "number", "boolean"]
+          }
+        }
+      },
+      "required": ["trigger"],
+      "additionalProperties": false
     }
   },
   "type": "object",
@@ -82,6 +127,15 @@
       },
       "required": ["init"],
       "additionalProperties": false
+    },
+    "functions": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/function"
+      }
     }
   },
   "required": ["actions"],

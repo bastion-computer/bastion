@@ -384,6 +384,7 @@ seed_service_environment_file() {
 BASTION_ADDR="localhost:3148"
 BASTION_DATA_DIR=$quoted_data_dir
 BASTIOND_SOCKET=$quoted_socket_path
+QUEUE_PROXY_PORT="3150"
 BASTION_LOG_FORMAT="json"
 BASTION_LOG_LEVEL="info"
 BASTIOND_LOG_FORMAT="json"

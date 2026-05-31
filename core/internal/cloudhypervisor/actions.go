@@ -17,6 +17,7 @@ var ErrVMInitFailed = errors.New("vm init failed")
 type templateConfig struct {
 	Resources templateResources `json:"resources"`
 	Actions   templateActions   `json:"actions"`
+	Functions templateFunctions `json:"functions"`
 }
 
 type templateResources struct {
@@ -40,6 +41,19 @@ type templateAction struct {
 	WorkingDirectory string         `json:"working_directory,omitempty"`
 	Use              string         `json:"use,omitempty"`
 	With             map[string]any `json:"with,omitempty"`
+}
+
+type templateFunctions map[string]templateFunction
+
+type templateFunction struct {
+	Trigger templateFunctionTrigger `json:"trigger"`
+	With    map[string]any          `json:"with,omitempty"`
+}
+
+type templateFunctionTrigger struct {
+	Type string `json:"type"`
+	ID   string `json:"id,omitempty"`
+	Key  string `json:"key,omitempty"`
 }
 
 func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {
@@ -66,6 +80,15 @@ func parseInitActions(config json.RawMessage) ([]templateAction, error) {
 	}
 
 	return parsed.Actions.Init, nil
+}
+
+func parseTemplateFunctions(config json.RawMessage) (templateFunctions, error) {
+	parsed, err := parseTemplateConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return parsed.Functions, nil
 }
 
 func parseTemplateResources(config json.RawMessage) (templateResources, error) {

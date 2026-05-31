@@ -18,6 +18,9 @@ const DefaultAPIURL = "http://" + DefaultAddr
 // DefaultBastiondSocket is the Unix socket used by the privileged daemon.
 const DefaultBastiondSocket = "/run/bastion/bastiond.sock"
 
+// DefaultQueueProxyPort is the TCP port guest workers use on the TAP host IP.
+const DefaultQueueProxyPort = "3150"
+
 // Version is the Bastion CLI version.
 var Version = "dev"
 

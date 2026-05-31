@@ -130,7 +130,7 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	if err := m.runInitActions(ctx, vm, req.Template.Config, req.Logs); err != nil {
+	if err := m.runGuestInitialization(ctx, vm, req.Template.Config, req.Logs); err != nil {
 		return failVM(vm, err)
 	}
 
@@ -150,6 +150,14 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 	)
 
 	return vm, nil
+}
+
+func (m Manager) runGuestInitialization(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {
+	if err := m.runInitActions(ctx, vm, config, logs); err != nil {
+		return err
+	}
+
+	return m.startFunctionWorkers(ctx, vm, config, logs)
 }
 
 type workspace struct {
@@ -681,7 +689,7 @@ func failVM(vm VM, err error) (VM, error) {
 }
 
 func (m Manager) cleanupStoppedVM(ctx context.Context, vm VM) {
-	plan := networkPlan{tapName: vm.TapName, networkCIDR: networkCIDR(vm.GuestCIDR), hostIface: vmHostIface(ctx, m)}
+	plan := networkPlan{tapName: vm.TapName, hostIP: vm.HostIP, networkCIDR: networkCIDR(vm.GuestCIDR), hostIface: vmHostIface(ctx, m)}
 	_ = m.cleanupTap(ctx, plan)
 
 	if vm.RuntimeDir != "" {

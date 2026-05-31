@@ -16,7 +16,7 @@ Built-in actions are documented separately by category:
 | -------------------------------------------------- | ----------------------------------------------- |
 | [Coding agents](/actions/built-ins/coding-agents/) | `setup_opencode`                                |
 | [Utility tools](/actions/built-ins/utility-tools/) | `set_default_ssh_directory`, `setup_github_cli` |
-| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_mise`                      |
+| [Runtimes](/actions/built-ins/runtimes/)           | `setup_bun`, `setup_node`, `setup_mise`         |
 
 ## Package Layout
 

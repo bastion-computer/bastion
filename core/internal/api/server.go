@@ -13,8 +13,10 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/handlers/environments"
+	"github.com/bastion-computer/bastion/core/internal/handlers/queues"
 	"github.com/bastion-computer/bastion/core/internal/handlers/templates"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/queue"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
@@ -36,6 +38,7 @@ func NewServer(addr string, db *database.Client, logger *slog.Logger, opts ...Ro
 type routerConfig struct {
 	environmentOrchestrator environment.Orchestrator
 	environmentSSHRunner    environments.SSHRunner
+	queueProxy              environment.QueueProxy
 }
 
 // RouterOption configures the Bastion API router.
@@ -55,6 +58,13 @@ func WithEnvironmentSSHRunner(runner environments.SSHRunner) RouterOption {
 	}
 }
 
+// WithQueueProxy configures the per-environment queue proxy lifecycle hooks.
+func WithQueueProxy(proxy environment.QueueProxy) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.queueProxy = proxy
+	}
+}
+
 // NewRouter builds the Bastion API router.
 func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *gin.Engine {
 	cfg := routerConfig{}
@@ -70,6 +80,8 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	queueService := queue.NewService(db)
+
 	templateHandler := templates.NewHandler(template.NewService(db))
 	templateRoutes := v1.Group("/templates")
 	templateRoutes.POST("", templateHandler.Create)
@@ -80,7 +92,7 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 	templateRoutes.DELETE("/by-key/:key", templateHandler.RemoveByKey)
 
 	environmentHandler := environments.NewHandler(
-		environment.NewService(db, environment.WithOrchestrator(cfg.environmentOrchestrator)),
+		environment.NewService(db, environment.WithOrchestrator(cfg.environmentOrchestrator), environment.WithQueueService(queueService), environment.WithQueueProxy(cfg.queueProxy)),
 		environments.WithSSHRunner(cfg.environmentSSHRunner),
 	)
 	environmentRoutes := v1.Group("/environments")
@@ -91,6 +103,25 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 	environmentRoutes.POST("/:id/ssh", environmentHandler.SSH)
 	environmentRoutes.GET("/:id", environmentHandler.Get)
 	environmentRoutes.DELETE("/:id", environmentHandler.Remove)
+
+	queueHandler := queues.NewHandler(queueService)
+	queueRoutes := v1.Group("/queues")
+	queueRoutes.POST("", queueHandler.Create)
+	queueRoutes.GET("", queueHandler.List)
+	queueRoutes.GET("/by-key/:key", queueHandler.GetByKey)
+	queueRoutes.DELETE("/by-key/:key", queueHandler.RemoveByKey)
+	queueRoutes.POST("/by-key/:key/tasks", queueHandler.PublishByKey)
+	queueRoutes.GET("/by-key/:key/tasks/:taskID", queueHandler.GetTaskByKey)
+	queueRoutes.POST("/by-key/:key/lease", queueHandler.LeaseByKey)
+	queueRoutes.POST("/by-key/:key/tasks/:taskID/ack", queueHandler.AckByKey)
+	queueRoutes.POST("/by-key/:key/tasks/:taskID/fail", queueHandler.FailByKey)
+	queueRoutes.GET("/:id", queueHandler.GetByID)
+	queueRoutes.DELETE("/:id", queueHandler.RemoveByID)
+	queueRoutes.POST("/:id/tasks", queueHandler.PublishByID)
+	queueRoutes.GET("/:id/tasks/:taskID", queueHandler.GetTaskByID)
+	queueRoutes.POST("/:id/lease", queueHandler.LeaseByID)
+	queueRoutes.POST("/:id/tasks/:taskID/ack", queueHandler.AckByID)
+	queueRoutes.POST("/:id/tasks/:taskID/fail", queueHandler.FailByID)
 
 	return router
 }

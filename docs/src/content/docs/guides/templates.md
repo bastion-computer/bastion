@@ -19,6 +19,7 @@ A template has two top-level fields:
 | ----------- | -------- | --------------------------------------------------------------- |
 | `resources` | No       | VM CPU, memory, and volume sizing.                              |
 | `actions`   | Yes      | Lifecycle actions. The current runtime supports `actions.init`. |
+| `functions` | No       | Queue-triggered TypeScript functions.                           |
 
 Minimal template:
 
@@ -149,7 +150,35 @@ value from the `bastion start` process environment. If the variable is not set,
 environment creation fails.
 
 Substitution works anywhere a string appears in the template JSON, including
-`run` commands, `working_directory`, and action package inputs.
+`run` commands, `working_directory`, action package inputs, and function inputs.
+
+## Functions
+
+Templates can define queue-triggered functions. The function name must match a
+function package under `<data-dir>/functions`.
+
+```json
+{
+  "functions": {
+    "linear_task": {
+      "trigger": {
+        "type": "queue",
+        "key": "linear-task-queue"
+      },
+      "with": {
+        "apiKey": "${{ env.LINEAR_API_KEY }}"
+      }
+    }
+  },
+  "actions": {
+    "init": []
+  }
+}
+```
+
+Only queue triggers are currently supported. Use exactly one of `id` or `key` in
+the trigger. See [Custom Queues](/queues/custom-queues/) for function package
+layout and queue processing behavior.
 
 ## Create a Template
 

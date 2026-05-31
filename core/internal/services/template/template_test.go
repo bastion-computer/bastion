@@ -148,6 +148,7 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		{key: "github-cli-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
 		{key: "opencode-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_opencode","with":{"provider":"anthropic","model":"anthropic/claude-sonnet-4-5","api_key":"test-key","share":"disabled","permission":"allow"}}]}}`)},
 		{key: "default-ssh-directory-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"set_default_ssh_directory","with":{"path":"/workspace/bastion"}}]}}`)},
+		{key: "queue-function", config: json.RawMessage(`{"functions":{"linear_task":{"trigger":{"type":"queue","key":"linear-task-queue"},"with":{"apiKey":"test-key","retries":3,"dryRun":true}}},"actions":{"init":[]}}`)},
 	}
 
 	for _, tc := range cases {
@@ -195,6 +196,10 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 		{name: "invalid with input value", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":{}}}]}}`)},
 		{name: "unknown top-level property", config: json.RawMessage(`{"actions":{"init":[]},"legacy":{}}`)},
 		{name: "non integer vcpu", config: json.RawMessage(`{"resources":{"vcpu":1.5},"actions":{"init":[]}}`)},
+		{name: "invalid function name", config: json.RawMessage(`{"functions":{"linear/task":{"trigger":{"type":"queue","key":"jobs"}}},"actions":{"init":[]}}`)},
+		{name: "invalid function trigger type", config: json.RawMessage(`{"functions":{"linear_task":{"trigger":{"type":"schedule","key":"jobs"}}},"actions":{"init":[]}}`)},
+		{name: "function trigger id and key", config: json.RawMessage(`{"functions":{"linear_task":{"trigger":{"type":"queue","id":"que_test","key":"jobs"}}},"actions":{"init":[]}}`)},
+		{name: "function trigger missing id key", config: json.RawMessage(`{"functions":{"linear_task":{"trigger":{"type":"queue"}}},"actions":{"init":[]}}`)},
 	}
 
 	for i, tc := range cases {

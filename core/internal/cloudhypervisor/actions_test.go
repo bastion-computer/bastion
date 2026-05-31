@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"testing"
 )
+
+const testSCPCommand = "scp"
 
 func TestRunInitActionsRunsCommandsInOrder(t *testing.T) {
 	t.Parallel()
@@ -204,7 +207,7 @@ func TestRunInitActionsRunsPresetActionWithInputs(t *testing.T) {
 		t.Fatalf("prepare guest directory call = %#v", calls[0])
 	}
 
-	if calls[1].name != "scp" || !containsArg(calls[1].args, "-r") || !containsArg(calls[1].args, SSHUser+"@10.241.0.2:"+guestActionsDir) {
+	if calls[1].name != testSCPCommand || !containsArg(calls[1].args, "-r") || !containsArg(calls[1].args, SSHUser+"@10.241.0.2:"+guestActionsDir) {
 		t.Fatalf("copy preset call = %#v", calls[1])
 	}
 
@@ -237,7 +240,7 @@ func TestRunInitActionsRemovesHostPresetInputFileWhenCopyFails(t *testing.T) {
 			return nil
 		},
 		run: func(_ context.Context, name string, _ ...string) error {
-			if name == "scp" {
+			if name == testSCPCommand {
 				return errors.New("copy failed")
 			}
 
@@ -335,6 +338,85 @@ func TestLoadPresetActionRejectsInvalidManifest(t *testing.T) {
 	}
 }
 
+func TestStartFunctionWorkersInstallsRuntimeAndStartsWorker(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestPresetAction(t, dataDir, "setup_bun", `{
+  "run": "sh ./install_bun.sh"
+}`)
+	writeTestFunction(t, dataDir, "task_handler", `{
+  "inputs": {
+    "apiKey": {"type": "string", "required": true}
+  },
+  "handler": "index.ts"
+}`)
+
+	type call struct {
+		name string
+		args []string
+	}
+
+	var calls []call
+
+	manager := Manager{
+		DataDir: dataDir,
+		stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
+			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+
+			return nil
+		},
+		run: func(_ context.Context, name string, args ...string) error {
+			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+
+			return nil
+		},
+	}
+
+	vm := testActionVM()
+	vm.EnvironmentID = "env_test"
+	vm.EnvDir = t.TempDir()
+	vm.HostIP = "10.241.0.1"
+
+	err := manager.startFunctionWorkers(context.Background(), vm, json.RawMessage(`{"functions":{"task_handler":{"trigger":{"type":"queue","key":"jobs"},"with":{"apiKey":"test-key"}}},"actions":{"init":[]}}`), nil)
+	if err != nil {
+		t.Fatalf("start function workers: %v", err)
+	}
+
+	if len(calls) != 6 {
+		t.Fatalf("call count = %d, want runtime and worker calls: %#v", len(calls), calls)
+	}
+
+	if calls[1].name != testSCPCommand || !containsArg(calls[1].args, SSHUser+"@10.241.0.2:"+guestActionsDir) {
+		t.Fatalf("runtime copy call = %#v", calls[1])
+	}
+
+	if calls[4].name != testSCPCommand || !containsArg(calls[4].args, SSHUser+"@10.241.0.2:"+guestFunctionsDir) {
+		t.Fatalf("function copy call = %#v", calls[4])
+	}
+
+	runCommand := calls[5].args[len(calls[5].args)-1]
+	for _, want := range []string{path.Join(guestFunctionsDir, "task_handler"), "nohup bun ./" + functionWorkerFile, "/var/log/bastion/functions/task_handler.log"} {
+		if !strings.Contains(runCommand, want) {
+			t.Fatalf("function run command = %q, want to contain %q", runCommand, want)
+		}
+	}
+
+	workerPath := filepath.Join(vm.EnvDir, functionsDir, "task_handler", functionWorkerFile)
+
+	worker, err := os.ReadFile(workerPath) //nolint:gosec // Test path is rooted in t.TempDir.
+	if err != nil {
+		t.Fatalf("read worker: %v", err)
+	}
+
+	workerSource := string(worker)
+	for _, want := range []string{"import handler from \"./index.ts\"", "http://10.241.0.1:3150/v1/queues/by-key/jobs", "worker_id: workerID", "handler({ inputs, data: task.data })"} {
+		if !strings.Contains(workerSource, want) {
+			t.Fatalf("worker source missing %q:\n%s", want, workerSource)
+		}
+	}
+}
+
 func TestResolveTemplateResourcesUsesTemplateValuesInGiB(t *testing.T) {
 	t.Parallel()
 
@@ -419,6 +501,23 @@ func writeTestPresetAction(t *testing.T, dataDir, name, manifest string) {
 
 	if err := os.WriteFile(filepath.Join(dir, "install_node.sh"), []byte("#!/usr/bin/env sh\n"), 0o600); err != nil {
 		t.Fatalf("write preset action script: %v", err)
+	}
+}
+
+func writeTestFunction(t *testing.T, dataDir, name, manifest string) {
+	t.Helper()
+
+	dir := filepath.Join(dataDir, functionsDir, name)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("create function dir: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), []byte(manifest), 0o600); err != nil {
+		t.Fatalf("write function manifest: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "index.ts"), []byte("export default async function handler() {}\n"), 0o600); err != nil {
+		t.Fatalf("write function handler: %v", err)
 	}
 }
 

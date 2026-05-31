@@ -121,6 +121,147 @@ DELETE /v1/templates/by-key/dev
 The by-key route only works for templates that have a key. The response is the
 removed template record.
 
+## Queues
+
+### Create Queue
+
+```http
+POST /v1/queues
+Content-Type: application/json
+```
+
+Request with an optional unique key:
+
+```json
+{
+  "key": "linear-task-queue"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "que_xxxxxx",
+  "key": "linear-task-queue",
+  "createdAt": "<iso_timestamp>",
+  "updatedAt": "<iso_timestamp>"
+}
+```
+
+### List Queues
+
+```http
+GET /v1/queues?limit=20&cursor=<cursor>
+```
+
+Response:
+
+```json
+{
+  "cursor": null,
+  "entries": [
+    {
+      "id": "que_xxxxxx",
+      "key": "linear-task-queue",
+      "createdAt": "<iso_timestamp>",
+      "updatedAt": "<iso_timestamp>"
+    }
+  ]
+}
+```
+
+### Get Queue
+
+```http
+GET /v1/queues/que_xxxxxx
+GET /v1/queues/by-key/linear-task-queue
+```
+
+### Remove Queue
+
+```http
+DELETE /v1/queues/que_xxxxxx
+DELETE /v1/queues/by-key/linear-task-queue
+```
+
+Removing a queue removes its tasks.
+
+### Publish Task
+
+```http
+POST /v1/queues/que_xxxxxx/tasks
+POST /v1/queues/by-key/linear-task-queue/tasks
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "retry": {
+    "max_attempts": 5,
+    "delay_ms": 500,
+    "backoff_multiplier": 2,
+    "max_delay_ms": 30000,
+    "jitter": true
+  },
+  "data": {
+    "issueId": "BAS-11"
+  }
+}
+```
+
+If `retry` is omitted, Bastion applies a default retry policy.
+
+Response:
+
+```json
+{
+  "id": "task_xxxxxx",
+  "queueId": "que_xxxxxx",
+  "status": "pending",
+  "retry": {
+    "max_attempts": 5,
+    "delay_ms": 500,
+    "max_delay_ms": 30000,
+    "backoff_multiplier": 2,
+    "jitter": true
+  },
+  "data": {
+    "issueId": "BAS-11"
+  },
+  "attempts": 0,
+  "availableAt": "<iso_timestamp>",
+  "createdAt": "<iso_timestamp>",
+  "updatedAt": "<iso_timestamp>"
+}
+```
+
+### Get Task
+
+```http
+GET /v1/queues/que_xxxxxx/tasks/task_xxxxxx
+GET /v1/queues/by-key/linear-task-queue/tasks/task_xxxxxx
+```
+
+Completed tasks include `workerData` when the handler returned data. Failed
+tasks include `lastError`; tasks that exhaust retries have status `dead`.
+
+### Worker Endpoints
+
+The queue proxy and host API expose worker endpoints for generated function
+workers:
+
+```http
+POST /v1/queues/que_xxxxxx/lease
+POST /v1/queues/que_xxxxxx/tasks/task_xxxxxx/ack
+POST /v1/queues/que_xxxxxx/tasks/task_xxxxxx/fail
+```
+
+The same endpoints are available under `/v1/queues/by-key/:key`. A lease returns
+`204 No Content` when no task is available.
+
 ## Environments
 
 ### Create Environment

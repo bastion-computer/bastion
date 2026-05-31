@@ -25,16 +25,9 @@ func TestOpenCreatesAndMigratesSQLiteDatabase(t *testing.T) {
 		t.Fatalf("stat sqlite db: %v", err)
 	}
 
-	var tableName string
-
-	err = db.QueryRowContext(context.Background(), `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'templates'`).Scan(&tableName)
-	if err != nil {
-		t.Fatalf("query migrated table: %v", err)
-	}
-
-	if tableName != "templates" {
-		t.Fatalf("table name = %q, want templates", tableName)
-	}
+	assertMigratedTable(t, db, "templates")
+	assertMigratedTable(t, db, "queues")
+	assertMigratedTable(t, db, "queue_tasks")
 }
 
 func TestOpenMemoryDatabaseRunsMigrations(t *testing.T) {
@@ -47,14 +40,21 @@ func TestOpenMemoryDatabaseRunsMigrations(t *testing.T) {
 
 	t.Cleanup(func() { _ = db.Close() })
 
+	assertMigratedTable(t, db, "environments")
+	assertMigratedTable(t, db, "queues")
+}
+
+func assertMigratedTable(t *testing.T, db *database.Client, name string) {
+	t.Helper()
+
 	var tableName string
 
-	err = db.QueryRowContext(context.Background(), `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'environments'`).Scan(&tableName)
+	err := db.QueryRowContext(context.Background(), `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&tableName)
 	if err != nil {
-		t.Fatalf("query migrated table: %v", err)
+		t.Fatalf("query migrated table %s: %v", name, err)
 	}
 
-	if tableName != "environments" {
-		t.Fatalf("table name = %q, want environments", tableName)
+	if tableName != name {
+		t.Fatalf("table name = %q, want %s", tableName, name)
 	}
 }

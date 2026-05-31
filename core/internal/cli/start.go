@@ -2,6 +2,7 @@ package cli
 
 import (
 	"log/slog"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -10,12 +11,20 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/config"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/logging"
+	"github.com/bastion-computer/bastion/core/internal/queueproxy"
+	"github.com/bastion-computer/bastion/core/internal/services/queue"
 )
 
 func newStartCommand() *cobra.Command {
 	addr := config.EnvDefault("BASTION_ADDR", config.DefaultAddr)
 	dataDir := config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir())
 	bastiondSocket := config.EnvDefault("BASTIOND_SOCKET", config.DefaultBastiondSocket)
+
+	queueProxyPort, err := strconv.Atoi(config.EnvDefault("QUEUE_PROXY_PORT", config.DefaultQueueProxyPort))
+	if err != nil || queueProxyPort <= 0 || queueProxyPort > 65535 {
+		queueProxyPort = 3150
+	}
+
 	logFormat := config.EnvDefault("BASTION_LOG_FORMAT", logging.DefaultFormat)
 	logLevel := config.EnvDefault("BASTION_LOG_LEVEL", logging.DefaultLevel)
 
@@ -45,16 +54,25 @@ func newStartCommand() *cobra.Command {
 				slog.String("addr", addr),
 				slog.String("data_dir", resolvedDataDir),
 				slog.String("bastiond_socket", bastiondSocket),
+				slog.Int("queue_proxy_port", queueProxyPort),
 				slog.String("log_format", logFormat),
 				slog.String("log_level", logLevel),
 			)
 
-			return api.Run(cmd.Context(), addr, db, logger, api.WithEnvironmentOrchestrator(ch.NewClient(bastiondSocket)))
+			proxy := queueproxy.NewManager(cmd.Context(), queue.NewService(db), queueProxyPort, logger)
+			defer func() { _ = proxy.Close() }()
+
+			if err := proxy.StartExisting(cmd.Context(), db); err != nil {
+				return err
+			}
+
+			return api.Run(cmd.Context(), addr, db, logger, api.WithEnvironmentOrchestrator(ch.NewClient(bastiondSocket)), api.WithQueueProxy(proxy))
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", addr, "host API listen address")
 	cmd.Flags().StringVar(&dataDir, "data-dir", dataDir, "directory for persistent data")
 	cmd.Flags().StringVar(&bastiondSocket, "bastiond-socket", bastiondSocket, "bastiond Unix socket path")
+	cmd.Flags().IntVar(&queueProxyPort, "queue-proxy-port", queueProxyPort, "queue proxy TCP port exposed on VM TAP host IPs")
 	cmd.Flags().StringVar(&logFormat, "log-format", logFormat, "log format: json or text")
 	cmd.Flags().StringVar(&logLevel, "log-level", logLevel, "minimum log level: debug, info, warn, or error")
 

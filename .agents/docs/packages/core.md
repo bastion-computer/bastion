@@ -23,9 +23,11 @@ The `bastiond` binary runs privileged Cloud Hypervisor runtime operations behind
 | `internal/failure` | Shared domain error sentinels mapped by the API layer. |
 | `internal/cloudhypervisor` | Cloud Hypervisor runtime orchestration, bastiond Gin routes, Unix socket client, and per-environment VM state. |
 | `internal/handlers` | HTTP route handlers grouped by domain, plus shared handler helpers. Handlers adapt Gin requests to services. |
+| `internal/queueproxy` | TAP-host-IP queue proxy used by guest function workers. |
 | `internal/services` | Shared service-layer helpers and response types. |
 | `internal/services/template` | Template request/response types and persistence service. |
 | `internal/services/environment` | Environment request/response types and persistence service. |
+| `internal/services/queue` | Queue CRUD, durable task leasing, ACK/fail, retry, and DLQ persistence. |
 | `internal/migrations` | Embedded SQL migrations applied by core. |
 
 Implementation packages should stay under `internal/` unless another Go module has a concrete need to import them.
@@ -55,6 +57,7 @@ Local builds report `dev` from `internal/config.Version`. Release builds can inj
 - `--addr`: listen address. Defaults to `localhost:3148` and can be set with `BASTION_ADDR`.
 - `--data-dir`: persistent data directory. Defaults to `~/.bastion` and can be set with `BASTION_DATA_DIR`.
 - `--bastiond-socket`: Unix socket path for the privileged daemon. Defaults to `/run/bastion/bastiond.sock` and can be set with `BASTIOND_SOCKET`.
+- `--queue-proxy-port`: queue proxy port bound on VM TAP host IPs. Defaults to `3150` and can be set with `QUEUE_PROXY_PORT`.
 - `--log-format`: log handler format. Defaults to `json` and can be set with `BASTION_LOG_FORMAT`; supported values are `json` and `text`.
 - `--log-level`: minimum log level. Defaults to `info` and can be set with `BASTION_LOG_LEVEL`; supported values are `debug`, `info`, `warn`, and `error`.
 
@@ -84,6 +87,7 @@ CLI commands call the host API configured by `--api-url` or `BASTION_API_URL`. T
 Supported command groups are intentionally limited to the current product scope:
 
 - `bastion templates ...`
+- `bastion queues ...`
 - `bastion env ...`
 - `bastion ssh (--id ID | --key KEY) [-- COMMAND...]`
 

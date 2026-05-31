@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const testQueueProxyHostIP = "10.241.0.1"
+
 func TestPlanNetworkUsesAllocatedIndex(t *testing.T) {
 	t.Parallel()
 
@@ -15,7 +17,7 @@ func TestPlanNetworkUsesAllocatedIndex(t *testing.T) {
 		t.Fatalf("plan first network: %v", err)
 	}
 
-	if first.hostIP != "10.241.0.1" || first.guestIP != "10.241.0.2" || first.networkCIDR != "10.241.0.0/30" {
+	if first.hostIP != testQueueProxyHostIP || first.guestIP != "10.241.0.2" || first.networkCIDR != "10.241.0.0/30" {
 		t.Fatalf("first network = %#v", first)
 	}
 
@@ -125,16 +127,59 @@ func TestCleanupStaleTapCIDRRemovesOnlyStaleBastionTaps(t *testing.T) {
 		},
 	}
 
-	plan := networkPlan{tapName: "btnew", hostCIDR: "10.241.0.1/30", networkCIDR: "10.241.0.0/30", hostIface: "eth0"}
+	plan := networkPlan{tapName: "btnew", hostIP: testQueueProxyHostIP, hostCIDR: "10.241.0.1/30", networkCIDR: "10.241.0.0/30", hostIface: "eth0"}
 	if err := manager.cleanupStaleTapCIDR(context.Background(), plan); err != nil {
 		t.Fatalf("cleanup stale tap cidr: %v", err)
 	}
 
 	want := []string{
+		"iptables -D INPUT -i btstale -d 10.241.0.1 -p tcp --dport 3150 -j ACCEPT",
 		"iptables -D FORWARD -i btstale -j ACCEPT",
 		"iptables -D FORWARD -o btstale -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
 		"iptables -t nat -D POSTROUTING -s 10.241.0.0/30 -o eth0 -j MASQUERADE",
 		"ip link del btstale",
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestEnsureIPTablesAllowsQueueProxyInput(t *testing.T) {
+	t.Parallel()
+
+	var commands []string
+
+	manager := Manager{
+		run: func(_ context.Context, name string, args ...string) error {
+			commands = append(commands, commandString(name, args))
+
+			isCheck := len(args) > 0 && args[0] == "-C"
+			if len(args) > 2 && args[0] == "-t" && args[2] == "-C" {
+				isCheck = true
+			}
+
+			if isCheck {
+				return os.ErrNotExist
+			}
+
+			return nil
+		},
+	}
+
+	plan := networkPlan{tapName: "btnew", hostIP: testQueueProxyHostIP, networkCIDR: "10.241.0.0/30", hostIface: "eth0"}
+	if err := manager.ensureIPTables(context.Background(), plan); err != nil {
+		t.Fatalf("ensure iptables: %v", err)
+	}
+
+	want := []string{
+		"iptables -C INPUT -i btnew -d 10.241.0.1 -p tcp --dport 3150 -j ACCEPT",
+		"iptables -I INPUT -i btnew -d 10.241.0.1 -p tcp --dport 3150 -j ACCEPT",
+		"iptables -C FORWARD -i btnew -j ACCEPT",
+		"iptables -I FORWARD -i btnew -j ACCEPT",
+		"iptables -C FORWARD -o btnew -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+		"iptables -I FORWARD -o btnew -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+		"iptables -t nat -C POSTROUTING -s 10.241.0.0/30 -o eth0 -j MASQUERADE",
+		"iptables -t nat -I POSTROUTING -s 10.241.0.0/30 -o eth0 -j MASQUERADE",
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("commands = %#v, want %#v", commands, want)

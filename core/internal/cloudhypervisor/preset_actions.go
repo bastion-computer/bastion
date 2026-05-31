@@ -129,14 +129,17 @@ func validatePresetActionManifest(name string, manifest presetActionManifest) er
 }
 
 func validatePresetActionInputs(preset presetActionPackage, with map[string]any) error {
-	inputs := preset.manifest.Inputs
+	return validatePackageInputs("preset action "+preset.name, preset.manifest.Inputs, with)
+}
+
+func validatePackageInputs(scope string, inputs map[string]presetActionInput, with map[string]any) error {
 	if inputs == nil {
 		inputs = map[string]presetActionInput{}
 	}
 
 	for name := range with {
 		if _, ok := inputs[name]; !ok {
-			return fmt.Errorf("preset action %s input %s is not defined", preset.name, name)
+			return fmt.Errorf("%s input %s is not defined", scope, name)
 		}
 	}
 
@@ -144,14 +147,14 @@ func validatePresetActionInputs(preset presetActionPackage, with map[string]any)
 		value, ok := with[name]
 		if !ok {
 			if input.Required {
-				return fmt.Errorf("preset action %s input %s is required", preset.name, name)
+				return fmt.Errorf("%s input %s is required", scope, name)
 			}
 
 			continue
 		}
 
 		if _, err := presetInputValueString(value, input.Type); err != nil {
-			return fmt.Errorf("preset action %s input %s: %w", preset.name, name, err)
+			return fmt.Errorf("%s input %s: %w", scope, name, err)
 		}
 	}
 

@@ -17,7 +17,7 @@ Core E2E workflow:
 - If system check fails because assets/utilities are missing, run: `./core/tmp/bastion system --data-dir ./.bastion add cloud-hypervisor --with-utilities`
 - Start `bastiond` and the API with captured logs so failures are diagnosable: `cd core && setsid -f sudo -n ./tmp/bastiond --data-dir ../.bastion --log-format text --log-level debug > /tmp/opencode/bastion-logs/bastiond.log 2>&1` and `cd core && setsid -f ./tmp/bastion start --addr localhost:3148 --data-dir ../.bastion --log-format text --log-level debug > /tmp/opencode/bastion-logs/api.log 2>&1`
 - Verify the API is reachable before running E2E: `cd core && ./tmp/bastion --api-url http://localhost:3148 templates list`
-- Run the standard E2E tests: `cd core && bash ./e2e/env-test.sh` and `cd core && bash ./e2e/ssh-test.sh`
+- Run the standard E2E tests: `cd core && bash ./e2e/env-test.sh`, `cd core && bash ./e2e/ssh-test.sh`, and `cd core && bash ./e2e/queue-test.sh`
 - Run nested virtualization E2E when touching the VM runtime, networking, system setup, or E2E scripts: `cd core && bash ./e2e/nested-test.sh`
 
 E2E notes:

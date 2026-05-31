@@ -84,6 +84,10 @@ export default defineConfig({
             { label: "Runtimes", slug: "actions/built-ins/runtimes" },
           ],
         },
+        {
+          label: "Queues",
+          items: [{ label: "Custom Queues", slug: "queues/custom-queues" }],
+        },
       ],
     }),
   ],

@@ -10,13 +10,14 @@ flags take precedence over environment defaults.
 
 These settings apply to `bastion start`.
 
-| Flag                | Environment          | Default                      | Description                          |
-| ------------------- | -------------------- | ---------------------------- | ------------------------------------ |
-| `--addr`            | `BASTION_ADDR`       | `localhost:3148`             | Host API listen address.             |
-| `--data-dir`        | `BASTION_DATA_DIR`   | `~/.bastion`                 | Persistent data directory.           |
-| `--bastiond-socket` | `BASTIOND_SOCKET`    | `/run/bastion/bastiond.sock` | Unix socket used to call `bastiond`. |
-| `--log-format`      | `BASTION_LOG_FORMAT` | `json`                       | `json` or `text`.                    |
-| `--log-level`       | `BASTION_LOG_LEVEL`  | `info`                       | `debug`, `info`, `warn`, or `error`. |
+| Flag                 | Environment          | Default                      | Description                          |
+| -------------------- | -------------------- | ---------------------------- | ------------------------------------ |
+| `--addr`             | `BASTION_ADDR`       | `localhost:3148`             | Host API listen address.             |
+| `--data-dir`         | `BASTION_DATA_DIR`   | `~/.bastion`                 | Persistent data directory.           |
+| `--bastiond-socket`  | `BASTIOND_SOCKET`    | `/run/bastion/bastiond.sock` | Unix socket used to call `bastiond`. |
+| `--queue-proxy-port` | `QUEUE_PROXY_PORT`   | `3150`                       | Queue proxy port on VM TAP host IPs. |
+| `--log-format`       | `BASTION_LOG_FORMAT` | `json`                       | `json` or `text`.                    |
+| `--log-level`        | `BASTION_LOG_LEVEL`  | `info`                       | `debug`, `info`, `warn`, or `error`. |
 
 The host API creates the data directory if needed and stores SQLite data at
 `<data-dir>/sqlite.db`.
@@ -77,6 +78,12 @@ These values are used by the Cloud Hypervisor runtime.
 Template resource values are usually the right way to size environments because
 they travel with the template definition.
 
+## Queue Proxy
+
+Environment functions poll queues through a lightweight proxy bound to each VM's
+TAP host IP. Configure the port with `QUEUE_PROXY_PORT`; the default is `3150`.
+The main host API can remain bound to `localhost`.
+
 ## VM Networking
 
 Bastion creates a TAP interface per VM and configures forwarding and NAT through
@@ -96,6 +103,7 @@ Default data directory:
 ~/.bastion/
 ├── sqlite.db
 ├── actions/
+├── functions/
 ├── cloud-hypervisor/
 └── environments/
 ```
@@ -114,6 +122,7 @@ Important paths:
 | ---------------------------------- | ------------------------------------------------------------- |
 | `<data-dir>/sqlite.db`             | Host API metadata database.                                   |
 | `<data-dir>/actions`               | Built-in and custom action packages.                          |
+| `<data-dir>/functions`             | Custom TypeScript function packages.                          |
 | `<data-dir>/cloud-hypervisor`      | Cloud Hypervisor binary, guest images, SSH key, and manifest. |
 | `<data-dir>/environments/<env-id>` | Persistent per-environment VM files and metadata.             |
 | `/run/bastion/vms/<vm-id>`         | Runtime symlink and socket files for live VMs.                |

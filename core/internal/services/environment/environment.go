@@ -16,6 +16,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/schema"
 	"github.com/bastion-computer/bastion/core/internal/services"
+	"github.com/bastion-computer/bastion/core/internal/services/queue"
 )
 
 // Environment describes a managed opencode environment.
@@ -76,6 +77,12 @@ type Orchestrator interface {
 	Remove(context.Context, string) (ch.VM, error)
 }
 
+// QueueProxy manages TAP-bound queue proxy listeners for running environments.
+type QueueProxy interface {
+	Start(context.Context, string) error
+	Stop(string) error
+}
+
 // Option configures the environment service.
 type Option func(*Service)
 
@@ -83,17 +90,27 @@ type Option func(*Service)
 type Service struct {
 	db           *database.Client
 	orchestrator Orchestrator
+	queues       *queue.Service
+	queueProxy   QueueProxy
 }
 
 // NewService returns an environment service backed by db.
 func NewService(db *database.Client, opts ...Option) *Service {
-	service := &Service{db: db, orchestrator: noopOrchestrator{}}
+	service := &Service{db: db, orchestrator: noopOrchestrator{}, queues: queue.NewService(db), queueProxy: noopQueueProxy{}}
 	for _, opt := range opts {
 		opt(service)
 	}
 
 	if service.orchestrator == nil {
 		service.orchestrator = noopOrchestrator{}
+	}
+
+	if service.queues == nil {
+		service.queues = queue.NewService(db)
+	}
+
+	if service.queueProxy == nil {
+		service.queueProxy = noopQueueProxy{}
 	}
 
 	return service
@@ -103,6 +120,20 @@ func NewService(db *database.Client, opts ...Option) *Service {
 func WithOrchestrator(orchestrator Orchestrator) Option {
 	return func(s *Service) {
 		s.orchestrator = orchestrator
+	}
+}
+
+// WithQueueService configures the queue resolver used for function triggers.
+func WithQueueService(queues *queue.Service) Option {
+	return func(s *Service) {
+		s.queues = queues
+	}
+}
+
+// WithQueueProxy configures queue proxy lifecycle hooks for environments.
+func WithQueueProxy(proxy QueueProxy) Option {
+	return func(s *Service) {
+		s.queueProxy = proxy
 	}
 }
 
@@ -132,6 +163,11 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 
 	if err := schema.ValidateTemplateConfig(template.Config); err != nil {
 		return Environment{}, fmt.Errorf("%w: resolved template config does not match schema: %w", failure.ErrInvalid, err)
+	}
+
+	hasFunctions, err := s.validateFunctionQueueTriggers(ctx, template.Config)
+	if err != nil {
+		return Environment{}, err
 	}
 
 	environmentID, err := services.GenerateID("env")
@@ -166,11 +202,24 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 		return Environment{}, fmt.Errorf("launch environment vm: %w", err)
 	}
 
+	return s.finishLaunch(ctx, environment, vm, hasFunctions)
+}
+
+func (s *Service) finishLaunch(ctx context.Context, environment Environment, vm ch.VM, hasFunctions bool) (Environment, error) {
 	if err := s.saveVM(ctx, vm); err != nil {
 		_, _ = s.orchestrator.Remove(context.Background(), environment.ID)
 		_ = s.updateStatus(ctx, environment.ID, ch.StateError, err.Error())
 
 		return Environment{}, err
+	}
+
+	if hasFunctions {
+		if err := s.queueProxy.Start(ctx, vm.HostIP); err != nil {
+			_, _ = s.orchestrator.Remove(context.Background(), environment.ID)
+			_ = s.updateStatus(ctx, environment.ID, ch.StateError, err.Error())
+
+			return Environment{}, fmt.Errorf("start queue proxy: %w", err)
+		}
 	}
 
 	if err := s.updateStatus(ctx, environment.ID, statusFromVM(vm), vm.LastError); err != nil {
@@ -384,10 +433,19 @@ func (s *Service) remove(ctx context.Context, environment Environment) (Environm
 		return Environment{}, err
 	}
 
+	hostIP, err := s.vmHostIP(ctx, environment.ID)
+	if err != nil {
+		return Environment{}, err
+	}
+
 	if _, err := s.orchestrator.Remove(ctx, environment.ID); err != nil {
 		_ = s.updateStatus(ctx, environment.ID, ch.StateError, err.Error())
 
 		return Environment{}, fmt.Errorf("remove environment vm: %w", err)
+	}
+
+	if err := s.queueProxy.Stop(hostIP); err != nil {
+		return Environment{}, fmt.Errorf("stop queue proxy: %w", err)
 	}
 
 	if err := s.deleteVM(ctx, environment.ID); err != nil {
@@ -567,6 +625,21 @@ func (s *Service) deleteVM(ctx context.Context, environmentID string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) vmHostIP(ctx context.Context, environmentID string) (string, error) {
+	var hostIP sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `SELECT host_ip FROM environment_vms WHERE environment_id = ?`, environmentID).Scan(&hostIP)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("get environment vm host ip: %w", err)
+	}
+
+	return nullString(hostIP), nil
 }
 
 func (s *Service) updateStatus(ctx context.Context, environmentID, status, lastError string) error {
@@ -762,3 +835,9 @@ func (noopOrchestrator) State(_ context.Context, environmentID string) (ch.VM, e
 func (noopOrchestrator) Remove(_ context.Context, environmentID string) (ch.VM, error) {
 	return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped, UpdatedAt: services.Now()}, nil
 }
+
+type noopQueueProxy struct{}
+
+func (noopQueueProxy) Start(context.Context, string) error { return nil }
+
+func (noopQueueProxy) Stop(string) error { return nil }

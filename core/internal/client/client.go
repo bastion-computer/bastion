@@ -18,6 +18,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/queue"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
 )
@@ -70,6 +71,66 @@ func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (template.T
 	}
 
 	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
+}
+
+// CreateQueue stores a queue.
+func (c *Client) CreateQueue(ctx context.Context, req queue.CreateRequest) (queue.Queue, error) {
+	var out queue.Queue
+	return out, c.do(ctx, http.MethodPost, "/v1/queues", req, &out)
+}
+
+// ListQueues returns queues.
+func (c *Client) ListQueues(ctx context.Context, limit int, cursor string) (services.Page[queue.Queue], error) {
+	var out services.Page[queue.Queue]
+	return out, c.do(ctx, http.MethodGet, listPath("/v1/queues", limit, cursor), nil, &out)
+}
+
+// GetQueue returns a queue by ID or key.
+func (c *Client) GetQueue(ctx context.Context, id, key string) (queue.Queue, error) {
+	var out queue.Queue
+
+	path, err := resourcePath("/v1/queues", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
+// RemoveQueue deletes a queue.
+func (c *Client) RemoveQueue(ctx context.Context, id, key string) (queue.Queue, error) {
+	var out queue.Queue
+
+	path, err := resourcePath("/v1/queues", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
+}
+
+// PublishQueueTask publishes a task to a queue by ID or key.
+func (c *Client) PublishQueueTask(ctx context.Context, id, key string, req queue.PublishRequest) (queue.Task, error) {
+	var out queue.Task
+
+	path, err := queueTaskPath(id, key, "")
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodPost, path, req, &out)
+}
+
+// GetQueueTask returns a task by queue ID/key and task ID.
+func (c *Client) GetQueueTask(ctx context.Context, id, key, taskID string) (queue.Task, error) {
+	var out queue.Task
+
+	path, err := queueTaskPath(id, key, "/"+url.PathEscape(taskID))
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
 }
 
 // CreateEnvironment creates an environment from a template.
@@ -345,6 +406,15 @@ func resourcePath(path, id, key string) (string, error) {
 	default:
 		return "", errors.New("specify exactly one of id or key")
 	}
+}
+
+func queueTaskPath(id, key, suffix string) (string, error) {
+	base, err := resourcePath("/v1/queues", id, key)
+	if err != nil {
+		return "", err
+	}
+
+	return base + "/tasks" + suffix, nil
 }
 
 func dialHTTP(ctx context.Context, target *url.URL) (net.Conn, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,6 +94,40 @@ func TestBuildVMConfigUsesResolvedCPUAndMemory(t *testing.T) {
 	config := buildVMConfig(workspace, plan, 3, 4*gibBytes)
 	if config.CPUs.BootVCPUs != 3 || config.CPUs.MaxVCPUs != 3 || config.Memory.Size != 4*gibBytes {
 		t.Fatalf("vm config resources = cpu %#v memory %#v, want template resources", config.CPUs, config.Memory)
+	}
+}
+
+func TestCleanupStoppedVMRemovesQueueProxyInputRule(t *testing.T) {
+	t.Parallel()
+
+	var commands []string
+
+	manager := Manager{
+		run: func(_ context.Context, name string, args ...string) error {
+			commands = append(commands, commandString(name, args))
+
+			return nil
+		},
+		output: func(_ context.Context, name string, args ...string) (string, error) {
+			if got := commandString(name, args); got != "ip route show default" {
+				t.Fatalf("output command = %q, want ip route show default", got)
+			}
+
+			return "default via 192.0.2.1 dev eth0\n", nil
+		},
+	}
+
+	manager.cleanupStoppedVM(context.Background(), VM{TapName: "btdead", HostIP: testQueueProxyHostIP, GuestCIDR: "10.241.0.2/30"})
+
+	want := []string{
+		"iptables -D INPUT -i btdead -d 10.241.0.1 -p tcp --dport 3150 -j ACCEPT",
+		"iptables -D FORWARD -i btdead -j ACCEPT",
+		"iptables -D FORWARD -o btdead -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+		"iptables -t nat -D POSTROUTING -s 10.241.0.0/30 -o eth0 -j MASQUERADE",
+		"ip link del btdead",
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
 	}
 }
 

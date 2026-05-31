@@ -5,6 +5,25 @@ description: Built-in Bastion actions for runtime setup.
 
 Runtime actions install language runtimes or runtime managers in guest VMs.
 
+## `setup_bun`
+
+`setup_bun` installs Bun to `/root/.bun` and links `bun` into `/usr/local/bin`.
+Bastion runs this action automatically for templates that define `functions`.
+
+| Input     | Required | Default | Description             |
+| --------- | -------- | ------- | ----------------------- |
+| `version` | No       | Latest  | Bun version to install. |
+
+Example:
+
+```json
+{
+  "actions": {
+    "init": [{ "use": "setup_bun" }]
+  }
+}
+```
+
 ## `setup_node`
 
 `setup_node` installs a Node.js major version from NodeSource.

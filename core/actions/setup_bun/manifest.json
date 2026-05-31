@@ -1,0 +1,9 @@
+{
+  "inputs": {
+    "version": {
+      "type": "string",
+      "description": "Bun version to install. Defaults to latest."
+    }
+  },
+  "run": "sh ./install_bun.sh"
+}

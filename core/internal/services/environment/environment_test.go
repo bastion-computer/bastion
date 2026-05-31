@@ -12,12 +12,14 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/queue"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 const (
 	testTemplateKey = "dev-env"
 	testGuestIP     = "10.241.0.2"
+	testHostIP      = "10.241.0.1"
 	testVMTime      = "2026-01-01T00:00:00Z"
 	testProdTag     = "prod"
 	testGPUTag      = "gpu"
@@ -186,6 +188,73 @@ func TestServicePreservesTemplateResourcesForOrchestration(t *testing.T) {
 
 	if launched.Resources.VCPU != 3 || launched.Resources.Memory != 4 || launched.Resources.Volume != 5 {
 		t.Fatalf("launched resources = %#v, want template resources", launched.Resources)
+	}
+}
+
+func TestServiceValidatesFunctionQueueTriggersAndStartsProxy(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	queues := queue.NewService(db)
+	templates := template.NewService(db)
+	orchestrator := newFakeOrchestrator()
+	orchestrator.hostIP = testHostIP
+	proxy := &fakeQueueProxy{}
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator), environment.WithQueueService(queues), environment.WithQueueProxy(proxy))
+	ctx := context.Background()
+
+	if _, err := queues.Create(ctx, queue.CreateRequest{Key: new("jobs")}); err != nil {
+		t.Fatalf("create queue: %v", err)
+	}
+
+	if _, err := templates.Create(ctx, template.CreateRequest{
+		Key:    new("function-template"),
+		Config: json.RawMessage(`{"functions":{"task_handler":{"trigger":{"type":"queue","key":"jobs"},"with":{"apiKey":"test-key"}}},"actions":{"init":[]}}`),
+	}); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	created, err := service.Create(ctx, environment.CreateRequest{TemplateKey: "function-template"})
+	if err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+
+	if !slices.Equal(proxy.started, []string{testHostIP}) {
+		t.Fatalf("queue proxy starts = %#v, want host IP", proxy.started)
+	}
+
+	if _, err := service.Remove(ctx, created.ID); err != nil {
+		t.Fatalf("remove environment: %v", err)
+	}
+
+	if !slices.Equal(proxy.stopped, []string{testHostIP}) {
+		t.Fatalf("queue proxy stops = %#v, want host IP", proxy.stopped)
+	}
+}
+
+func TestServiceRejectsFunctionTemplateWithMissingQueue(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	orchestrator := newFakeOrchestrator()
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	if _, err := templates.Create(ctx, template.CreateRequest{
+		Key:    new("missing-function-queue-template"),
+		Config: json.RawMessage(`{"functions":{"task_handler":{"trigger":{"type":"queue","key":"missing-jobs"}}},"actions":{"init":[]}}`),
+	}); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	_, err := service.Create(ctx, environment.CreateRequest{TemplateKey: "missing-function-queue-template"})
+	if !errors.Is(err, failure.ErrNotFound) {
+		t.Fatalf("create environment error = %v, want queue not found", err)
+	}
+
+	if orchestrator.launches != 0 {
+		t.Fatalf("orchestration launches = %d, want 0", orchestrator.launches)
 	}
 }
 
@@ -523,6 +592,7 @@ type fakeOrchestrator struct {
 	removes   int
 	templates []ch.Template
 	vms       map[string]ch.VM
+	hostIP    string
 }
 
 func newFakeOrchestrator() *fakeOrchestrator {
@@ -537,6 +607,7 @@ func (o *fakeOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.V
 		EnvironmentID: req.EnvironmentID,
 		VMID:          "vm-" + req.EnvironmentID,
 		State:         ch.StateRunning,
+		HostIP:        o.hostIP,
 		GuestIP:       testGuestIP,
 		SSHUser:       ch.SSHUser,
 		SSHPort:       ch.SSHPort,
@@ -547,6 +618,23 @@ func (o *fakeOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.V
 	o.vms[req.EnvironmentID] = vm
 
 	return vm, nil
+}
+
+type fakeQueueProxy struct {
+	started []string
+	stopped []string
+}
+
+func (p *fakeQueueProxy) Start(_ context.Context, hostIP string) error {
+	p.started = append(p.started, hostIP)
+
+	return nil
+}
+
+func (p *fakeQueueProxy) Stop(hostIP string) error {
+	p.stopped = append(p.stopped, hostIP)
+
+	return nil
 }
 
 func (o *fakeOrchestrator) State(_ context.Context, environmentID string) (ch.VM, error) {

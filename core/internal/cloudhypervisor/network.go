@@ -174,6 +174,9 @@ func (m Manager) ensureIPTables(ctx context.Context, plan networkPlan) error {
 		{"FORWARD", "-i", plan.tapName, "-j", "ACCEPT"},
 		{"FORWARD", "-o", plan.tapName, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
 	}
+	if plan.hostIP != "" {
+		rules = append([][]string{{"INPUT", "-i", plan.tapName, "-d", plan.hostIP, "-p", "tcp", "--dport", strconv.Itoa(queueProxyPort()), "-j", "ACCEPT"}}, rules...)
+	}
 
 	for _, rule := range rules {
 		if err := m.ensureIPTableRule(ctx, "", rule...); err != nil {
@@ -195,7 +198,7 @@ func (m Manager) cleanupStaleTapCIDR(ctx context.Context, plan networkPlan) erro
 			continue
 		}
 
-		m.removeIPTables(ctx, networkPlan{tapName: iface, networkCIDR: plan.networkCIDR, hostIface: plan.hostIface})
+		m.removeIPTables(ctx, networkPlan{tapName: iface, hostIP: plan.hostIP, networkCIDR: plan.networkCIDR, hostIface: plan.hostIface})
 		_ = m.run(ctx, "ip", "link", "del", iface)
 	}
 
@@ -228,6 +231,10 @@ func (m Manager) tapInterfacesForCIDR(ctx context.Context, cidr string) ([]strin
 func (m Manager) removeIPTables(ctx context.Context, plan networkPlan) {
 	if plan.tapName == "" {
 		return
+	}
+
+	if plan.hostIP != "" {
+		_ = m.deleteIPTableRule(ctx, "", "INPUT", "-i", plan.tapName, "-d", plan.hostIP, "-p", "tcp", "--dport", strconv.Itoa(queueProxyPort()), "-j", "ACCEPT")
 	}
 
 	_ = m.deleteIPTableRule(ctx, "", "FORWARD", "-i", plan.tapName, "-j", "ACCEPT")

@@ -21,13 +21,14 @@ Starts the local host API service.
 bastion start [flags]
 ```
 
-| Flag                | Environment          | Default                      | Description                           |
-| ------------------- | -------------------- | ---------------------------- | ------------------------------------- |
-| `--addr`            | `BASTION_ADDR`       | `localhost:3148`             | Host API listen address.              |
-| `--data-dir`        | `BASTION_DATA_DIR`   | `~/.bastion`                 | Persistent data directory.            |
-| `--bastiond-socket` | `BASTIOND_SOCKET`    | `/run/bastion/bastiond.sock` | Unix socket used to reach `bastiond`. |
-| `--log-format`      | `BASTION_LOG_FORMAT` | `json`                       | `json` or `text`.                     |
-| `--log-level`       | `BASTION_LOG_LEVEL`  | `info`                       | `debug`, `info`, `warn`, or `error`.  |
+| Flag                 | Environment          | Default                      | Description                           |
+| -------------------- | -------------------- | ---------------------------- | ------------------------------------- |
+| `--addr`             | `BASTION_ADDR`       | `localhost:3148`             | Host API listen address.              |
+| `--data-dir`         | `BASTION_DATA_DIR`   | `~/.bastion`                 | Persistent data directory.            |
+| `--bastiond-socket`  | `BASTIOND_SOCKET`    | `/run/bastion/bastiond.sock` | Unix socket used to reach `bastiond`. |
+| `--queue-proxy-port` | `QUEUE_PROXY_PORT`   | `3150`                       | Queue proxy port on VM TAP host IPs.  |
+| `--log-format`       | `BASTION_LOG_FORMAT` | `json`                       | `json` or `text`.                     |
+| `--log-level`        | `BASTION_LOG_LEVEL`  | `info`                       | `debug`, `info`, `warn`, or `error`.  |
 
 ## `bastion system`
 
@@ -64,6 +65,30 @@ bastion templates remove (--id ID | --key KEY)
 
 Template keys are optional. When set, they must be unique. Unkeyed templates are
 referenced by ID.
+
+## `bastion queues`
+
+Creates queues and publishes durable tasks.
+
+```sh
+bastion queues create [--key KEY]
+bastion queues list [--limit N] [--cursor CURSOR]
+bastion queues get (--id ID | --key KEY)
+bastion queues remove (--id ID | --key KEY)
+bastion queues publish (--id ID | --key KEY) (--data JSON | --file PATH) [--retry JSON]
+bastion queues tasks get (--id ID | --key KEY) --task-id TASK_ID
+```
+
+| Command     | Description                                      |
+| ----------- | ------------------------------------------------ |
+| `create`    | Create a queue with an optional unique key.      |
+| `list`      | Return paginated queues.                         |
+| `get`       | Return one queue.                                |
+| `remove`    | Delete one queue and its tasks.                  |
+| `publish`   | Publish a durable JSON task with optional retry. |
+| `tasks get` | Return task status and worker data.              |
+
+Queue keys are optional. Tasks can be published by queue ID or key.
 
 ## `bastion env`
 

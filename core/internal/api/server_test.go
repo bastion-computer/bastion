@@ -20,6 +20,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/queue"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
 )
@@ -37,12 +38,63 @@ func TestListRoutes(t *testing.T) {
 
 	templateOne := createTemplate(t, router, "template-list-1")
 	templateTwo := createTemplate(t, router, "template-list-2")
+	createQueueResource(t, router, "queue-list-1")
+	createQueueResource(t, router, "queue-list-2")
 
 	createEnvironment(t, router, requireStringPtr(t, templateOne.Key))
 	createEnvironment(t, router, requireStringPtr(t, templateTwo.Key))
 
 	assertList[template.Metadata](t, router, "/v1/templates", 2)
 	assertList[environment.Environment](t, router, "/v1/environments", 2)
+	assertList[queue.Queue](t, router, "/v1/queues", 2)
+}
+
+func TestQueueTaskRoutes(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
+	created := createQueueResource(t, router, "queue-routes")
+
+	res := request(t, router, http.MethodPost, "/v1/queues/by-key/queue-routes/tasks", queue.PublishRequest{Data: json.RawMessage(`{"kind":"route"}`)})
+	if res.Code != http.StatusOK {
+		t.Fatalf("publish queue task status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var published queue.Task
+	decode(t, res, &published)
+
+	if published.QueueID != created.ID || published.Status != queue.TaskStatusPending {
+		t.Fatalf("published task = %#v, want pending task on queue", published)
+	}
+
+	res = request(t, router, http.MethodPost, "/v1/queues/"+created.ID+"/lease", queue.LeaseRequest{WorkerID: "worker-route", LeaseMS: 1000})
+	if res.Code != http.StatusOK {
+		t.Fatalf("lease queue task status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var leased queue.Task
+	decode(t, res, &leased)
+
+	if leased.ID != published.ID || leased.Status != queue.TaskStatusLeased {
+		t.Fatalf("leased task = %#v, want leased published task", leased)
+	}
+
+	res = request(t, router, http.MethodPost, "/v1/queues/"+created.ID+"/tasks/"+published.ID+"/ack", queue.AckRequest{WorkerID: "worker-route", WorkerData: json.RawMessage(`{"done":true}`)})
+	if res.Code != http.StatusOK {
+		t.Fatalf("ack queue task status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var acked queue.Task
+	decode(t, res, &acked)
+
+	if acked.Status != queue.TaskStatusComplete || string(acked.WorkerData) != `{"done":true}` {
+		t.Fatalf("acked task = %#v, want complete task", acked)
+	}
+
+	res = request(t, router, http.MethodGet, "/v1/queues/by-key/queue-routes/tasks/"+published.ID, nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("get queue task status = %d, want %d", res.Code, http.StatusOK)
+	}
 }
 
 func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
@@ -186,9 +238,13 @@ func TestGetRoutes(t *testing.T) {
 
 	templateByID := createTemplate(t, router, "template-get-id")
 	assertGet(t, router, "/v1/templates/"+templateByID.ID, templateByID.ID)
+	queueByID := createQueueResource(t, router, "queue-get-id")
+	assertGet(t, router, "/v1/queues/"+queueByID.ID, queueByID.ID)
 
 	templateByKey := createTemplate(t, router, "template-get-key")
 	assertGet(t, router, "/v1/templates/by-key/"+requireStringPtr(t, templateByKey.Key), templateByKey.ID)
+	queueByKey := createQueueResource(t, router, "queue-get-key")
+	assertGet(t, router, "/v1/queues/by-key/"+requireStringPtr(t, queueByKey.Key), queueByKey.ID)
 
 	env := createEnvironment(t, router, requireStringPtr(t, templateByID.Key))
 	assertGet(t, router, "/v1/environments/"+env.ID, env.ID)
@@ -201,9 +257,13 @@ func TestDeleteRoutes(t *testing.T) {
 
 	templateByID := createTemplate(t, router, "template-delete-id")
 	assertDelete(t, router, "/v1/templates/"+templateByID.ID)
+	queueByID := createQueueResource(t, router, "queue-delete-id")
+	assertDelete(t, router, "/v1/queues/"+queueByID.ID)
 
 	templateByKey := createTemplate(t, router, "template-delete-key")
 	assertDelete(t, router, "/v1/templates/by-key/"+requireStringPtr(t, templateByKey.Key))
+	queueByKey := createQueueResource(t, router, "queue-delete-key")
+	assertDelete(t, router, "/v1/queues/by-key/"+requireStringPtr(t, queueByKey.Key))
 
 	templateForEnv := createTemplate(t, router, "environment-delete-source")
 	env := createEnvironment(t, router, requireStringPtr(t, templateForEnv.Key))
@@ -300,6 +360,20 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 	}
 
 	var created template.Metadata
+	decode(t, res, &created)
+
+	return created
+}
+
+func createQueueResource(t *testing.T, handler http.Handler, key string) queue.Queue {
+	t.Helper()
+
+	res := request(t, handler, http.MethodPost, "/v1/queues", queue.CreateRequest{Key: new(key)})
+	if res.Code != http.StatusOK {
+		t.Fatalf("create queue status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var created queue.Queue
 	decode(t, res, &created)
 
 	return created
