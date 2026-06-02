@@ -24,6 +24,6 @@ E2E notes:
 
 - The scripts default to `BASTION_API_URL=http://localhost:3148`; override `BASTION_API_URL` only when intentionally targeting a different API.
 - `mise run //core:test:e2e` builds the CLI/daemon and runs all E2E scripts, but it still expects a reachable local API/daemon. Prefer the explicit workflow above when debugging because it keeps API and daemon logs in `/tmp/opencode/bastion-logs/`.
-- Nested E2E requires `/dev/kvm`, Cloud Hypervisor assets, working TAP/iptables setup, and enough disk/network time to download inner assets. It intentionally runs the inner daemon with `BASTION_VM_NETWORK_PREFIX=10.242` so nested child VMs do not collide with the outer VM route on `10.241.0.0/16`.
+- Nested E2E requires `/dev/kvm`, Cloud Hypervisor assets, working TAP/iptables setup, and enough disk/network time to download inner assets. It chooses the inner daemon network prefix from the current default route so nested child VMs do not collide with the parent VM route.
 - If an E2E fails, inspect `/tmp/opencode/bastion-logs/api.log`, `/tmp/opencode/bastion-logs/bastiond.log`, and root-owned VM logs under `.bastion/environments/<env-id>/` using `sudo -n` before changing code.
 - Clean up failed E2E environments/templates through the CLI where possible. Do not manually delete `.bastion/environments/*` unless the API/daemon cleanup path is unavailable.

@@ -158,6 +158,25 @@ cleanup_inner() {
 }
 trap cleanup_inner EXIT
 
+choose_inner_network_prefix() {
+	local route second next
+
+	route="$(ip -4 route get 1.1.1.1 2>/dev/null || true)"
+	if [[ "$route" =~ src[[:space:]]+10\.([0-9]+)\. ]]; then
+		second="${BASH_REMATCH[1]}"
+		next=$((10#$second + 1))
+		if [ "$next" -le 255 ]; then
+			printf '10.%d\n' "$next"
+			return
+		fi
+	fi
+
+	printf '10.242\n'
+}
+
+INNER_NETWORK_PREFIX="$(choose_inner_network_prefix)"
+printf 'inner-network-prefix:%s\n' "$INNER_NETWORK_PREFIX"
+
 rm -rf "$INNER_DATA_DIR"
 mkdir -p "$INNER_DATA_DIR" /run/bastion-nested
 
@@ -170,7 +189,7 @@ BASTION_DATA_DIR="$INNER_DATA_DIR" \
 BASTIOND_SOCKET="$INNER_SOCKET" \
 BASTION_VM_CPUS=1 \
 BASTION_VM_MEMORY_BYTES=805306368 \
-BASTION_VM_NETWORK_PREFIX=10.242 \
+BASTION_VM_NETWORK_PREFIX="$INNER_NETWORK_PREFIX" \
 ./core/tmp/bastiond --data-dir "$INNER_DATA_DIR" --socket "$INNER_SOCKET" >/tmp/bastion-nested-daemon.log 2>&1 &
 DAEMON_PID=$!
 printf 'inner-daemon-started\n'

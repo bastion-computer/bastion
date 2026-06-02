@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -138,6 +139,35 @@ func TestCleanupStaleTapCIDRRemovesOnlyStaleBastionTaps(t *testing.T) {
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestValidateNetworkCIDRAvailableRejectsOverlappingRoute(t *testing.T) {
+	t.Parallel()
+
+	plan := networkPlan{networkCIDR: "10.242.0.0/30"}
+	routes := "default via 10.242.0.1 dev ens3 proto static\n" +
+		"10.242.0.0/30 dev ens3 proto kernel scope link src 10.242.0.2\n"
+
+	err := validateNetworkCIDRAvailable(plan, routes)
+	if err == nil {
+		t.Fatal("validate overlapping route succeeded")
+	}
+
+	if !strings.Contains(err.Error(), "overlaps existing route 10.242.0.0/30 on ens3") {
+		t.Fatalf("overlap error = %q", err.Error())
+	}
+}
+
+func TestValidateNetworkCIDRAvailableAllowsDistinctRoute(t *testing.T) {
+	t.Parallel()
+
+	plan := networkPlan{networkCIDR: "10.243.0.0/30"}
+	routes := "default via 10.242.0.1 dev ens3 proto static\n" +
+		"10.242.0.0/30 dev ens3 proto kernel scope link src 10.242.0.2\n"
+
+	if err := validateNetworkCIDRAvailable(plan, routes); err != nil {
+		t.Fatalf("validate distinct route: %v", err)
 	}
 }
 
