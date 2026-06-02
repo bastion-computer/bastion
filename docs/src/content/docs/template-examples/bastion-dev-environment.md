@@ -14,7 +14,6 @@ Create `template.json`:
 
 ```json title="template.json"
 {
-  "$schema": "https://bastion.computer/schemas/template.json",
   "resources": {
     "vcpu": 4,
     "memory": 8,

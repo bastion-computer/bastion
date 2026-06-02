@@ -184,6 +184,7 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 	}{
 		{name: "invalid json", config: json.RawMessage(`{`)},
 		{name: "missing actions", config: json.RawMessage(`{}`)},
+		{name: "schema metadata property", config: json.RawMessage(`{"$schema":"https://bastion.computer/schemas/template.json","actions":{"init":[]}}`)},
 		{name: "removed delegate commands", config: json.RawMessage(`{"actions":{"init":[]},"delegateCommands":{}}`)},
 		{name: "removed network rules", config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`)},
 		{name: "invalid preset action name", config: json.RawMessage(`{"actions":{"init":[{"use":"example/action"}]}}`)},

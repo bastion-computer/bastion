@@ -79,7 +79,6 @@ Create a template file:
 
 ```json title="template.json"
 {
-  "$schema": "https://bastion.computer/schemas/template.json",
   "resources": {
     "vcpu": 2,
     "memory": 2,
