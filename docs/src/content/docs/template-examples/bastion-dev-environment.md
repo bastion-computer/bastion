@@ -36,11 +36,8 @@ Create `template.json`:
       {
         "use": "setup_opencode",
         "with": {
-          "provider": "openai",
-          "model": "openai/gpt-5.5",
-          "api_key": "${{ env.OPENAI_API_KEY }}",
-          "permission": "allow",
-          "config": "{\"agent\":{\"build\":{\"model\":\"openai/gpt-5.5\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"openai/gpt-5.5\",\"variant\":\"xhigh\"}}}"
+          "auth": "{\"openai\":{\"type\":\"api\",\"key\":\"${{ env.OPENAI_API_KEY }}\"}}",
+          "config": "{\"model\":\"openai/gpt-5.5\",\"permission\":\"allow\",\"agent\":{\"build\":{\"model\":\"openai/gpt-5.5\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"openai/gpt-5.5\",\"variant\":\"xhigh\"}}}"
         }
       },
       {
@@ -96,24 +93,22 @@ as the default SSH directory.
 ## Change OpenCode Providers
 
 The template uses OpenAI by default. To use Anthropic instead, change the
-`setup_opencode` action and export `ANTHROPIC_API_KEY` on the host before
-creating the environment:
+`setup_opencode` auth and config JSON, then export `ANTHROPIC_API_KEY` on the
+host before creating the environment:
 
 ```json
 {
   "use": "setup_opencode",
   "with": {
-    "provider": "anthropic",
-    "model": "anthropic/claude-sonnet-4-20250514",
-    "api_key": "${{ env.ANTHROPIC_API_KEY }}"
+    "auth": "{\"anthropic\":{\"type\":\"api\",\"key\":\"${{ env.ANTHROPIC_API_KEY }}\"}}",
+    "config": "{\"model\":\"anthropic/claude-sonnet-4-20250514\"}"
   }
 }
 ```
 
-For other providers, update `provider`, `model`, and `api_key`. Also update or
-remove the `config` agent model and variant overrides when they should not use
-OpenAI `gpt-5.5` with `xhigh`. Add `base_url` when the provider needs a custom
-API endpoint.
+For other providers, update both JSON strings. Also update or remove the
+`config` agent model and variant overrides when they should not use OpenAI
+`gpt-5.5` with `xhigh`.
 
 Environment substitutions such as `${{ env.OPENAI_API_KEY }}` are resolved by
 Bastion when the environment is created. The resolved API key is written into the

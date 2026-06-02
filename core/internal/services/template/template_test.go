@@ -146,7 +146,7 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		{key: "resources", config: json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`)},
 		{key: "mise-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
 		{key: "github-cli-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
-		{key: "opencode-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_opencode","with":{"provider":"anthropic","model":"anthropic/claude-sonnet-4-5","api_key":"test-key","share":"disabled","permission":"allow"}}]}}`)},
+		{key: "opencode-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_opencode","with":{"auth":"{\"anthropic\":{\"type\":\"api\",\"key\":\"test-key\"}}","config":"{\"model\":\"anthropic/claude-sonnet-4-5\",\"permission\":\"allow\"}"}}]}}`)},
 		{key: "default-ssh-directory-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"set_default_ssh_directory","with":{"path":"/workspace/bastion"}}]}}`)},
 	}
 

@@ -323,12 +323,36 @@ preset_setup_github_cli_config() {
 
 preset_setup_opencode_config() {
   local api_key="opencode-e2e-${RUN_ID}"
+  local auth
+  local config
+  local verify_written
+  local verify_absent
 
-  jq -nc --arg api_key "$api_key" '{
+  auth="$(jq -nc --arg api_key "$api_key" '{anthropic: {type: "api", key: $api_key}}')"
+  config="$(jq -nc '{model: "anthropic/claude-sonnet-4-5", small_model: "anthropic/claude-haiku-4-5", share: "disabled", permission: "allow", autoupdate: false}')"
+  verify_written="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-opencode' \
+    'opencode --version > /opt/bastion-e2e-opencode/version' \
+    'jq -e '\''.model == "anthropic/claude-sonnet-4-5" and .small_model == "anthropic/claude-haiku-4-5" and .share == "disabled" and .permission == "allow" and .autoupdate == false'\'' /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-ok' \
+    "jq -e --arg api_key '$api_key' '.anthropic.type == \"api\" and .anthropic.key == \$api_key' /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-ok" \
+    'stat -c %a /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-mode' \
+    'stat -c %a /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-mode' \
+    'rm -f /root/.config/opencode/opencode.json /root/.local/share/opencode/auth.json')"
+  verify_absent="$(printf '%s\n' \
+    'set -eu' \
+    'opencode --version > /opt/bastion-e2e-opencode/version-no-inputs' \
+    'test ! -e /root/.config/opencode/opencode.json' \
+    'test ! -e /root/.local/share/opencode/auth.json' \
+    'printf true > /opt/bastion-e2e-opencode/absent-ok')"
+
+  jq -nc --arg auth "$auth" --arg config "$config" --arg verify_written "$verify_written" --arg verify_absent "$verify_absent" '{
     actions: {
       init: [
-        {use: "setup_opencode", with: {provider: "anthropic", model: "anthropic/claude-sonnet-4-5", api_key: $api_key, small_model: "anthropic/claude-haiku-4-5", share: "disabled", permission: "allow", config: "{\"autoupdate\":false}"}},
-        {run: "set -eu\nmkdir -p /opt/bastion-e2e-opencode\nopencode --version > /opt/bastion-e2e-opencode/version\njq -e '\''.model == \"anthropic/claude-sonnet-4-5\" and .small_model == \"anthropic/claude-haiku-4-5\" and .share == \"disabled\" and .permission == \"allow\" and .autoupdate == false and (.provider.anthropic.options.apiKey? == null)'\'' /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-ok\njq -e '\''.anthropic.type == \"api\" and (.anthropic.key | length > 0)'\'' /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-ok\nstat -c %a /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-mode\nstat -c %a /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-mode"}
+        {use: "setup_opencode", with: {auth: $auth, config: $config}},
+        {run: $verify_written},
+        {use: "setup_opencode"},
+        {run: $verify_absent}
       ]
     }
   }'
@@ -510,26 +534,28 @@ run_preset_setup_github_cli_case() {
 run_preset_setup_opencode_case() {
   local key="$RUN_ID-preset-opencode"
   local env_id
-  local config_mode
-  local auth_mode
 
   create_template "$key" "$(preset_setup_opencode_config)"
   create_environment "$key"
   env_id="$CREATED_ENV_ID"
   assert_environment_running "$env_id"
 
-  ssh_env "$env_id" test -s /opt/bastion-e2e-opencode/version
-  ssh_env "$env_id" grep -q true /opt/bastion-e2e-opencode/config-ok
-  ssh_env "$env_id" grep -q true /opt/bastion-e2e-opencode/auth-ok
-  config_mode="$(ssh_env "$env_id" stat -c %a /root/.config/opencode/opencode.json)"
-  if [ "$config_mode" != "600" ]; then
-    fail "opencode config mode in $env_id is $config_mode, want 600"
-  fi
-
-  auth_mode="$(ssh_env "$env_id" stat -c %a /root/.local/share/opencode/auth.json)"
-  if [ "$auth_mode" != "600" ]; then
-    fail "opencode auth mode in $env_id is $auth_mode, want 600"
-  fi
+  ssh_env "$env_id" "set -eu
+test -s /opt/bastion-e2e-opencode/version
+test -s /opt/bastion-e2e-opencode/version-no-inputs
+grep -q true /opt/bastion-e2e-opencode/config-ok
+grep -q true /opt/bastion-e2e-opencode/auth-ok
+grep -q true /opt/bastion-e2e-opencode/absent-ok
+config_mode=\$(cat /opt/bastion-e2e-opencode/config-mode)
+if [ \"\$config_mode\" != \"600\" ]; then
+  printf 'config mode is %s, want 600\n' \"\$config_mode\" >&2
+  exit 1
+fi
+auth_mode=\$(cat /opt/bastion-e2e-opencode/auth-mode)
+if [ \"\$auth_mode\" != \"600\" ]; then
+  printf 'auth mode is %s, want 600\n' \"\$auth_mode\" >&2
+  exit 1
+fi"
 
   log "preset setup_opencode case passed for $env_id"
 }
