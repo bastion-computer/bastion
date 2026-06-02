@@ -13,6 +13,26 @@ require_tmux() {
   exit 1
 }
 
+dev_vm_network_prefix() {
+  if [ -n "${BASTION_VM_NETWORK_PREFIX:-}" ]; then
+    printf '%s\n' "$BASTION_VM_NETWORK_PREFIX"
+    return
+  fi
+
+  local route second next
+  route="$(ip -4 route get 1.1.1.1 2>/dev/null || true)"
+  if [[ "$route" =~ src[[:space:]]+10\.([0-9]+)\. ]]; then
+    second="${BASH_REMATCH[1]}"
+    next=$((10#$second + 1))
+    if [ "$next" -le 255 ]; then
+      printf '10.%d\n' "$next"
+      return
+    fi
+  fi
+
+  printf '10.241\n'
+}
+
 attach_session() {
   if [ -n "${TMUX:-}" ]; then
     tmux switch-client -t "$session"
@@ -22,6 +42,8 @@ attach_session() {
 }
 
 dev_up() {
+  local vm_network_prefix
+
   if [ -z "${TMUX:-}" ] && { [ ! -t 0 ] || [ ! -t 1 ]; }; then
     printf 'mise run dev:up requires an interactive terminal so tmux can attach.\n' >&2
     exit 1
@@ -29,13 +51,15 @@ dev_up() {
 
   require_tmux
 
+  vm_network_prefix="$(dev_vm_network_prefix)"
+
   if tmux has-session -t "$session" 2>/dev/null; then
     attach_session
     return
   fi
 
   api_pane="$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n dev -c "$root" 'mise run //core:dev:api')"
-  bastiond_pane="$(tmux split-window -d -h -P -F '#{pane_id}' -t "$api_pane" -c "$root" 'sudo -E mise run //core:dev:daemon')"
+  bastiond_pane="$(tmux split-window -d -h -P -F '#{pane_id}' -t "$api_pane" -c "$root" "BASTION_VM_NETWORK_PREFIX='$vm_network_prefix' sudo -E mise run //core:dev:daemon")"
   drizzle_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$bastiond_pane" -c "$root" 'mise run //.dev/drizzle:dev')"
   docs_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$api_pane" -c "$root" 'mise run //docs:dev')"
   shell_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$drizzle_pane" -c "$root" 'mise exec -- bash -l')"

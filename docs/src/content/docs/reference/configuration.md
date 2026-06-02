@@ -88,6 +88,10 @@ iptables.
 
 The prefix must look like two IPv4 octets, for example `10.242`.
 
+When running Bastion inside a Bastion environment, choose a prefix different
+from the parent VM network. For example, use `10.242` inside a VM whose parent
+network is `10.241.0.0/16`.
+
 ## Data Layout
 
 Default data directory:

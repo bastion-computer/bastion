@@ -128,6 +128,10 @@ func (m Manager) setupTap(ctx context.Context, plan networkPlan) (networkPlan, e
 	}
 
 	_ = m.run(ctx, "ip", "link", "del", plan.tapName)
+	if err := m.ensureNetworkCIDRAvailable(ctx, plan); err != nil {
+		return plan, err
+	}
+
 	if err := m.run(ctx, "ip", "tuntap", "add", "dev", plan.tapName, "mode", "tap", "user", strconv.Itoa(m.UID), "group", strconv.Itoa(m.GID)); err != nil {
 		return plan, err
 	}
@@ -200,6 +204,74 @@ func (m Manager) cleanupStaleTapCIDR(ctx context.Context, plan networkPlan) erro
 	}
 
 	return nil
+}
+
+func (m Manager) ensureNetworkCIDRAvailable(ctx context.Context, plan networkPlan) error {
+	output, err := m.output(ctx, "ip", "-o", "-4", "route", "show")
+	if err != nil {
+		return err
+	}
+
+	return validateNetworkCIDRAvailable(plan, output)
+}
+
+func validateNetworkCIDRAvailable(plan networkPlan, routes string) error {
+	_, planned, err := net.ParseCIDR(plan.networkCIDR)
+	if err != nil {
+		return fmt.Errorf("parse planned VM network CIDR: %w", err)
+	}
+
+	for line := range strings.SplitSeq(routes, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] == "default" {
+			continue
+		}
+
+		route, err := parseRouteDestination(fields[0])
+		if err != nil {
+			continue
+		}
+
+		if cidrsOverlap(planned, route) {
+			iface := routeInterface(fields)
+			if iface != "" {
+				iface = " on " + iface
+			}
+
+			return fmt.Errorf("VM network %s overlaps existing route %s%s; set %s to a different /16 prefix", plan.networkCIDR, fields[0], iface, vmNetworkPrefixEnv)
+		}
+	}
+
+	return nil
+}
+
+func parseRouteDestination(value string) (*net.IPNet, error) {
+	if strings.Contains(value, "/") {
+		_, network, err := net.ParseCIDR(value)
+
+		return network, err
+	}
+
+	ip := net.ParseIP(value)
+	if ip == nil || ip.To4() == nil {
+		return nil, fmt.Errorf("invalid IPv4 route destination %q", value)
+	}
+
+	return &net.IPNet{IP: ip.To4(), Mask: net.CIDRMask(32, 32)}, nil
+}
+
+func cidrsOverlap(left, right *net.IPNet) bool {
+	return left.Contains(right.IP) || right.Contains(left.IP)
+}
+
+func routeInterface(fields []string) string {
+	for i, field := range fields {
+		if field == "dev" && i+1 < len(fields) {
+			return fields[i+1]
+		}
+	}
+
+	return ""
 }
 
 func (m Manager) tapInterfacesForCIDR(ctx context.Context, cidr string) ([]string, error) {
