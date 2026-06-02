@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -61,6 +62,31 @@ func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
 	res = request(t, router, http.MethodGet, "/v1/templates/by-key/invalid-template", nil)
 	if res.Code != http.StatusNotFound {
 		t.Fatalf("get invalid template status = %d, want %d", res.Code, http.StatusNotFound)
+	}
+}
+
+func TestDocumentedTemplateExamplesCreateTemplates(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
+
+	cases := []struct {
+		name string
+		key  string
+		path string
+	}{
+		{name: "quick start", key: "docs-quick-start", path: "../../../docs/src/content/docs/quick-start.md"},
+		{name: "bastion dev environment", key: "docs-bastion-dev", path: "../../../docs/src/content/docs/template-examples/bastion-dev-environment.md"},
+	}
+
+	for _, tc := range cases {
+		res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{
+			Key:    new(tc.key),
+			Config: documentedTemplateConfig(t, tc.path),
+		})
+		if res.Code != http.StatusOK {
+			t.Fatalf("create %s documented template status = %d, want %d; body: %s", tc.name, res.Code, http.StatusOK, res.Body.String())
+		}
 	}
 }
 
@@ -303,6 +329,29 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 	decode(t, res, &created)
 
 	return created
+}
+
+func documentedTemplateConfig(t *testing.T, path string) json.RawMessage {
+	t.Helper()
+
+	contents, err := os.ReadFile(path) //nolint:gosec // Test reads tracked documentation examples.
+	if err != nil {
+		t.Fatalf("read documented template example %s: %v", path, err)
+	}
+
+	const marker = "```json title=\"template.json\"\n"
+
+	_, rest, ok := strings.Cut(string(contents), marker)
+	if !ok {
+		t.Fatalf("documented template example %s missing %q", path, marker)
+	}
+
+	config, _, ok := strings.Cut(rest, "\n```")
+	if !ok {
+		t.Fatalf("documented template example %s missing closing code fence", path)
+	}
+
+	return json.RawMessage(config)
 }
 
 func createEnvironment(t *testing.T, handler http.Handler, templateKey string, tags ...string) environment.Environment {
