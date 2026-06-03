@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">Bastion mux active SSH tab</title>
+  <desc id="desc">A terminal screenshot showing Bastion mux with one active SSH session tab connected to an Ubuntu environment.</desc>
+  <rect width="1280" height="760" fill="#0b1020"/>
+  <rect x="32" y="32" width="1216" height="696" rx="18" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <circle cx="68" cy="64" r="8" fill="#ef4444"/>
+  <circle cx="94" cy="64" r="8" fill="#f59e0b"/>
+  <circle cx="120" cy="64" r="8" fill="#22c55e"/>
+  <text x="640" y="70" text-anchor="middle" font-family="JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="18" fill="#94a3b8">bastion mux</text>
+
+  <g font-family="JetBrains Mono, SFMono-Regular, Consolas, monospace">
+    <rect x="64" y="104" width="520" height="42" rx="6" fill="#6d5dfc"/>
+    <text x="84" y="132" font-size="18" font-weight="700" fill="#ffffff">env_083772b6-0a5e-4db9-a200-c659166b8341</text>
+    <rect x="596" y="104" width="214" height="42" rx="6" fill="#1f2937"/>
+    <text x="616" y="132" font-size="18" fill="#94a3b8">+ ctrl+b n</text>
+
+    <rect x="64" y="168" width="1152" height="472" rx="8" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+    <text x="92" y="212" font-size="18" fill="#e2e8f0">Welcome to Ubuntu 24.04.4 LTS (GNU/Linux 6.8.0-117-generic x86_64)</text>
+    <text x="92" y="254" font-size="17" fill="#94a3b8">* Documentation:  https://help.ubuntu.com</text>
+    <text x="92" y="284" font-size="17" fill="#94a3b8">* Management:     https://landscape.canonical.com</text>
+    <text x="92" y="314" font-size="17" fill="#94a3b8">* Support:        https://ubuntu.com/pro</text>
+    <text x="92" y="368" font-size="17" fill="#e2e8f0">System information as of Wed Jun  3 06:30:55 UTC 2026</text>
+    <text x="112" y="410" font-size="17" fill="#cbd5e1">System load:  0.3               Processes:             118</text>
+    <text x="112" y="440" font-size="17" fill="#cbd5e1">Usage of /:   8.9% of 18.33GB   Users logged in:       0</text>
+    <text x="112" y="470" font-size="17" fill="#cbd5e1">Memory usage: 11%               IPv4 address for ens3: 10.242.0.2</text>
+    <text x="92" y="540" font-size="17" fill="#e2e8f0">root@bastion:~# opencode</text>
+    <rect x="286" y="523" width="10" height="22" fill="#a78bfa"/>
+
+    <text x="64" y="684" font-size="18" fill="#94a3b8">ctrl+b n new | ctrl+b h/l switch | ctrl+b d detach | connected to env_083772b6...</text>
+  </g>
+</svg>

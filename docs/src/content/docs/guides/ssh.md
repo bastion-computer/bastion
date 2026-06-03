@@ -41,6 +41,33 @@ bastion ssh --id env_xxxxxx -- sh -lc 'cd /workspace && ls -la'
 Stdout and stderr from the guest are forwarded separately to the local process.
 If the remote command exits non-zero, the CLI exits non-zero with the same code.
 
+## Persistent Sessions
+
+Use `bastion mux` when you want SSH sessions to keep running after you close or
+detach from the local terminal:
+
+```sh
+bastion mux
+```
+
+The mux TUI uses `tmux` as the process backend. It shows existing Bastion SSH
+sessions as tabs and lets you create a new tab from currently `running` or
+`paused` environments. Detaching from the TUI does not close those SSH sessions,
+so commands and agent processes inside the guest can continue running.
+
+Useful keys:
+
+| Key        | Action                                      |
+| ---------- | ------------------------------------------- |
+| `n`        | Create the first SSH session.               |
+| `ctrl+b n` | Choose another environment to connect.      |
+| `ctrl+b h` | Switch to the previous SSH session.         |
+| `ctrl+b l` | Switch to the next SSH session.             |
+| `ctrl+b d` | Detach from the mux TUI and leave SSH open. |
+
+The command checks that `tmux` is available before starting and exits without
+changing environments if it is missing.
+
 ## Connection Requirements
 
 SSH requires an environment with stored SSH metadata and a VM state that can be

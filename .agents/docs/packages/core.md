@@ -2,10 +2,11 @@ This package contains the Go implementation of Bastion's host API service and CL
 
 ## Overview
 
-The core package lives in `core/` and builds the `bastion` and `bastiond` binaries. The `bastion` binary is responsible for two entrypoints:
+The core package lives in `core/` and builds the `bastion` and `bastiond` binaries. The `bastion` binary is responsible for these entrypoints:
 
 - `bastion start` runs the local host API service on `localhost:3148` by default.
-- The remaining `bastion` CLI commands call the host API service and print JSON responses.
+- Most `bastion` CLI commands call the host API service and print JSON responses.
+- `bastion ssh` and `bastion mux` are interactive terminal commands and do not print JSON.
 
 The `bastiond` binary runs privileged Cloud Hypervisor runtime operations behind a Unix socket and should be started with `sudo bastiond`.
 
@@ -86,5 +87,8 @@ Supported command groups are intentionally limited to the current product scope:
 - `bastion templates ...`
 - `bastion env ...`
 - `bastion ssh (--id ID | --key KEY) [-- COMMAND...]`
+- `bastion mux [--session NAME]`
+
+`bastion mux` uses Bubble Tea, Bubbles, Lipgloss, and Bubblezone for the TUI and uses `tmux` as the persistent process backend. It must preflight that `tmux` is available and must not start or stop SSH sessions unless the user explicitly selects an environment inside the TUI.
 
 Logs and diagnostics go to stderr. Host API logs are structured and include fields such as `request_id`, `method`, `route`, `status`, `duration`, `client_ip`, and `body_size`. The default format is JSON for machine parsing; the Air dev entrypoint uses `--log-format text` for readable local logs. API responses echo or generate `X-Request-ID` so request logs can be correlated with callers. JSON command output goes to stdout.

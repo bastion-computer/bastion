@@ -70,6 +70,7 @@ Examples:
 mise run dev:bastion templates create --key dev-env --config '{"actions":{"init":[]}}'
 mise run dev:bastion env create --template-key dev-env
 mise run dev:bastion env list
+mise run dev:bastion mux
 ```
 
 The task defaults to `http://localhost:3148`. Set `BASTION_API_URL` to target another host API:

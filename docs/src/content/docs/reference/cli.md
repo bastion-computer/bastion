@@ -3,9 +3,10 @@ title: CLI Reference
 description: Commands, flags, and environment variables for the Bastion CLI.
 ---
 
-The `bastion` CLI either starts the host API or calls an already running host
-API. JSON responses are written to stdout. Logs, streamed init output, and
-diagnostics are written to stderr.
+The `bastion` CLI either starts the host API, calls an already running host API,
+or opens an interactive terminal workflow. JSON responses are written to stdout.
+Logs, streamed init output, and diagnostics are written to stderr. Interactive
+commands such as `ssh` and `mux` take over the terminal instead of printing JSON.
 
 ## Global Flags
 
@@ -97,6 +98,27 @@ bastion ssh (--id ID | --key KEY) -- COMMAND [ARG...]
 
 With no command and terminal stdin/stdout, the CLI opens an interactive PTY. With
 a command, it forwards stdout, stderr, and the remote exit code.
+
+## `bastion mux`
+
+Opens a tmux-backed TUI for persistent SSH sessions.
+
+```sh
+bastion mux [--session NAME]
+```
+
+| Flag        | Environment           | Default       | Description                        |
+| ----------- | --------------------- | ------------- | ---------------------------------- |
+| `--session` | `BASTION_MUX_SESSION` | `bastion-mux` | tmux session used for SSH windows. |
+
+The command preflights `tmux` before starting. If `tmux` is not installed, the
+CLI exits with a message and does not touch any environments or SSH sessions.
+
+Inside the TUI, press `n` when no SSH sessions exist, or `ctrl+b n` when sessions
+are open, to choose from currently `running` or `paused` environments. Existing
+SSH sessions are shown as tabs. Use `ctrl+b h` and `ctrl+b l` to switch tabs, or
+click a tab in terminals with mouse support. Use `ctrl+b d` to detach from the
+TUI without closing the tmux windows or underlying `bastion ssh` sessions.
 
 ## `bastion version`
 
