@@ -235,7 +235,14 @@ func (m Manager) State(ctx context.Context, environmentID string) (VM, error) {
 	}
 
 	if vm.PID > 0 && processMatches(vm.PID, vm.VMID) {
-		_ = terminateProcess(vm.PID, 5*time.Second)
+		m.Logger.WarnContext(ctx, "cloud-hypervisor vm info unavailable",
+			slog.String("environment_id", environmentID),
+			slog.Int("pid", vm.PID),
+			slog.String("socket", vm.SocketPath),
+			slog.String("error", clientErr.Error()),
+		)
+
+		return vm, nil
 	}
 
 	m.cleanupStoppedVM(ctx, vm)
@@ -549,9 +556,12 @@ func cloudHypervisorCall(ctx context.Context, socketPath, method, path string, i
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	client := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
-	}}}
+	}}
+	defer transport.CloseIdleConnections()
+
+	client := &http.Client{Transport: transport}
 
 	res, err := client.Do(req)
 	if err != nil {
