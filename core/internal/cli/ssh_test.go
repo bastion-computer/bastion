@@ -22,25 +22,9 @@ func TestSSHCommandUsesAPIManagedSSH(t *testing.T) {
 	server := newSSHCommandTestServer(t, gotReq)
 	t.Cleanup(server.Close)
 
-	var stdout bytes.Buffer
-
-	cmd := newSSHCommand(&rootOptions{apiURL: server.URL})
-	cmd.SetIn(bytes.NewBuffer(nil))
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--id", cliTestEnvironmentID, "--", sshTestCommandTrue})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-
-	got := <-gotReq
+	got := executeSSHCommandTest(t, server.URL, []string{cliIDFlag, cliTestEnvironmentID, "--", sshTestCommandTrue}, gotReq)
 	if len(got.Command) != 1 || got.Command[0] != sshTestCommandTrue || got.PTY {
 		t.Fatalf("SSH request = %#v, want command true without pty", got)
-	}
-
-	if stdout.String() != "ok\n" {
-		t.Fatalf("stdout = %q, want ok", stdout.String())
 	}
 }
 
@@ -51,26 +35,32 @@ func TestSSHCommandUsesEnvironmentKey(t *testing.T) {
 	server := newSSHCommandKeyTestServer(t, gotReq)
 	t.Cleanup(server.Close)
 
+	got := executeSSHCommandTest(t, server.URL, []string{cliTestKeyFlag, cliTestEnvironmentKey, "--", sshTestCommandTrue}, gotReq)
+	if len(got.Command) != 1 || got.Command[0] != sshTestCommandTrue || got.PTY {
+		t.Fatalf("SSH request = %#v, want command true without pty", got)
+	}
+}
+
+func executeSSHCommandTest(t *testing.T, apiURL string, args []string, gotReq <-chan sshtunnel.Request) sshtunnel.Request {
+	t.Helper()
+
 	var stdout bytes.Buffer
 
-	cmd := newSSHCommand(&rootOptions{apiURL: server.URL})
+	cmd := newSSHCommand(&rootOptions{apiURL: apiURL})
 	cmd.SetIn(bytes.NewBuffer(nil))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{cliTestKeyFlag, cliTestEnvironmentKey, "--", sshTestCommandTrue})
+	cmd.SetArgs(args)
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 
-	got := <-gotReq
-	if len(got.Command) != 1 || got.Command[0] != sshTestCommandTrue || got.PTY {
-		t.Fatalf("SSH request = %#v, want command true without pty", got)
-	}
-
 	if stdout.String() != "ok\n" {
 		t.Fatalf("stdout = %q, want ok", stdout.String())
 	}
+
+	return <-gotReq
 }
 
 func TestReadSSHOutputReturnsRemoteExitStatus(t *testing.T) {
@@ -115,10 +105,10 @@ func newSSHCommandKeyTestServer(t *testing.T, gotReq chan<- sshtunnel.Request) *
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/environments/by-key/"+cliTestEnvironmentKey:
 			key := cliTestEnvironmentKey
-			if err := json.NewEncoder(w).Encode(environment.Environment{ID: "env_keyed", Key: &key}); err != nil {
+			if err := json.NewEncoder(w).Encode(environment.Environment{ID: cliTestKeyedEnvironmentID, Key: &key}); err != nil {
 				t.Fatalf("encode get response: %v", err)
 			}
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/environments/env_keyed/ssh":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/environments/"+cliTestKeyedEnvironmentID+"/ssh":
 			gotReq <- decodeSSHCommandRequest(t, r)
 
 			conn := hijackSSHCommandResponse(t, w)

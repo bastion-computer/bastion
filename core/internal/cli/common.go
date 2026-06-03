@@ -15,6 +15,7 @@ const (
 	listUse        = "list"
 	getIDKeyUse    = "get [--id ID | --key KEY]"
 	removeIDKeyUse = "remove [--id ID | --key KEY]"
+	cliIDFlag      = "--id"
 )
 
 type (

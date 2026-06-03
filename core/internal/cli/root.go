@@ -38,6 +38,7 @@ func NewRootCommand() *cobra.Command {
 		newTemplatesCommand(opts),
 		newEnvironmentCommand(opts),
 		newSSHCommand(opts),
+		newMuxCommand(opts),
 		newVersionCommand(),
 	)
 

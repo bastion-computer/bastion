@@ -67,7 +67,7 @@ func TestEnvironmentGetCommandUsesID(t *testing.T) {
 	cmd := newEnvironmentGetCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--id", cliTestEnvironmentID})
+	cmd.SetArgs([]string{cliIDFlag, cliTestEnvironmentID})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -93,7 +93,7 @@ func TestEnvironmentGetCommandUsesKey(t *testing.T) {
 			t.Fatalf("request = %s %s, want GET /v1/environments/by-key/%s", r.Method, r.URL.Path, cliTestEnvironmentKey)
 		}
 
-		if err := json.NewEncoder(w).Encode(environment.Environment{ID: "env_keyed", Key: &key, Status: cliTestRunningStatus}); err != nil {
+		if err := json.NewEncoder(w).Encode(environment.Environment{ID: cliTestKeyedEnvironmentID, Key: &key, Status: cliTestRunningStatus}); err != nil {
 			t.Fatalf("encode get response: %v", err)
 		}
 	}))
@@ -115,7 +115,7 @@ func TestEnvironmentGetCommandUsesKey(t *testing.T) {
 		t.Fatalf("decode stdout: %v", err)
 	}
 
-	if got.ID != "env_keyed" || got.Key == nil || *got.Key != cliTestEnvironmentKey {
+	if got.ID != cliTestKeyedEnvironmentID || got.Key == nil || *got.Key != cliTestEnvironmentKey {
 		t.Fatalf("get output = %#v, want keyed environment", got)
 	}
 }
@@ -139,7 +139,7 @@ func TestEnvironmentRemoveCommandUsesID(t *testing.T) {
 	cmd := newEnvironmentRemoveCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--id", cliTestEnvironmentID})
+	cmd.SetArgs([]string{cliIDFlag, cliTestEnvironmentID})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
