@@ -18,8 +18,11 @@ import (
 )
 
 const (
-	muxSessionName  = "bastion"
-	muxEnvPageLimit = 100
+	muxSessionName           = "bastion"
+	muxEnvPageLimit          = 100
+	muxNordMenuStyle         = "bg=#2E3440,fg=#D8DEE9"
+	muxNordMenuSelectedStyle = "bg=#88C0D0,fg=#2E3440,bold"
+	muxNordMenuBorderStyle   = "fg=#88C0D0,bg=#2E3440,bold"
 )
 
 //go:embed bastion-tmux.conf
@@ -336,6 +339,12 @@ func muxMenuArgs(executable string, target muxTarget, environments []environment
 		"C",
 		"-y",
 		"C",
+		"-s",
+		muxNordMenuStyle,
+		"-H",
+		muxNordMenuSelectedStyle,
+		"-S",
+		muxNordMenuBorderStyle,
 		"-T",
 		"Bastion environments",
 	}
