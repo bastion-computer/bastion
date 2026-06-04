@@ -28,6 +28,38 @@ func TestRootCommandIncludesMux(t *testing.T) {
 	t.Fatal("root command is missing visible mux subcommand")
 }
 
+func TestMuxTmuxConfigEmbedsNordSelectorTheme(t *testing.T) {
+	t.Parallel()
+
+	config := string(bastionTmuxConfig)
+	for _, want := range []string{
+		`status-style "bg=#2E3440,fg=#ECEFF4"`,
+		`set-hook -t bastion after-new-window[90]`,
+		`menu-style "bg=#2E3440,fg=#D8DEE9"`,
+		`menu-selected-style "bg=#88C0D0,fg=#2E3440,bold"`,
+		`menu-border-style "fg=#88C0D0,bg=#2E3440,bold"`,
+		`popup-style "bg=#2E3440,fg=#D8DEE9"`,
+		`popup-border-style "fg=#88C0D0,bg=#2E3440,bold"`,
+		`window-status-format "#[fg=#D8DEE9,bg=#3B4252]  #I #W #F  "`,
+		`window-status-current-format "#[fg=#2E3440,bg=#88C0D0,bold]  #I #W #F  "`,
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("tmux config missing %q:\n%s", want, config)
+		}
+	}
+}
+
+func TestMuxTmuxConfigDoesNotLoadExternalTheme(t *testing.T) {
+	t.Parallel()
+
+	config := string(bastionTmuxConfig)
+	for _, disallowed := range []string{"run-shell", "source-file", "@plugin", "set -g", "setw -g", "set-option -g", "set-window-option -g"} {
+		if strings.Contains(config, disallowed) {
+			t.Fatalf("tmux config contains non-isolated theme hook %q:\n%s", disallowed, config)
+		}
+	}
+}
+
 func TestMuxEnvironmentLabelPrefersKey(t *testing.T) {
 	t.Parallel()
 
@@ -179,24 +211,24 @@ func TestMuxMenuArgsBuildsEnvironmentMenu(t *testing.T) {
 	target := muxTarget{session: muxSessionName, window: "@1", pane: "%2"}
 	args := muxMenuArgs("/tmp/bastion", target, []environment.Environment{{ID: cliTestEnvironmentID, Key: &key, Status: cliTestRunningStatus}})
 
-	if len(args) != 12 {
-		t.Fatalf("menu args length = %d, want 12: %#v", len(args), args)
+	if len(args) != 18 {
+		t.Fatalf("menu args length = %d, want 18: %#v", len(args), args)
 	}
 
-	if got := args[:9]; !reflect.DeepEqual(got, []string{"display-menu", "-t", "%2", "-x", "C", "-y", "C", "-T", "Bastion environments"}) {
-		t.Fatalf("menu prefix = %#v, want centered display-menu", got)
+	if got := args[:15]; !reflect.DeepEqual(got, []string{"display-menu", "-t", "%2", "-x", "C", "-y", "C", "-s", muxNordMenuStyle, "-H", muxNordMenuSelectedStyle, "-S", muxNordMenuBorderStyle, "-T", "Bastion environments"}) {
+		t.Fatalf("menu prefix = %#v, want centered Nord display-menu", got)
 	}
 
-	if args[9] != cliTestEnvironmentKey+"  ["+cliTestEnvironmentID+"]  "+cliTestRunningStatus {
-		t.Fatalf("menu label = %q, want keyed environment label", args[9])
+	if args[15] != cliTestEnvironmentKey+"  ["+cliTestEnvironmentID+"]  "+cliTestRunningStatus {
+		t.Fatalf("menu label = %q, want keyed environment label", args[15])
 	}
 
-	if args[10] != "" {
-		t.Fatalf("menu key = %q, want empty shortcut", args[10])
+	if args[16] != "" {
+		t.Fatalf("menu key = %q, want empty shortcut", args[16])
 	}
 
-	if !strings.Contains(args[11], "'mux' 'connect'") || !strings.Contains(args[11], "'--id' '"+cliTestEnvironmentID+"'") {
-		t.Fatalf("menu command = %q, want mux connect command", args[11])
+	if !strings.Contains(args[17], "'mux' 'connect'") || !strings.Contains(args[17], "'--id' '"+cliTestEnvironmentID+"'") {
+		t.Fatalf("menu command = %q, want mux connect command", args[17])
 	}
 }
 
