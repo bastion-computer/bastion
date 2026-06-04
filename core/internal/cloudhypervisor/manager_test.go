@@ -224,6 +224,20 @@ func startTestCloudHypervisorProcess(t *testing.T) *exec.Cmd {
 		_ = cmd.Wait()
 	})
 
+	for range 100 {
+		if processMatches(cmd.Process.Pid, cloudHypervisorName) {
+			return cmd
+		}
+
+		if !processExists(cmd.Process.Pid) {
+			t.Fatalf("test cloud-hypervisor process exited before cmdline was visible")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatalf("test cloud-hypervisor process cmdline did not become visible")
+
 	return cmd
 }
 

@@ -98,6 +98,23 @@ bastion ssh (--id ID | --key KEY) -- COMMAND [ARG...]
 With no command and terminal stdin/stdout, the CLI opens an interactive PTY. With
 a command, it forwards stdout, stderr, and the remote exit code.
 
+## `bastion mux`
+
+Opens a Bastion-managed tmux session for persistent SSH tabs.
+
+```sh
+bastion mux
+```
+
+The command creates or attaches to a `bastion` tmux session with Bastion's tmux
+configuration loaded. New tabs open an environment picker menu populated from
+`bastion env list`; use arrow keys and Enter to select an environment. Selecting
+an environment replaces the tab with `bastion ssh --id ID`.
+
+Tabs are named from the environment key, or the environment ID when no key is
+set. Duplicate tabs connected to the same environment receive suffixes such as
+`dev (2)` and `dev (3)`.
+
 ## `bastion version`
 
 Prints the CLI version.
