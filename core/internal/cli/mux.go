@@ -306,6 +306,7 @@ func runMuxConnect(ctx context.Context, tmux tmuxRunner, target muxTarget, envir
 	}
 
 	name := muxWindowName(baseName, muxSameEnvironmentCount(windowList, environmentID, target.window))
+
 	executable, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve bastion executable: %w", err)
@@ -415,7 +416,7 @@ func muxWindowName(base string, sameEnvironmentCount int) string {
 func muxSameEnvironmentCount(windowList, environmentID, targetWindow string) int {
 	var count int
 
-	for _, line := range strings.Split(strings.TrimSpace(windowList), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(windowList), "\n") {
 		if line == "" {
 			continue
 		}
@@ -447,7 +448,9 @@ func muxSSHShellCommand(executable, environmentID string) string {
 
 func shellCommand(executable string, args ...string) string {
 	parts := make([]string, 0, len(args)+1)
+
 	parts = append(parts, shellQuote(executable))
+
 	for _, arg := range args {
 		parts = append(parts, shellQuote(arg))
 	}
@@ -476,6 +479,7 @@ func tmuxQuote(value string) string {
 }
 
 func (osTmuxRunner) run(ctx context.Context, args ...string) (string, error) {
+	//nolint:gosec // The executable is fixed to tmux; arguments are assembled by the CLI.
 	cmd := exec.CommandContext(ctx, "tmux", args...)
 	if tmuxCommandNeedsTerminal(args) {
 		cmd.Stdin = os.Stdin
@@ -490,6 +494,7 @@ func (osTmuxRunner) run(ctx context.Context, args ...string) (string, error) {
 	}
 
 	var output bytes.Buffer
+
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 

@@ -165,7 +165,7 @@ func TestEnvironmentListCommandSendsTagFilters(t *testing.T) {
 		}
 
 		query := r.URL.Query()
-		if query.Get("limit") != "5" || query.Get("cursor") != "next" {
+		if query.Get("limit") != "5" || query.Get("cursor") != cliTestNextCursor {
 			t.Fatalf("query = %v, want limit and cursor", query)
 		}
 
@@ -186,7 +186,7 @@ func TestEnvironmentListCommandSendsTagFilters(t *testing.T) {
 	cmd := newEnvironmentListCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--limit", "5", "--cursor", "next", "-t", cliTestProdTag, "--tag", cliTestGPUTag})
+	cmd.SetArgs([]string{"--limit", "5", "--cursor", cliTestNextCursor, "-t", cliTestProdTag, "--tag", cliTestGPUTag})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

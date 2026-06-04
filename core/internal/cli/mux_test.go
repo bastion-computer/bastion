@@ -44,14 +44,16 @@ func TestMuxEnvironmentLabelPrefersKey(t *testing.T) {
 func TestMuxWindowNameAddsDuplicateSuffix(t *testing.T) {
 	t.Parallel()
 
+	const muxTestWindowName = "dev"
+
 	tests := []struct {
 		name  string
 		count int
 		want  string
 	}{
-		{name: "dev", count: 0, want: "dev"},
-		{name: "dev", count: 1, want: "dev (2)"},
-		{name: "dev", count: 2, want: "dev (3)"},
+		{name: muxTestWindowName, count: 0, want: muxTestWindowName},
+		{name: muxTestWindowName, count: 1, want: muxTestWindowName + " (2)"},
+		{name: muxTestWindowName, count: 2, want: muxTestWindowName + " (3)"},
 	}
 
 	for _, tt := range tests {
@@ -92,12 +94,12 @@ func TestCollectMuxEnvironmentsPagesThroughList(t *testing.T) {
 
 		switch query.Get("cursor") {
 		case "":
-			cursor := "next"
+			cursor := cliTestNextCursor
 			writeMuxEnvironmentPage(t, w, services.Page[environment.Environment]{
 				Cursor:  &cursor,
 				Entries: []environment.Environment{{ID: "env_first"}},
 			})
-		case "next":
+		case cliTestNextCursor:
 			writeMuxEnvironmentPage(t, w, services.Page[environment.Environment]{
 				Entries: []environment.Environment{{ID: "env_second"}},
 			})
@@ -121,7 +123,7 @@ func TestCollectMuxEnvironmentsPagesThroughList(t *testing.T) {
 		t.Fatalf("environment ids = %#v, want first and second", ids)
 	}
 
-	if got := drainMuxCursors(gotCursors); !reflect.DeepEqual(got, []string{"", "next"}) {
+	if got := drainMuxCursors(gotCursors); !reflect.DeepEqual(got, []string{"", cliTestNextCursor}) {
 		t.Fatalf("cursors = %#v, want empty then next", got)
 	}
 }
@@ -225,6 +227,7 @@ func TestMuxConnectRenamesAndRespawnsPane(t *testing.T) {
 
 func TestCurrentMuxTargetUsesCurrentPane(t *testing.T) {
 	t.Setenv("TMUX_PANE", "%7")
+
 	tmux := &fakeMuxTmuxRunner{outputs: map[string]string{
 		muxTmuxKey("display-message", "-p", "-t", "%7", "#{session_name}\t#{window_id}\t#{pane_id}"): "bastion\t@9\t%7\n",
 	}}
