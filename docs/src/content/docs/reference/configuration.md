@@ -23,9 +23,8 @@ The host API creates the data directory if needed and stores SQLite data at
 
 ## Systemd Services
 
-When installed with `--with-services`, Bastion creates `bastion-api.service` and
-`bastiond.service`. Both units read service environment values from
-`/etc/default/bastion`.
+The installer creates `bastion-api.service` and `bastiond.service` by default.
+Both units read service environment values from `/etc/default/bastion`.
 
 The installer seeds `/etc/default/bastion` on first service setup and preserves
 the file during later installs or updates. Edit this file to customize values

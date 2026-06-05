@@ -20,23 +20,19 @@ instance type.
 
 ## Install Bastion
 
-Install the `bastion` and `bastiond` binaries:
+Install `bastion`, `bastiond`, and the systemd services:
 
 ```sh
 curl -fsSL https://bastion.computer/install.sh | bash
 ```
 
-For non-interactive installs that should also configure the Bastion API and
-daemon as systemd services, pass `--with-services`:
+The installer creates and starts `bastion-api.service` and `bastiond.service` by
+default. It also seeds `/etc/default/bastion` with service environment values
+such as `BASTION_DATA_DIR`, `BASTION_ADDR`, and `BASTIOND_SOCKET`. Edit that file
+to customize service settings; future installer runs preserve it.
 
-```sh
-curl -fsSL https://bastion.computer/install.sh | bash -s -- --with-services
-```
-
-When services are installed, the installer seeds `/etc/default/bastion` with the
-service environment values such as `BASTION_DATA_DIR`, `BASTION_ADDR`, and
-`BASTIOND_SOCKET`. Edit that file to customize service settings; future installer
-runs preserve it.
+If you only want the binaries, download the release archive from the
+[GitHub releases page](https://github.com/bastion-computer/bastion/releases).
 
 ## Prepare the Host
 
@@ -56,22 +52,16 @@ This downloads the Cloud Hypervisor binary, guest kernel, guest initramfs, root
 file system image, and SSH key into the Bastion data directory. The default data
 directory is `~/.bastion`.
 
-## Start Bastion
-
-Start the host API in one terminal:
-
-```sh
-bastion start
-```
-
-Start the privileged VM daemon in another terminal:
-
-```sh
-sudo bastiond
-```
+## Check Bastion
 
 The host API listens on `localhost:3148` by default. The daemon listens on the
 Unix socket `/run/bastion/bastiond.sock` by default.
+
+Check that both services are running:
+
+```sh
+sudo systemctl status bastiond.service bastion-api.service
+```
 
 ## Create a Template
 
