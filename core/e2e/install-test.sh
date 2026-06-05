@@ -188,7 +188,7 @@ install_template_config() {
     actions: {
       init: [
         {
-          run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y --no-install-recommends ca-certificates curl tar bash coreutils iproute2 systemd systemd-sysv\nsystemctl --version >/dev/null"
+          run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y --no-install-recommends ca-certificates curl tar bash coreutils iproute2 jq kmod systemd systemd-sysv\nsystemctl --version >/dev/null"
         }
       ]
     }
@@ -249,6 +249,90 @@ wait_active() {
   fail "$service did not become active"
 }
 
+wait_bastion_api() {
+  local attempt
+
+  for ((attempt = 1; attempt <= 60; attempt++)); do
+    if bastion templates list >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+
+  systemctl status bastion-api.service --no-pager >&2 || true
+  fail "bastion CLI could not reach the installed API service"
+}
+
+choose_inner_network_prefix() {
+  local route second next
+
+  route="$(ip -4 route get 1.1.1.1 2>/dev/null || true)"
+  if [[ "$route" =~ src[[:space:]]+10\.([0-9]+)\. ]]; then
+    second="${BASH_REMATCH[1]}"
+    next=$((10#$second + 1))
+    if [ "$next" -le 255 ]; then
+      printf '10.%d\n' "$next"
+      return
+    fi
+  fi
+
+  printf '10.242\n'
+}
+
+service_data_dir() {
+  # shellcheck disable=SC1091
+  . /etc/default/bastion
+  printf '%s\n' "$BASTION_DATA_DIR"
+}
+
+CHILD_ENV_ID=""
+CHILD_TEMPLATE_KEY=""
+
+cleanup_child_environment() {
+  set +e
+  if [ -n "$CHILD_ENV_ID" ]; then
+    bastion env remove --id "$CHILD_ENV_ID" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$CHILD_TEMPLATE_KEY" ]; then
+    bastion templates remove --key "$CHILD_TEMPLATE_KEY" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_child_environment EXIT
+
+verify_bastiond_restart_preserves_environment() {
+  local data_dir
+  local output
+  local status
+
+  data_dir="$(service_data_dir)"
+
+  bastion system --data-dir "$data_dir" add cloud-hypervisor --with-utilities
+  bastion system --data-dir "$data_dir" check
+
+  CHILD_TEMPLATE_KEY="restart-child-$(date +%s)-$$"
+  bastion templates create --key "$CHILD_TEMPLATE_KEY" --config '{"resources":{"vcpu":1,"memory":1,"volume":5},"actions":{"init":[{"run":"set -eu\nprintf restart-ok >/root/restart-ok"}]}}' >/dev/null
+
+  output="$(bastion env create --template-key "$CHILD_TEMPLATE_KEY")"
+  CHILD_ENV_ID="$(jq -r '.id // empty' <<<"$output")"
+  if [ -z "$CHILD_ENV_ID" ]; then
+    fail "restart child environment did not return an id: $output"
+  fi
+
+  bastion ssh --id "$CHILD_ENV_ID" -- grep -q restart-ok /root/restart-ok
+  systemctl restart bastiond.service bastion-api.service
+  wait_active bastiond.service
+  wait_active bastion-api.service
+  wait_bastion_api
+
+  status="$(bastion env get --id "$CHILD_ENV_ID" | jq -r '.status')"
+  if [ "$status" != "running" ]; then
+    fail "environment $CHILD_ENV_ID status is $status after bastiond restart, want running"
+  fi
+
+  bastion ssh --id "$CHILD_ENV_ID" -- grep -q restart-ok /root/restart-ok
+  printf '[remote-install] bastiond restart preserved environment %s\n' "$CHILD_ENV_ID"
+}
+
 download_installer() {
   local gateway=$1
   local candidate
@@ -294,7 +378,8 @@ grep -q '^BASTIOND_SOCKET=' /etc/default/bastion || fail "service env file is mi
 grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastiond.service || fail "bastiond.service does not read /etc/default/bastion"
 grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not read /etc/default/bastion"
 
-printf '\nBASTION_E2E_SENTINEL=preserve\n' >>/etc/default/bastion
+inner_network_prefix="$(choose_inner_network_prefix)"
+printf '\nBASTION_E2E_SENTINEL=preserve\nBASTION_VM_CPUS=1\nBASTION_VM_MEMORY_BYTES=1073741824\nBASTION_VM_NETWORK_PREFIX=%s\n' "$inner_network_prefix" >>/etc/default/bastion
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastiond.service
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastion-api.service
 
@@ -331,17 +416,11 @@ systemctl is-enabled --quiet bastiond.service || fail "bastiond.service is not e
 systemctl is-enabled --quiet bastion-api.service || fail "bastion-api.service is not enabled"
 wait_active bastiond.service
 wait_active bastion-api.service
+wait_bastion_api
+verify_bastiond_restart_preserves_environment
+grep -q '^KillMode=process$' /etc/systemd/system/bastiond.service || fail "bastiond.service does not keep VM child processes outside daemon restarts"
 
-for ((attempt = 1; attempt <= 60; attempt++)); do
-  if bastion templates list >/tmp/bastion-templates.json; then
-    printf '[remote-install] Bastion API is ready\n'
-    exit 0
-  fi
-  sleep 1
-done
-
-systemctl status bastion-api.service --no-pager >&2 || true
-fail "bastion CLI could not reach the installed API service"
+printf '[remote-install] Bastion API is ready\n'
 INNER
 }
 

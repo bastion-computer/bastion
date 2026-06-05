@@ -35,6 +35,9 @@ the services:
 sudo systemctl restart bastiond.service bastion-api.service
 ```
 
+`bastiond.service` is configured with `KillMode=process` so restarting the
+daemon does not terminate Cloud Hypervisor VM child processes.
+
 ## CLI Client
 
 These settings apply to CLI commands that call the host API.
