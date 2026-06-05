@@ -298,6 +298,7 @@ Wants=network-online.target
 Type=simple
 EnvironmentFile=$SERVICE_ENV_FILE
 ExecStart=$BASTIOND_BIN --socket-uid $service_uid --socket-gid $service_gid
+KillMode=process
 Restart=always
 RestartSec=2
 
