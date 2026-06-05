@@ -7,7 +7,6 @@ readonly TARGET="linux_x86_64"
 readonly SOCKET_PATH="/run/bastion/bastiond.sock"
 readonly SERVICE_ENV_FILE="${BASTION_SERVICE_ENV_FILE:-/etc/default/bastion}"
 
-WITH_SERVICES=0
 INSTALL_DIR="${BASTION_INSTALL_DIR:-}"
 TMP_DIR=""
 BASTION_BIN=""
@@ -38,12 +37,11 @@ EOF
 
 usage() {
   cat <<'EOF'
-Usage: install.sh [--with-services]
+Usage: install.sh
 
 Installs or updates Bastion for Linux x86_64 from the latest GitHub release.
 
 Options:
-  --with-services  Install and start systemd services for bastion and bastiond.
   -h, --help       Show this help message.
 EOF
 }
@@ -67,9 +65,6 @@ trap cleanup EXIT
 parse_args() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --with-services)
-        WITH_SERVICES=1
-        ;;
       -h | --help)
         usage
         exit 0
@@ -280,32 +275,6 @@ systemd_quote() {
   printf '"%s"' "$value"
 }
 
-should_setup_services() {
-  local answer
-
-  if [ "$WITH_SERVICES" -eq 1 ]; then
-    return 0
-  fi
-
-  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
-    log "skipping service setup; pass --with-services to enable it in non-interactive installs"
-    return 1
-  fi
-
-  printf 'Set up systemd services for the Bastion API and daemon with auto restart and start on boot? [y/N] ' >/dev/tty
-  IFS= read -r answer </dev/tty || answer=""
-
-  case "$answer" in
-    y | Y | yes | YES)
-      return 0
-      ;;
-    *)
-      log "skipping service setup"
-      return 1
-      ;;
-  esac
-}
-
 write_service_units() {
   local service_user=$1
   local service_group=$2
@@ -404,13 +373,9 @@ setup_services() {
   local home
   local data_dir
 
-  if ! should_setup_services; then
-    return
-  fi
-
   require_command systemctl
   if [ ! -d /run/systemd/system ]; then
-    fail "systemd is required for --with-services"
+    fail "systemd is required to install Bastion services"
   fi
 
   service_user="${BASTION_SERVICE_USER:-${SUDO_USER:-$(id -un)}}"

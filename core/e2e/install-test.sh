@@ -282,9 +282,10 @@ if ! grep -q 'bastion-computer/bastion' /tmp/bastion-install.sh; then
   fail "downloaded installer does not look like the local Bastion installer"
 fi
 
-curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | bash -s -- --with-services 2>&1 | tee /tmp/bastion-install.log
+curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | bash 2>&1 | tee /tmp/bastion-install.log
 
 grep -q 'checksum verified' /tmp/bastion-install.log || fail "installer did not verify the release checksum"
+grep -q 'services installed, enabled, and started' /tmp/bastion-install.log || fail "installer did not set up services by default"
 command -v bastion >/dev/null || fail "bastion was not installed on PATH"
 command -v bastiond >/dev/null || fail "bastiond was not installed on PATH"
 test -f /etc/default/bastion || fail "/etc/default/bastion was not created"
@@ -294,9 +295,32 @@ grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastiond.se
 grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not read /etc/default/bastion"
 
 printf '\nBASTION_E2E_SENTINEL=preserve\n' >>/etc/default/bastion
-curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | bash -s -- --with-services 2>&1 | tee /tmp/bastion-reinstall.log
+printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastiond.service
+printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastion-api.service
+
+bastion_path="$(command -v bastion)"
+real_bastion="${bastion_path}.e2e-real"
+mv "$bastion_path" "$real_bastion"
+cat >"$bastion_path" <<EOF
+#!/usr/bin/env sh
+if [ "\${1:-}" = "version" ]; then
+  printf 'v0.0.0\n'
+  exit 0
+fi
+exec "$real_bastion" "\$@"
+EOF
+chmod +x "$bastion_path"
+
+curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | bash 2>&1 | tee /tmp/bastion-reinstall.log
+rm -f "$real_bastion"
+
+grep -q 'updating Bastion from v0.0.0' /tmp/bastion-reinstall.log || fail "installer did not enter the update path"
+grep -q 'services installed, enabled, and started' /tmp/bastion-reinstall.log || fail "installer did not reset services during update"
 grep -q '^BASTION_E2E_SENTINEL=preserve$' /etc/default/bastion || fail "installer overwrote the service environment file"
 grep -q 'preserving existing service environment file' /tmp/bastion-reinstall.log || fail "installer did not report preserving the service environment file"
+if grep -q 'BASTION_E2E_UNIT_SENTINEL' /etc/systemd/system/bastiond.service /etc/systemd/system/bastion-api.service; then
+  fail "installer did not reset systemd service units"
+fi
 
 installed_version="$(bastion version)"
 if [ "$installed_version" != "$LATEST_VERSION" ]; then
