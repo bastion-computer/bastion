@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/actions"
@@ -46,18 +47,15 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 	}
 }
 
-func TestSeedDoesNotOverwriteExistingPresetAction(t *testing.T) {
+func TestSeedOverwritesExistingBuiltInPresetAction(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
+	manifestPath := writeCustomManifest(t, dataDir, "setup_node")
 
-	manifestPath := filepath.Join(dataDir, actions.DirName, "setup_node", testManifestFileName)
-	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o750); err != nil {
-		t.Fatalf("create existing action dir: %v", err)
-	}
-
-	if err := os.WriteFile(manifestPath, []byte("custom\n"), 0o600); err != nil {
-		t.Fatalf("write existing manifest: %v", err)
+	extraPath := filepath.Join(dataDir, actions.DirName, "setup_node", "custom.txt")
+	if err := os.WriteFile(extraPath, []byte("custom\n"), 0o600); err != nil {
+		t.Fatalf("write custom extra file: %v", err)
 	}
 
 	if err := actions.Seed(dataDir); err != nil {
@@ -66,11 +64,56 @@ func TestSeedDoesNotOverwriteExistingPresetAction(t *testing.T) {
 
 	contents, err := os.ReadFile(manifestPath) //nolint:gosec // Test path is rooted in t.TempDir().
 	if err != nil {
+		t.Fatalf("read overwritten manifest: %v", err)
+	}
+
+	if string(contents) == "custom\n" || !strings.Contains(string(contents), `"run": "sh ./install_node.sh"`) {
+		t.Fatalf("manifest was not overwritten with built-in setup_node manifest: %s", contents)
+	}
+
+	if _, err := os.Stat(extraPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("custom extra file stat error = %v, want not exist", err)
+	}
+}
+
+func TestSeedPreservesUniquelyNamedCustomAction(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	manifestPath := writeCustomManifest(t, dataDir, "custom_setup")
+
+	if err := actions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	assertCustomManifest(t, manifestPath, "custom action manifest")
+}
+
+func writeCustomManifest(t *testing.T, dataDir, action string) string {
+	t.Helper()
+
+	manifestPath := filepath.Join(dataDir, actions.DirName, action, testManifestFileName)
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o750); err != nil {
+		t.Fatalf("create existing action dir: %v", err)
+	}
+
+	if err := os.WriteFile(manifestPath, []byte("custom\n"), 0o600); err != nil {
+		t.Fatalf("write existing manifest: %v", err)
+	}
+
+	return manifestPath
+}
+
+func assertCustomManifest(t *testing.T, manifestPath, label string) {
+	t.Helper()
+
+	contents, err := os.ReadFile(manifestPath) //nolint:gosec // Test path is rooted in t.TempDir().
+	if err != nil {
 		t.Fatalf("read existing manifest: %v", err)
 	}
 
 	if string(contents) != "custom\n" {
-		t.Fatalf("manifest was overwritten: %q", contents)
+		t.Fatalf("%s was overwritten: %q", label, contents)
 	}
 }
 

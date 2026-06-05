@@ -325,31 +325,36 @@ preset_setup_opencode_config() {
   local api_key="opencode-e2e-${RUN_ID}"
   local auth
   local config
+  local tui
   local verify_written
   local verify_absent
 
   auth="$(jq -nc --arg api_key "$api_key" '{anthropic: {type: "api", key: $api_key}}')"
   config="$(jq -nc '{model: "anthropic/claude-sonnet-4-5", small_model: "anthropic/claude-haiku-4-5", share: "disabled", permission: "allow", autoupdate: false}')"
+  tui="$(jq -nc '{mouse: true}')"
   verify_written="$(printf '%s\n' \
     'set -eu' \
     'mkdir -p /opt/bastion-e2e-opencode' \
     'opencode --version > /opt/bastion-e2e-opencode/version' \
     'jq -e '\''.model == "anthropic/claude-sonnet-4-5" and .small_model == "anthropic/claude-haiku-4-5" and .share == "disabled" and .permission == "allow" and .autoupdate == false'\'' /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-ok' \
+    'jq -e '\''.mouse == true'\'' /root/.config/opencode/tui.json > /opt/bastion-e2e-opencode/tui-ok' \
     "jq -e --arg api_key '$api_key' '.anthropic.type == \"api\" and .anthropic.key == \$api_key' /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-ok" \
     'stat -c %a /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-mode' \
+    'stat -c %a /root/.config/opencode/tui.json > /opt/bastion-e2e-opencode/tui-mode' \
     'stat -c %a /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-mode' \
-    'rm -f /root/.config/opencode/opencode.json /root/.local/share/opencode/auth.json')"
+    'rm -f /root/.config/opencode/opencode.json /root/.config/opencode/tui.json /root/.local/share/opencode/auth.json')"
   verify_absent="$(printf '%s\n' \
     'set -eu' \
     'opencode --version > /opt/bastion-e2e-opencode/version-no-inputs' \
     'test ! -e /root/.config/opencode/opencode.json' \
     'test ! -e /root/.local/share/opencode/auth.json' \
+    'jq -e '\''.mouse == false and .keybinds.input_paste == "none"'\'' /root/.config/opencode/tui.json > /opt/bastion-e2e-opencode/default-tui-ok' \
     'printf true > /opt/bastion-e2e-opencode/absent-ok')"
 
-  jq -nc --arg auth "$auth" --arg config "$config" --arg verify_written "$verify_written" --arg verify_absent "$verify_absent" '{
+  jq -nc --arg auth "$auth" --arg config "$config" --arg tui "$tui" --arg verify_written "$verify_written" --arg verify_absent "$verify_absent" '{
     actions: {
       init: [
-        {use: "setup_opencode", with: {auth: $auth, config: $config}},
+        {use: "setup_opencode", with: {auth: $auth, config: $config, tui: $tui}},
         {run: $verify_written},
         {use: "setup_opencode"},
         {run: $verify_absent}
@@ -544,11 +549,18 @@ run_preset_setup_opencode_case() {
 test -s /opt/bastion-e2e-opencode/version
 test -s /opt/bastion-e2e-opencode/version-no-inputs
 grep -q true /opt/bastion-e2e-opencode/config-ok
+grep -q true /opt/bastion-e2e-opencode/tui-ok
 grep -q true /opt/bastion-e2e-opencode/auth-ok
 grep -q true /opt/bastion-e2e-opencode/absent-ok
+grep -q true /opt/bastion-e2e-opencode/default-tui-ok
 config_mode=\$(cat /opt/bastion-e2e-opencode/config-mode)
 if [ \"\$config_mode\" != \"600\" ]; then
   printf 'config mode is %s, want 600\n' \"\$config_mode\" >&2
+  exit 1
+fi
+tui_mode=\$(cat /opt/bastion-e2e-opencode/tui-mode)
+if [ \"\$tui_mode\" != \"600\" ]; then
+  printf 'tui mode is %s, want 600\n' \"\$tui_mode\" >&2
   exit 1
 fi
 auth_mode=\$(cat /opt/bastion-e2e-opencode/auth-mode)

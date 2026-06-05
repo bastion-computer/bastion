@@ -16,7 +16,7 @@ const DirName = "actions"
 //go:embed set_default_ssh_directory setup_node setup_mise setup_github_cli setup_opencode
 var files embed.FS
 
-// Seed copies missing built-in preset actions into dataDir/actions.
+// Seed overwrites built-in preset actions into dataDir/actions.
 func Seed(dataDir string) error {
 	if dataDir == "" {
 		return errors.New("data dir is required")
@@ -27,6 +27,29 @@ func Seed(dataDir string) error {
 	}
 
 	actionsDir := filepath.Join(dataDir, DirName)
+	if err := ensureActionsDir(actionsDir); err != nil {
+		return err
+	}
+
+	entries, err := fs.ReadDir(files, ".")
+	if err != nil {
+		return fmt.Errorf("read embedded actions: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		if err := seedPresetAction(actionsDir, entry.Name()); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ensureActionsDir(actionsDir string) error {
 	if err := os.Mkdir(actionsDir, 0o750); err != nil {
 		if !errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("create actions data directory: %w", err)
@@ -42,28 +65,19 @@ func Seed(dataDir string) error {
 		}
 	}
 
-	entries, err := fs.ReadDir(files, ".")
-	if err != nil {
-		return fmt.Errorf("read embedded actions: %w", err)
+	return nil
+}
+
+func seedPresetAction(actionsDir, name string) error {
+	dst := filepath.Join(actionsDir, name)
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("remove preset action %s: %w", name, err)
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
+	if err := copyEmbeddedDir(name, dst); err != nil {
+		_ = os.RemoveAll(dst)
 
-		dst := filepath.Join(actionsDir, entry.Name())
-		if _, err := os.Stat(dst); err == nil {
-			continue
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("stat preset action %s: %w", entry.Name(), err)
-		}
-
-		if err := copyEmbeddedDir(entry.Name(), dst); err != nil {
-			_ = os.RemoveAll(dst)
-
-			return err
-		}
+		return err
 	}
 
 	return nil

@@ -34,6 +34,7 @@ func TestMuxTmuxConfigEmbedsNordSelectorTheme(t *testing.T) {
 	config := string(bastionTmuxConfig)
 	for _, want := range []string{
 		`status-style "bg=#2E3440,fg=#ECEFF4"`,
+		`set-option -q -s set-clipboard on`,
 		`set-hook -t bastion after-new-window[90]`,
 		`menu-style "bg=#2E3440,fg=#D8DEE9"`,
 		`menu-selected-style "bg=#88C0D0,fg=#2E3440,bold"`,

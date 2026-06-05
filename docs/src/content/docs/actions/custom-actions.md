@@ -110,8 +110,9 @@ underscores, and hyphens.
 ## Seeding and Overrides
 
 `bastiond` seeds built-in action packages into `<data-dir>/actions` when it
-starts. Seeding only copies missing action directories and does not overwrite an
-existing action directory with the same name.
+starts. Each built-in action directory is replaced with the version embedded in
+the running Bastion binary, so built-ins stay current across upgrades.
 
-Use a unique action name for custom actions unless you intentionally want to
-provide your own implementation for a built-in action name.
+Use a unique action name for custom actions. Changes made under a built-in
+action name, such as `setup_node` or `setup_opencode`, are overwritten the next
+time `bastiond` starts.

@@ -7,6 +7,10 @@
     "config": {
       "type": "string",
       "description": "Optional JSON object to write to /root/.config/opencode/opencode.json."
+    },
+    "tui": {
+      "type": "string",
+      "description": "Optional JSON object to write to /root/.config/opencode/tui.json. Defaults to disabling OpenCode mouse capture and remote Ctrl+V clipboard reads."
     }
   },
   "run": "sh ./install_opencode.sh"

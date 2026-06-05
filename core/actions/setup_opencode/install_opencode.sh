@@ -3,6 +3,11 @@ set -eu
 
 auth="${BASTION_INPUT_AUTH:-}"
 config="${BASTION_INPUT_CONFIG:-}"
+tui="${BASTION_INPUT_TUI:-}"
+
+if [ -z "$tui" ]; then
+  tui='{"mouse":false,"keybinds":{"input_paste":"none"}}'
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -22,11 +27,15 @@ config_dir=/root/.config/opencode
 data_dir=/root/.local/share/opencode
 config_tmp=$(mktemp)
 auth_tmp=$(mktemp)
-trap 'rm -f "$config_tmp" "$auth_tmp"' EXIT
+tui_tmp=$(mktemp)
+trap 'rm -f "$config_tmp" "$auth_tmp" "$tui_tmp"' EXIT
+
+printf '%s' "$tui" | jq -e 'if type == "object" then . else error("tui must be a JSON object") end' > "$tui_tmp"
+mkdir -p "$config_dir"
+install -m 600 "$tui_tmp" "$config_dir/tui.json"
 
 if [ -n "$config" ]; then
   printf '%s' "$config" | jq -e 'if type == "object" then . else error("config must be a JSON object") end' > "$config_tmp"
-  mkdir -p "$config_dir"
   install -m 600 "$config_tmp" "$config_dir/opencode.json"
 fi
 
@@ -41,6 +50,8 @@ fi
 if [ -n "$config" ]; then
   jq -e 'type == "object"' "$config_dir/opencode.json" >/dev/null
 fi
+
+jq -e 'type == "object"' "$config_dir/tui.json" >/dev/null
 
 if [ -n "$auth" ]; then
   jq -e 'type == "object"' "$data_dir/auth.json" >/dev/null

@@ -320,7 +320,7 @@ func TestRunInitActionsRejectsPresetInputTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestSetupOpenCodePresetInputsOnlyAcceptAuthAndConfig(t *testing.T) {
+func TestSetupOpenCodePresetInputsOnlyAcceptAuthConfigAndTUI(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
@@ -333,11 +333,11 @@ func TestSetupOpenCodePresetInputsOnlyAcceptAuthAndConfig(t *testing.T) {
 		t.Fatalf("load setup_opencode preset: %v", err)
 	}
 
-	if len(preset.manifest.Inputs) != 2 {
-		t.Fatalf("setup_opencode input count = %d, want 2: %#v", len(preset.manifest.Inputs), preset.manifest.Inputs)
+	if len(preset.manifest.Inputs) != 3 {
+		t.Fatalf("setup_opencode input count = %d, want 3: %#v", len(preset.manifest.Inputs), preset.manifest.Inputs)
 	}
 
-	for _, name := range []string{"auth", "config"} {
+	for _, name := range []string{"auth", "config", "tui"} {
 		input, ok := preset.manifest.Inputs[name]
 		if !ok {
 			t.Fatalf("setup_opencode input %s is not defined: %#v", name, preset.manifest.Inputs)
@@ -351,8 +351,9 @@ func TestSetupOpenCodePresetInputsOnlyAcceptAuthAndConfig(t *testing.T) {
 	if err := validatePresetActionInputs(preset, map[string]any{
 		"auth":   `{"anthropic":{"type":"api","key":"test-key"}}`,
 		"config": `{"model":"anthropic/claude-sonnet-4-5"}`,
+		"tui":    `{"mouse":false,"keybinds":{"input_paste":"none"}}`,
 	}); err != nil {
-		t.Fatalf("validate auth/config inputs: %v", err)
+		t.Fatalf("validate auth/config/tui inputs: %v", err)
 	}
 
 	if err := validatePresetActionInputs(preset, map[string]any{"provider": "anthropic"}); err == nil || !strings.Contains(err.Error(), "input provider is not defined") {
