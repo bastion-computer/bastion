@@ -29,7 +29,14 @@ config_roots = [
 
 [tasks.lint]
 description = "Run lint tasks across all active packages"
-run = [{ tasks = ["//core:lint", "//integrations/linear:lint", "//docs:lint"] }]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+(cd core && golangci-lint run ./...)
+(cd integrations/linear && golangci-lint run ./...)
+(cd docs && bun run lint)
+'''
 
 [tasks."format:check"]
 description = "Check formatting across all active packages"
