@@ -44,13 +44,15 @@ if the configured path does not exist.
 ## `setup_github_cli`
 
 `setup_github_cli` installs `gh` from GitHub's apt repository and configures it
-for non-interactive use in the guest.
+and `git` for non-interactive use in the guest.
 
-| Input          | Required | Default      | Description                                                 |
-| -------------- | -------- | ------------ | ----------------------------------------------------------- |
-| `token`        | Yes      | None         | GitHub personal access token used by `gh` inside the guest. |
-| `hostname`     | No       | `github.com` | GitHub hostname to target.                                  |
-| `git_protocol` | No       | `https`      | Git protocol for `gh` operations. Must be `https` or `ssh`. |
+| Input          | Required | Default                  | Description                                                 |
+| -------------- | -------- | ------------------------ | ----------------------------------------------------------- |
+| `token`        | Yes      | None                     | GitHub personal access token used by `gh` inside the guest. |
+| `hostname`     | No       | `github.com`             | GitHub hostname to target.                                  |
+| `git_protocol` | No       | `https`                  | Git protocol for `gh` operations. Must be `https` or `ssh`. |
+| `name`         | No       | `bastion-agent`          | Global `git` `user.name` value.                             |
+| `email`        | No       | `agent@bastion.computer` | Global `git` `user.email` value.                            |
 
 Example:
 
@@ -75,6 +77,11 @@ The action stores GitHub configuration under `/etc/bastion` and installs a
 wrapper at `/usr/local/bin/gh`. The wrapper exports `GH_TOKEN`,
 `GH_ENTERPRISE_TOKEN`, `GH_HOST`, and non-interactive update/prompt settings
 before delegating to `/usr/bin/gh`.
+
+The action also runs `gh auth setup-git` and configures `git` to use the
+GitHub CLI credential helper for the target host. Global `git` identity defaults
+to `bastion-agent <agent@bastion.computer>` and can be overridden with `name`
+and `email`.
 
 The token is stored in the guest at `/etc/bastion/github-token` with mode `600`.
 Treat environments created with this action as having access to that token.

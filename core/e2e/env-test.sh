@@ -310,12 +310,25 @@ preset_setup_mise_config() {
 
 preset_setup_github_cli_config() {
   local token="github-cli-e2e-${RUN_ID}"
+  local verify
 
-  jq -nc --arg token "$token" '{
+  verify="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-github-cli' \
+    'gh --version > /opt/bastion-e2e-github-cli/version' \
+    'gh config get git_protocol --host github.com > /opt/bastion-e2e-github-cli/git-protocol' \
+    'git config --global user.name > /opt/bastion-e2e-github-cli/git-name' \
+    'git config --global user.email > /opt/bastion-e2e-github-cli/git-email' \
+    'git config --global --get credential.https://github.com.helper > /opt/bastion-e2e-github-cli/git-helper' \
+    'test -n "$(gh auth token --hostname github.com)"' \
+    "printf 'protocol=https\nhost=github.com\n\n' | git credential fill | grep -q 'password=$token'" \
+    'printf github-cli-ready > /opt/bastion-e2e-github-cli/auth')"
+
+  jq -nc --arg token "$token" --arg verify "$verify" '{
     actions: {
       init: [
         {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
-        {run: "set -eu\nmkdir -p /opt/bastion-e2e-github-cli\ngh --version > /opt/bastion-e2e-github-cli/version\ngh config get git_protocol --host github.com > /opt/bastion-e2e-github-cli/git-protocol\ntest -n \"$(gh auth token --hostname github.com)\"\nprintf github-cli-ready > /opt/bastion-e2e-github-cli/auth"}
+        {run: $verify}
       ]
     }
   }'
@@ -530,6 +543,9 @@ run_preset_setup_github_cli_case() {
 
   ssh_env "$env_id" "grep -q '^gh version' /opt/bastion-e2e-github-cli/version"
   ssh_env "$env_id" grep -q '^https$' /opt/bastion-e2e-github-cli/git-protocol
+  ssh_env "$env_id" grep -q '^bastion-agent$' /opt/bastion-e2e-github-cli/git-name
+  ssh_env "$env_id" grep -q '^agent@bastion.computer$' /opt/bastion-e2e-github-cli/git-email
+  ssh_env "$env_id" "grep -q '/usr/local/bin/gh auth git-credential' /opt/bastion-e2e-github-cli/git-helper"
   ssh_env "$env_id" grep -q github-cli-ready /opt/bastion-e2e-github-cli/auth
 
   log "preset setup_github_cli case passed for $env_id"

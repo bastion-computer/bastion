@@ -16,7 +16,7 @@ const DirName = "actions"
 //go:embed set_default_ssh_directory setup_node setup_mise setup_github_cli setup_opencode
 var files embed.FS
 
-// Seed copies missing built-in preset actions into dataDir/actions.
+// Seed copies built-in preset actions into dataDir/actions.
 func Seed(dataDir string) error {
 	if dataDir == "" {
 		return errors.New("data dir is required")
@@ -52,18 +52,38 @@ func Seed(dataDir string) error {
 			continue
 		}
 
-		dst := filepath.Join(actionsDir, entry.Name())
-		if _, err := os.Stat(dst); err == nil {
-			continue
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("stat preset action %s: %w", entry.Name(), err)
-		}
-
-		if err := copyEmbeddedDir(entry.Name(), dst); err != nil {
-			_ = os.RemoveAll(dst)
-
+		if err := seedEmbeddedAction(actionsDir, entry.Name()); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func seedEmbeddedAction(actionsDir, name string) error {
+	dst := filepath.Join(actionsDir, name)
+
+	tmp, err := os.MkdirTemp(actionsDir, "."+name+"-")
+	if err != nil {
+		return fmt.Errorf("create preset action staging directory: %w", err)
+	}
+
+	if err := copyEmbeddedDir(name, tmp); err != nil {
+		_ = os.RemoveAll(tmp)
+
+		return err
+	}
+
+	if err := os.RemoveAll(dst); err != nil {
+		_ = os.RemoveAll(tmp)
+
+		return fmt.Errorf("remove preset action %s: %w", name, err)
+	}
+
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.RemoveAll(tmp)
+
+		return fmt.Errorf("install preset action %s: %w", name, err)
 	}
 
 	return nil

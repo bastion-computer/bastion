@@ -320,6 +320,57 @@ func TestRunInitActionsRejectsPresetInputTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestSetupGitHubCLIPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_github_cli")
+	if err != nil {
+		t.Fatalf("load setup_github_cli preset: %v", err)
+	}
+
+	expected := map[string]bool{
+		"token":        true,
+		"hostname":     false,
+		"git_protocol": false,
+		"name":         false,
+		"email":        false,
+	}
+
+	if len(preset.manifest.Inputs) != len(expected) {
+		t.Fatalf("setup_github_cli input count = %d, want %d: %#v", len(preset.manifest.Inputs), len(expected), preset.manifest.Inputs)
+	}
+
+	for name, required := range expected {
+		input, ok := preset.manifest.Inputs[name]
+		if !ok {
+			t.Fatalf("setup_github_cli input %s is not defined: %#v", name, preset.manifest.Inputs)
+		}
+
+		if input.Type != presetInputTypeString || input.Required != required {
+			t.Fatalf("setup_github_cli input %s = %#v, want required=%t string", name, input, required)
+		}
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{
+		"token":        "test-token",
+		"hostname":     "github.com",
+		"git_protocol": "https",
+		"name":         "custom-agent",
+		"email":        "custom-agent@example.com",
+	}); err != nil {
+		t.Fatalf("validate setup_github_cli inputs: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{"name": "custom-agent"}); err == nil || !strings.Contains(err.Error(), "input token is required") {
+		t.Fatalf("validate missing token error = %v, want required token", err)
+	}
+}
+
 func TestSetupOpenCodePresetInputsOnlyAcceptAuthAndConfig(t *testing.T) {
 	t.Parallel()
 

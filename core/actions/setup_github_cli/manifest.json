@@ -12,6 +12,14 @@
     "git_protocol": {
       "type": "string",
       "description": "Git protocol for gh operations: https or ssh. Defaults to https."
+    },
+    "name": {
+      "type": "string",
+      "description": "Global git user.name value. Defaults to bastion-agent."
+    },
+    "email": {
+      "type": "string",
+      "description": "Global git user.email value. Defaults to agent@bastion.computer."
     }
   },
   "run": "sh ./install_github_cli.sh"

@@ -46,7 +46,7 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 	}
 }
 
-func TestSeedDoesNotOverwriteExistingPresetAction(t *testing.T) {
+func TestSeedOverwritesExistingBuiltInPresetActionAndPreservesCustomActions(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
@@ -60,6 +60,20 @@ func TestSeedDoesNotOverwriteExistingPresetAction(t *testing.T) {
 		t.Fatalf("write existing manifest: %v", err)
 	}
 
+	stalePath := filepath.Join(dataDir, actions.DirName, "setup_node", "stale.txt")
+	if err := os.WriteFile(stalePath, []byte("stale\n"), 0o600); err != nil {
+		t.Fatalf("write stale built-in file: %v", err)
+	}
+
+	customManifestPath := filepath.Join(dataDir, actions.DirName, "setup_python", testManifestFileName)
+	if err := os.MkdirAll(filepath.Dir(customManifestPath), 0o750); err != nil {
+		t.Fatalf("create custom action dir: %v", err)
+	}
+
+	if err := os.WriteFile(customManifestPath, []byte("custom\n"), 0o600); err != nil {
+		t.Fatalf("write custom manifest: %v", err)
+	}
+
 	if err := actions.Seed(dataDir); err != nil {
 		t.Fatalf("seed actions: %v", err)
 	}
@@ -69,8 +83,21 @@ func TestSeedDoesNotOverwriteExistingPresetAction(t *testing.T) {
 		t.Fatalf("read existing manifest: %v", err)
 	}
 
+	if string(contents) == "custom\n" {
+		t.Fatalf("built-in manifest was not overwritten: %q", contents)
+	}
+
+	if _, err := os.Stat(stalePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale built-in file error = %v, want not exist", err)
+	}
+
+	contents, err = os.ReadFile(customManifestPath) //nolint:gosec // Test path is rooted in t.TempDir().
+	if err != nil {
+		t.Fatalf("read custom manifest: %v", err)
+	}
+
 	if string(contents) != "custom\n" {
-		t.Fatalf("manifest was overwritten: %q", contents)
+		t.Fatalf("custom manifest was overwritten: %q", contents)
 	}
 }
 
