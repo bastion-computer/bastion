@@ -19,6 +19,7 @@ Core E2E workflow:
 - Verify the API is reachable before running E2E: `cd core && ./tmp/bastion --api-url http://localhost:3148 templates list`
 - Run the standard E2E tests: `cd core && bash ./e2e/env-test.sh` and `cd core && bash ./e2e/ssh-test.sh`
 - Run nested virtualization E2E when touching the VM runtime, networking, system setup, or E2E scripts: `cd core && bash ./e2e/nested-test.sh`
+- Run the Linear integration E2E when touching `integrations/linear`, `core/pkg/sshtunnel`, or Linear installer behavior: `cd integrations/linear && bash ./e2e/linear-test.sh`
 
 E2E notes:
 

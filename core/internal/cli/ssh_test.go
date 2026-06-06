@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
-	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
+	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
 
 const sshTestCommandTrue = "true"

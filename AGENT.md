@@ -25,3 +25,4 @@ IMPORTANT RULES:
 - [Packages](.agents/docs/packages/)
   - [Core](.agents/docs/packages/core.md) - Go host API service and CLI
   - [Docs](.agents/docs/packages/docs.md) - Astro Starlight documentation site
+  - [Linear](.agents/docs/packages/linear.md) - Go Linear integration sidecar

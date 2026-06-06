@@ -19,7 +19,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/handlers"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
-	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
+	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
 
 const sshDialTimeout = 15 * time.Second

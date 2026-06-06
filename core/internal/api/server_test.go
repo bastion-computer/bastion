@@ -22,7 +22,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
-	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
+	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
 
 const (
