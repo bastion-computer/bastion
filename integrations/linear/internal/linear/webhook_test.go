@@ -53,6 +53,28 @@ func TestParseVerifiedWebhookRejectsStaleTimestamp(t *testing.T) {
 	}
 }
 
+func TestParseVerifiedWebhookReturnsUnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	secret := "secret"
+	now := time.Now()
+
+	body, err := json.Marshal(map[string]any{
+		"type":             "Issue",
+		"action":           "create",
+		"webhookId":        "wh_1",
+		"webhookTimestamp": float64(now.UnixMilli()),
+	})
+	if err != nil {
+		t.Fatalf("marshal webhook: %v", err)
+	}
+
+	_, err = ParseVerifiedWebhook(body, SignWebhook(body, secret), secret, now)
+	if !IsUnsupportedWebhook(err) {
+		t.Fatalf("ParseVerifiedWebhook error = %v, want unsupported webhook", err)
+	}
+}
+
 func TestPromptBody(t *testing.T) {
 	t.Parallel()
 

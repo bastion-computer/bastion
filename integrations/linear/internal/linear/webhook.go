@@ -19,6 +19,26 @@ const signatureHeader = "Linear-Signature"
 // SignatureHeader is the HTTP header used by Linear webhook signatures.
 func SignatureHeader() string { return signatureHeader }
 
+// UnsupportedWebhookError is returned for signed Linear webhooks this integration does not process.
+type UnsupportedWebhookError struct {
+	Type   string
+	Action string
+}
+
+func (e UnsupportedWebhookError) Error() string {
+	if e.Action == "" {
+		return fmt.Sprintf("unsupported Linear webhook type %q", e.Type)
+	}
+
+	return fmt.Sprintf("unsupported Linear webhook type %q action %q", e.Type, e.Action)
+}
+
+// IsUnsupportedWebhook reports whether err describes a signed but unsupported Linear webhook.
+func IsUnsupportedWebhook(err error) bool {
+	var unsupported UnsupportedWebhookError
+	return errors.As(err, &unsupported)
+}
+
 // ParseVerifiedWebhook verifies and decodes a Linear webhook payload.
 func ParseVerifiedWebhook(body []byte, signature, secret string, now time.Time) (AgentSessionEventWebhookPayload, error) {
 	if strings.TrimSpace(secret) == "" {
@@ -38,12 +58,16 @@ func ParseVerifiedWebhook(body []byte, signature, secret string, now time.Time) 
 		return AgentSessionEventWebhookPayload{}, errors.New("linear webhook missing webhookId")
 	}
 
-	if payload.AgentSession.ID == "" {
-		return AgentSessionEventWebhookPayload{}, errors.New("linear webhook missing agentSession.id")
-	}
-
 	if math.Abs(float64(now.UnixMilli())-payload.WebhookTimestamp) > float64(time.Minute/time.Millisecond) {
 		return AgentSessionEventWebhookPayload{}, errors.New("linear webhook timestamp is stale")
+	}
+
+	if payload.Type != "" && payload.Type != "AgentSessionEvent" {
+		return AgentSessionEventWebhookPayload{}, UnsupportedWebhookError{Type: payload.Type, Action: payload.Action}
+	}
+
+	if payload.AgentSession.ID == "" {
+		return AgentSessionEventWebhookPayload{}, errors.New("linear webhook missing agentSession.id")
 	}
 
 	return payload, nil
