@@ -4,6 +4,8 @@ set -eu
 token="${BASTION_INPUT_TOKEN:-}"
 hostname="${BASTION_INPUT_HOSTNAME:-github.com}"
 git_protocol="${BASTION_INPUT_GIT_PROTOCOL:-https}"
+git_name="${BASTION_INPUT_NAME:-bastion-agent}"
+git_email="${BASTION_INPUT_EMAIL:-agent@bastion.computer}"
 
 if [ -z "$token" ]; then
   printf 'BASTION_INPUT_TOKEN is required\n' >&2
@@ -28,7 +30,7 @@ esac
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl
+apt-get install -y --no-install-recommends ca-certificates curl git
 
 mkdir -p -m 755 /etc/apt/keyrings /etc/apt/sources.list.d
 curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -70,3 +72,10 @@ chmod 755 /usr/local/bin/gh
 /usr/local/bin/gh config set git_protocol "$git_protocol" --host "$hostname" >/dev/null
 /usr/local/bin/gh --version
 /usr/local/bin/gh auth token --hostname "$hostname" >/dev/null
+/usr/local/bin/gh auth setup-git >/dev/null
+
+git_credential_key="credential.https://$hostname.helper"
+git config --global --replace-all "$git_credential_key" ""
+git config --global --add "$git_credential_key" "!/usr/local/bin/gh auth git-credential"
+git config --global user.name "$git_name"
+git config --global user.email "$git_email"

@@ -22,6 +22,9 @@ const (
 	guestActionsDir        = "/opt/bastion/actions"
 	presetInputEnvFileName = ".bastion-inputs.env"
 	presetInputEnvPrefix   = "BASTION_INPUT_"
+	presetInputTypeString  = "string"
+	presetInputTypeNumber  = "number"
+	presetInputTypeBoolean = "boolean"
 )
 
 type presetActionPackage struct {
@@ -119,7 +122,7 @@ func validatePresetActionManifest(name string, manifest presetActionManifest) er
 		}
 
 		switch input.Type {
-		case "string", "number", "boolean":
+		case presetInputTypeString, presetInputTypeNumber, presetInputTypeBoolean:
 		default:
 			return fmt.Errorf("preset action %s manifest input %s has invalid type %q", name, inputName, input.Type)
 		}
@@ -212,14 +215,14 @@ func presetInputEnvFile(preset presetActionPackage, with map[string]any) ([]byte
 
 func presetInputValueString(value any, inputType string) (string, error) {
 	switch inputType {
-	case "string":
+	case presetInputTypeString:
 		value, ok := value.(string)
 		if !ok {
 			return "", errors.New("must be a string")
 		}
 
 		return value, nil
-	case "number":
+	case presetInputTypeNumber:
 		switch value := value.(type) {
 		case json.Number:
 			return value.String(), nil
@@ -228,7 +231,7 @@ func presetInputValueString(value any, inputType string) (string, error) {
 		default:
 			return "", errors.New("must be a number")
 		}
-	case "boolean":
+	case presetInputTypeBoolean:
 		value, ok := value.(bool)
 		if !ok {
 			return "", errors.New("must be a boolean")
