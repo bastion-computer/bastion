@@ -2,7 +2,11 @@
 package templates
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -27,8 +31,31 @@ func (h Handler) Create(c *gin.Context) {
 		return
 	}
 
-	created, err := h.templates.Create(c.Request.Context(), req)
-	handlers.Respond(c, created, err, http.StatusOK)
+	createCtx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+
+	stream := newCreateStream(c.Writer, cancel)
+	if err := stream.Start(); err != nil {
+		_ = c.Error(err)
+
+		return
+	}
+
+	req.Logs = stream
+
+	created, err := h.templates.Create(createCtx, req)
+	if err != nil {
+		_ = c.Error(err)
+		if writeErr := stream.Error(err); writeErr != nil {
+			_ = c.Error(writeErr)
+		}
+
+		return
+	}
+
+	if err := stream.Result(created); err != nil {
+		_ = c.Error(err)
+	}
 }
 
 // List handles template list requests.
@@ -60,4 +87,72 @@ func (h Handler) RemoveByID(c *gin.Context) {
 func (h Handler) RemoveByKey(c *gin.Context) {
 	template, err := h.templates.Remove(c.Request.Context(), "", c.Param("key"))
 	handlers.Respond(c, template, err, http.StatusOK)
+}
+
+type createStream struct {
+	w          http.ResponseWriter
+	encoder    *json.Encoder
+	controller *http.ResponseController
+	cancel     context.CancelFunc
+	mu         sync.Mutex
+}
+
+func newCreateStream(w http.ResponseWriter, cancel context.CancelFunc) *createStream {
+	return &createStream{
+		w:          w,
+		encoder:    json.NewEncoder(w),
+		controller: http.NewResponseController(w),
+		cancel:     cancel,
+	}
+}
+
+func (s *createStream) Start() error {
+	s.w.Header().Set("Content-Type", "application/x-ndjson")
+	s.w.Header().Set("Cache-Control", "no-cache")
+	s.w.WriteHeader(http.StatusOK)
+
+	return s.flush()
+}
+
+func (s *createStream) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	if err := s.write(template.CreateStreamEvent{Type: template.StreamEventLog, Log: string(p)}); err != nil {
+		return 0, err
+	}
+
+	return len(p), nil
+}
+
+func (s *createStream) Result(created template.Metadata) error {
+	return s.write(template.CreateStreamEvent{Type: template.StreamEventResult, Template: &created})
+}
+
+func (s *createStream) Error(err error) error {
+	return s.write(template.CreateStreamEvent{Type: template.StreamEventError, Error: err.Error(), Status: handlers.ErrorStatus(err)})
+}
+
+func (s *createStream) write(event template.CreateStreamEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.encoder.Encode(event); err != nil {
+		s.cancel()
+
+		return err
+	}
+
+	return s.flush()
+}
+
+func (s *createStream) flush() error {
+	if err := s.controller.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		s.cancel()
+
+		return err
+	}
+
+	return nil
 }

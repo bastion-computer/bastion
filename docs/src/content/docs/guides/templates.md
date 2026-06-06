@@ -3,8 +3,12 @@ title: Templates
 description: Define reusable Bastion environment templates with JSON.
 ---
 
-Templates describe how Bastion should create an environment. They are stored as
-immutable JSON records and validated against the public template schema.
+Templates describe how Bastion prepares reusable environment snapshots. During
+template creation, Bastion boots a temporary Cloud Hypervisor VM, runs the init
+actions, snapshots the paused VM, and stores an immutable prepared root disk.
+Environments created from the template restore that snapshot instead of running
+init again. Template JSON records are immutable and validated against the public
+template schema.
 Template keys are optional human-friendly aliases. When a key is set, it must be
 unique. Unkeyed templates are referenced by ID.
 
@@ -57,9 +61,9 @@ All resource values must be integers greater than or equal to `1`.
 
 ## Init Actions
 
-`actions.init` is an ordered array of steps that run after the VM boots and SSH
-is reachable. If any init action fails, environment creation fails and the
-environment is marked `error`.
+`actions.init` is an ordered array of steps that run while the template VM is
+being prepared, after it boots and SSH is reachable. If any init action fails,
+template creation fails and no reusable template is registered.
 
 Each action must be one of:
 
@@ -129,8 +133,8 @@ layout. Built-in actions are documented by category under
 
 ## Environment Substitution
 
-Bastion resolves host environment variables in template strings when an
-environment is created:
+Bastion resolves host environment variables in template strings when the
+template is created:
 
 ```json
 {
@@ -146,7 +150,7 @@ environment is created:
 
 The expression `${{ env.PROJECT_NAME }}` is replaced with the `PROJECT_NAME`
 value from the `bastion start` process environment. If the variable is not set,
-environment creation fails.
+template creation fails.
 
 Substitution works anywhere a string appears in the template JSON, including
 `run` commands, `working_directory`, and action package inputs.
@@ -172,6 +176,10 @@ bastion templates create --key dev --file ./template.json
 ```
 
 Exactly one of `--config` or `--file` is required.
+
+Creation may take several minutes for templates with package installs or other
+expensive init work. Bastion streams init logs to stderr and writes the final
+template metadata to stdout.
 
 Example response:
 
@@ -241,5 +249,5 @@ Remove by ID:
 bastion templates remove --id tpl_xxxxxx
 ```
 
-Removing a template does not remove environments that were already created from
-it. A template cannot be removed while records still depend on it.
+Removing a template also removes its prepared snapshot and immutable root disk.
+A template cannot be removed while environment records still depend on it.

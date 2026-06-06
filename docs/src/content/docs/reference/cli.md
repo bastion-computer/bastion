@@ -55,12 +55,12 @@ bastion templates get (--id ID | --key KEY)
 bastion templates remove (--id ID | --key KEY)
 ```
 
-| Command  | Description                                                    |
-| -------- | -------------------------------------------------------------- |
-| `create` | Validate and store an immutable template with an optional key. |
-| `list`   | Return paginated template metadata.                            |
-| `get`    | Return one template with full config.                          |
-| `remove` | Delete one template by ID or key.                              |
+| Command  | Description                                                      |
+| -------- | ---------------------------------------------------------------- |
+| `create` | Validate, initialize, snapshot, and store an immutable template. |
+| `list`   | Return paginated template metadata.                              |
+| `get`    | Return one template with full config.                            |
+| `remove` | Delete one template by ID or key.                                |
 
 Template keys are optional. When set, they must be unique. Unkeyed templates are
 referenced by ID.
@@ -76,12 +76,12 @@ bastion env get (--id ID | --key KEY)
 bastion env remove (--id ID | --key KEY)
 ```
 
-| Command  | Description                                                          |
-| -------- | -------------------------------------------------------------------- |
-| `create` | Launch a VM from a template with an optional environment key.        |
-| `list`   | Return paginated environments, optionally filtered by repeated tags. |
-| `get`    | Return one environment after reconciling with the daemon.            |
-| `remove` | Tear down and delete an environment.                                 |
+| Command  | Description                                                            |
+| -------- | ---------------------------------------------------------------------- |
+| `create` | Restore a prepared template snapshot with an optional environment key. |
+| `list`   | Return paginated environments, optionally filtered by repeated tags.   |
+| `get`    | Return one environment after reconciling with the daemon.              |
+| `remove` | Tear down and delete an environment.                                   |
 
 Environment keys are optional. When set, they must be unique. `--template-key KEY`
 requires a keyed template; use `--template-id ID` for unkeyed templates.

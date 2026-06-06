@@ -88,15 +88,24 @@ func (l *networkLock) Close() error {
 
 func (m Manager) usedNetworkIndices() (map[int]struct{}, error) {
 	used := make(map[int]struct{})
-	dir := filepath.Join(m.DataDir, environmentsDir)
 
+	for _, name := range []string{environmentsDir, templatesDir} {
+		if err := m.collectUsedNetworkIndices(filepath.Join(m.DataDir, name), used); err != nil {
+			return nil, err
+		}
+	}
+
+	return used, nil
+}
+
+func (m Manager) collectUsedNetworkIndices(dir string, used map[int]struct{}) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return used, nil
+			return nil
 		}
 
-		return nil, fmt.Errorf("read environment directories: %w", err)
+		return fmt.Errorf("read VM allocation directories: %w", err)
 	}
 
 	for _, entry := range entries {
@@ -110,17 +119,17 @@ func (m Manager) usedNetworkIndices() (map[int]struct{}, error) {
 				continue
 			}
 
-			return nil, fmt.Errorf("read vm network allocation for %s: %w", entry.Name(), err)
+			return fmt.Errorf("read vm network allocation for %s: %w", entry.Name(), err)
 		}
 
 		if vm.NetworkIndex < 0 || vm.NetworkIndex >= NetworkIndexLimit {
-			return nil, fmt.Errorf("vm %s has network index %d out of range", vm.EnvironmentID, vm.NetworkIndex)
+			return fmt.Errorf("vm %s has network index %d out of range", vm.EnvironmentID, vm.NetworkIndex)
 		}
 
 		used[vm.NetworkIndex] = struct{}{}
 	}
 
-	return used, nil
+	return nil
 }
 
 func firstFreeNetworkIndex(used map[int]struct{}) (int, bool) {

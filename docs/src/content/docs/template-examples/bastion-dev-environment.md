@@ -110,5 +110,6 @@ For other providers, update both JSON strings. Also update or remove the
 `gpt-5.5` with `xhigh`.
 
 Environment substitutions such as `${{ env.OPENAI_API_KEY }}` are resolved by
-Bastion when the environment is created. The resolved API key is written into the
-guest OpenCode auth file, so use a token scoped for this environment.
+Bastion when the template is created. The resolved API key is written into the
+prepared guest OpenCode auth file, so use a token scoped for environments cloned
+from this template.

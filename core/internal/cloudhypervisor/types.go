@@ -53,6 +53,23 @@ type LaunchRequest struct {
 	Logs          io.Writer `json:"-"`
 }
 
+// PrepareTemplateRequest asks bastiond to prepare and snapshot a template VM.
+type PrepareTemplateRequest struct {
+	Template Template  `json:"template"`
+	Logs     io.Writer `json:"-"`
+}
+
+// PreparedTemplate describes durable prepared template artifacts.
+type PreparedTemplate struct {
+	TemplateID  string `json:"templateId"`
+	TemplateDir string `json:"templateDir,omitempty"`
+	RootfsPath  string `json:"rootfsPath,omitempty"`
+	SeedPath    string `json:"seedPath,omitempty"`
+	SnapshotDir string `json:"snapshotDir,omitempty"`
+	CreatedAt   string `json:"createdAt,omitempty"`
+	UpdatedAt   string `json:"updatedAt,omitempty"`
+}
+
 // LaunchStreamEvent is one line in a streamed VM launch response.
 type LaunchStreamEvent struct {
 	Type   string `json:"type"`
@@ -62,12 +79,22 @@ type LaunchStreamEvent struct {
 	Status int    `json:"status,omitempty"`
 }
 
+// PrepareTemplateStreamEvent is one line in a streamed template preparation response.
+type PrepareTemplateStreamEvent struct {
+	Type     string            `json:"type"`
+	Log      string            `json:"log,omitempty"`
+	Template *PreparedTemplate `json:"template,omitempty"`
+	Error    string            `json:"error,omitempty"`
+	Status   int               `json:"status,omitempty"`
+}
+
 // VM describes durable VM runtime metadata.
 type VM struct {
 	EnvironmentID string `json:"environmentId"`
 	VMID          string `json:"vmId"`
 	State         string `json:"state"`
 	PID           int    `json:"pid,omitempty"`
+	DHCPPID       int    `json:"dhcpPid,omitempty"`
 	EnvDir        string `json:"envDir,omitempty"`
 	RuntimeDir    string `json:"runtimeDir,omitempty"`
 	SocketPath    string `json:"socketPath,omitempty"`

@@ -5,7 +5,7 @@ description: Create reusable Bastion template actions.
 
 Custom actions are reusable packages referenced by `use` actions in templates.
 They live under `<data-dir>/actions` on the host and are copied into the guest
-when an environment is created.
+when a template is created.
 
 Use a custom action when a setup step should be packaged once and shared across
 templates instead of repeated as an inline `run` command.

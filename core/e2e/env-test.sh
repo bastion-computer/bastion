@@ -447,8 +447,6 @@ run_basic_setup_case() {
   fi
   assert_json_key "env get --key $first_env_key" "$output" "$first_env_key"
 
-  cleanup_environments
-
   create_environment "$key"
   second_env="$CREATED_ENV_ID"
   assert_json_no_key "env create $second_env" "$CREATED_ENV_OUTPUT"
@@ -460,6 +458,12 @@ run_basic_setup_case() {
   run_id_mode="$(ssh_env "$second_env" stat -c %a /opt/bastion-e2e/run-id)"
   if [ "$run_id_mode" != "600" ]; then
     fail "run-id file mode in $second_env is $run_id_mode, want 600"
+  fi
+
+  first_ip="$(ssh_env "$first_env" "ip -4 -o addr show dev eth0 | tr -s ' ' | cut -d' ' -f4")"
+  second_ip="$(ssh_env "$second_env" "ip -4 -o addr show dev eth0 | tr -s ' ' | cut -d' ' -f4")"
+  if [ -z "$first_ip" ] || [ -z "$second_ip" ] || [ "$first_ip" = "$second_ip" ]; then
+    fail "concurrent environments have non-unique DHCP addresses: first=$first_ip second=$second_ip"
   fi
 
   log "basic setup case passed for $first_env and $second_env"
@@ -597,41 +601,34 @@ run_working_directory_case() {
 
 run_failure_case() {
   local key="$RUN_ID-fails"
-  local template_id
   local output
-  local failed_env_id
-  local last_error
 
-  create_template "$key" "$(failing_action_config)"
-  template_id="$CREATED_TEMPLATE_ID"
-
-  log "verifying failed init action marks environment error"
-  if output="$(run_cli env create --template-key "$key" 2>&1)"; then
-    CREATED_ENV_ID="$(json_get '.id' <<<"$output")"
-    ENV_IDS+=("$CREATED_ENV_ID")
-    fail "environment $CREATED_ENV_ID unexpectedly succeeded for failing template"
+  log "verifying failed init action rejects template creation"
+  if output="$(run_cli templates create --key "$key" --config "$(failing_action_config)" 2>&1)"; then
+    CREATED_TEMPLATE_ID="$(json_get '.id // empty' <<<"$output")"
+    if [ -n "$CREATED_TEMPLATE_ID" ]; then
+      TEMPLATE_IDS+=("$CREATED_TEMPLATE_ID")
+    fi
+    fail "template $key unexpectedly succeeded despite failing init action"
   fi
 
   if [[ "$output" != *"424 Failed Dependency"* ]]; then
-    fail "failed init action returned unexpected create error: $output"
+    fail "failed init action returned unexpected template create error: $output"
   fi
 
-  failed_env_id="$(run_cli env list --limit 5000 | jq -r --arg template_id "$template_id" 'first(.entries[] | select(.templateId == $template_id and .status == "error") | .id) // ""')"
-  if [ -z "$failed_env_id" ]; then
-    fail "failed environment for template $template_id was not registered as error"
+  if [[ "$output" != *"init action 2 failed"* ]] || [[ "$output" != *"intentional e2e failure"* ]]; then
+    fail "failed template create error was unexpected: $output"
   fi
 
-  ENV_IDS+=("$failed_env_id")
-  last_error="$(run_cli env get --id "$failed_env_id" | json_get '.lastError // ""')"
-  if [[ "$last_error" != *"init action 2 failed"* ]] || [[ "$last_error" != *"intentional e2e failure"* ]]; then
-    fail "failed environment lastError was unexpected: $last_error"
+  if [[ "$output" == *"ssh -i"* ]] || [[ "$output" == *"root@"* ]]; then
+    fail "failed template create error leaked ssh wrapper details: $output"
   fi
 
-  if [[ "$last_error" == *"ssh -i"* ]] || [[ "$last_error" == *"root@"* ]]; then
-    fail "failed environment lastError leaked ssh wrapper details: $last_error"
+  if run_cli templates get --key "$key" >/dev/null 2>&1; then
+    fail "failed template $key was registered"
   fi
 
-  log "failure case passed for $failed_env_id"
+  log "failure case passed for template $key"
 }
 
 main() {

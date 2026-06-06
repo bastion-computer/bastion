@@ -7,7 +7,7 @@ Utility tool actions install CLIs and helper tools commonly needed by coding
 agents in guest VMs.
 
 Host environment substitutions such as `${{ env.GITHUB_TOKEN }}` are resolved
-when the environment is created. The resolved values are then passed into the
+when the template is created. The resolved values are then passed into the
 guest action and may be written to guest files by the action. Use scoped tokens
 appropriate for the environment.
 

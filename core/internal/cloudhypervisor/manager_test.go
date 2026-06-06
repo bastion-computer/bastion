@@ -2,6 +2,7 @@ package cloudhypervisor
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"os"
@@ -55,7 +56,25 @@ func TestPrepareCloudInitUsesEnvironmentIDForHostname(t *testing.T) {
 	}
 }
 
-func TestPrepareWorkspaceUsesResourceVolumeSize(t *testing.T) {
+func TestCloudInitNetworkConfigUsesDHCP(t *testing.T) {
+	t.Parallel()
+
+	config := cloudInitNetworkConfig(networkPlan{guestMAC: "06:00:0A:F1:00:02", guestCIDR: "10.241.0.2/30", hostIP: "10.241.0.1"})
+
+	for _, want := range []string{"dhcp4: true", "eth0:", "match:", `macaddress: "06:00:0a:f1:00:02"`, "set-name: eth0"} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("network config = %q, want %q", config, want)
+		}
+	}
+
+	for _, forbidden := range []string{"dhcp4: false", "addresses:", "routes:"} {
+		if strings.Contains(config, forbidden) {
+			t.Fatalf("network config = %q, must not contain %q", config, forbidden)
+		}
+	}
+}
+
+func TestPrepareTemplateWorkspaceUsesResourceVolumeSize(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
@@ -73,7 +92,7 @@ func TestPrepareWorkspaceUsesResourceVolumeSize(t *testing.T) {
 		return nil
 	}}
 
-	workspace, err := manager.prepareWorkspace(context.Background(), "env_resources", resolvedResources{rootfsSize: rootfsSize})
+	workspace, err := manager.prepareTemplateWorkspace(context.Background(), "tpl_resources", resolvedResources{rootfsSize: rootfsSize})
 	if err != nil {
 		t.Fatalf("prepare workspace: %v", err)
 	}
@@ -81,6 +100,103 @@ func TestPrepareWorkspaceUsesResourceVolumeSize(t *testing.T) {
 	if len(resizeArgs) != 3 || resizeArgs[0] != "resize" || resizeArgs[1] != workspace.rootfsPath || resizeArgs[2] != rootfsSize {
 		t.Fatalf("qemu-img resize args = %#v, want resize rootfs to resource volume", resizeArgs)
 	}
+}
+
+func TestPrepareRestoreWorkspaceCreatesQCOW2Overlay(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestCloudHypervisorAssets(t, dataDir)
+
+	templateID := "tpl_overlay"
+	templateRootfs := filepath.Join(templateDir(dataDir, templateID), envRootfsFileName)
+	writeTestPreparedTemplate(t, dataDir, templateID)
+
+	var qemuImgArgs []string
+
+	manager := Manager{DataDir: dataDir, run: func(_ context.Context, name string, args ...string) error {
+		if name == "qemu-img" {
+			qemuImgArgs = append([]string(nil), args...)
+		}
+
+		return nil
+	}}
+
+	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_overlay", Template{ID: templateID})
+	if err != nil {
+		t.Fatalf("prepare restore workspace: %v", err)
+	}
+
+	want := []string{"create", "-f", "qcow2", "-F", "qcow2", "-b", templateRootfs, workspace.rootfsPath}
+	if !slicesEqual(qemuImgArgs, want) {
+		t.Fatalf("qemu-img args = %#v, want %#v", qemuImgArgs, want)
+	}
+}
+
+func TestPatchSnapshotConfigUsesEnvironmentDiskAndNetwork(t *testing.T) {
+	t.Parallel()
+
+	workspace := workspace{dir: t.TempDir(), rootfsPath: "/env/rootfs.img"}
+	plan := networkPlan{tapName: "bt123", guestIP: "10.241.0.6", guestMAC: "06:00:0A:F1:00:06"}
+	input := []byte(`{
+  "disks": [
+    {"path":"/template/rootfs.img","image_type":"Qcow2"},
+    {"path":"/template/cidata.img","readonly":true,"image_type":"Raw"}
+  ],
+  "net": [{"tap":"btold","ip":"10.241.0.2","mask":"255.255.255.252","mac":"06:00:0A:F1:00:02"}],
+  "serial": {"mode":"File","file":"/template/serial.log"}
+}`)
+
+	patched, err := patchSnapshotConfig(input, workspace, plan)
+	if err != nil {
+		t.Fatalf("patch snapshot config: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(patched, &got); err != nil {
+		t.Fatalf("unmarshal patched config: %v", err)
+	}
+
+	disks := requireJSONArray(t, got["disks"], "disks")
+
+	rootfs := requireJSONObject(t, disks[0], "rootfs disk")
+	if rootfs["path"] != workspace.rootfsPath || rootfs["backing_files"] != true {
+		t.Fatalf("rootfs disk = %#v, want env overlay with backing files", rootfs)
+	}
+
+	nets := requireJSONArray(t, got["net"], "net")
+
+	net := requireJSONObject(t, nets[0], "net config")
+	if net["tap"] != plan.tapName || net["ip"] != plan.guestIP || net["mac"] != strings.ToLower(plan.guestMAC) {
+		t.Fatalf("net config = %#v, want env network", net)
+	}
+
+	serial := requireJSONObject(t, got["serial"], "serial config")
+	if serial["file"] != filepath.Join(workspace.dir, "serial.log") {
+		t.Fatalf("serial config = %#v, want env serial log", serial)
+	}
+}
+
+func requireJSONArray(t *testing.T, value any, name string) []any {
+	t.Helper()
+
+	items, ok := value.([]any)
+	if !ok || len(items) == 0 {
+		t.Fatalf("%s = %#v, want non-empty array", name, value)
+	}
+
+	return items
+}
+
+func requireJSONObject(t *testing.T, value any, name string) map[string]any {
+	t.Helper()
+
+	object, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("%s = %#v, want object", name, value)
+	}
+
+	return object
 }
 
 func TestBuildVMConfigUsesResolvedCPUAndMemory(t *testing.T) {
@@ -270,4 +386,43 @@ func writeTestCloudHypervisorAssets(t *testing.T, dataDir string) {
 	if err := os.WriteFile(filepath.Join(assetDir, manifestFileName), []byte(manifest), 0o600); err != nil {
 		t.Fatalf("write asset manifest: %v", err)
 	}
+}
+
+func writeTestPreparedTemplate(t *testing.T, dataDir, templateID string) {
+	t.Helper()
+
+	dir := templateDir(dataDir, templateID)
+	snapshotDir := filepath.Join(dir, snapshotDirName)
+
+	if err := os.MkdirAll(snapshotDir, 0o750); err != nil {
+		t.Fatalf("create prepared template dirs: %v", err)
+	}
+
+	files := map[string]string{
+		filepath.Join(dir, envRootfsFileName):              "rootfs",
+		filepath.Join(dir, envSeedFileName):                "seed",
+		filepath.Join(snapshotDir, snapshotConfigFileName): `{"disks":[{"path":"rootfs.img"}],"net":[{}]}`,
+		filepath.Join(snapshotDir, snapshotStateFileName):  "{}",
+		filepath.Join(snapshotDir, snapshotMemoryFileName): "memory",
+	}
+
+	for path, contents := range files {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatalf("write prepared template file %s: %v", filepath.Base(path), err)
+		}
+	}
+}
+
+func slicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+
+	return true
 }

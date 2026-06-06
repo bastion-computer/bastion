@@ -125,11 +125,6 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 		return Environment{}, err
 	}
 
-	template.Config, err = substituteTemplateEnvironment(template.Config)
-	if err != nil {
-		return Environment{}, err
-	}
-
 	if err := schema.ValidateTemplateConfig(template.Config); err != nil {
 		return Environment{}, fmt.Errorf("%w: resolved template config does not match schema: %w", failure.ErrInvalid, err)
 	}

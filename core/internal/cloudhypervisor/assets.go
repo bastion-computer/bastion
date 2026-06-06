@@ -9,13 +9,18 @@ import (
 )
 
 const (
-	assetDirName        = "cloud-hypervisor"
-	environmentsDir     = "environments"
-	manifestFileName    = "manifest.json"
-	cloudHypervisorName = "cloud-hypervisor"
-	envStateFileName    = "vm.json"
-	envRootfsFileName   = "rootfs.img"
-	envSeedFileName     = "cidata.img"
+	assetDirName           = "cloud-hypervisor"
+	environmentsDir        = "environments"
+	templatesDir           = "templates"
+	manifestFileName       = "manifest.json"
+	cloudHypervisorName    = "cloud-hypervisor"
+	envStateFileName       = "vm.json"
+	envRootfsFileName      = "rootfs.img"
+	envSeedFileName        = "cidata.img"
+	snapshotDirName        = "snapshot"
+	snapshotConfigFileName = "config.json"
+	snapshotStateFileName  = "state.json"
+	snapshotMemoryFileName = "memory-ranges"
 )
 
 type manifest struct {
@@ -108,6 +113,10 @@ func (a assets) validate() error {
 
 func envDir(dataDir, environmentID string) string {
 	return filepath.Join(dataDir, environmentsDir, environmentID)
+}
+
+func templateDir(dataDir, templateID string) string {
+	return filepath.Join(dataDir, templatesDir, templateID)
 }
 
 func statePath(dir string) string {

@@ -20,6 +20,8 @@ const (
 	packageOpenSSHRPM  = "openssh-clients"
 	packageCoreutils   = "coreutils"
 	packageDosfstools  = "dosfstools"
+	packageDnsmasqDeb  = "dnsmasq-base"
+	packageDnsmasq     = "dnsmasq"
 	packageMtools      = "mtools"
 	packageQEMUUtils   = "qemu-utils"
 	packageQEMUImg     = "qemu-img"
@@ -34,6 +36,7 @@ const (
 	utilityQEMUImg     = "qemu-img"
 	utilityMkfsVFat    = "mkfs.vfat"
 	utilityMCopy       = "mcopy"
+	utilityDnsmasq     = "dnsmasq"
 	utilityIP          = "ip"
 	utilityIPTables    = "iptables"
 	utilitySysctl      = "sysctl"
@@ -48,6 +51,7 @@ var cloudHypervisorUtilities = []string{
 	utilityQEMUImg,
 	utilityMkfsVFat,
 	utilityMCopy,
+	utilityDnsmasq,
 	utilityIP,
 	utilityIPTables,
 	utilitySysctl,
@@ -63,6 +67,7 @@ var utilityPackages = map[string]map[string]string{
 		utilityQEMUImg:   packageQEMUUtils,
 		utilityMkfsVFat:  packageDosfstools,
 		utilityMCopy:     packageMtools,
+		utilityDnsmasq:   packageDnsmasqDeb,
 		utilityIP:        packageIPRouteDeb,
 		utilityIPTables:  packageIPTables,
 		utilitySysctl:    packageProcpsDeb,
@@ -76,6 +81,7 @@ var utilityPackages = map[string]map[string]string{
 		utilityQEMUImg:   packageQEMUImg,
 		utilityMkfsVFat:  packageDosfstools,
 		utilityMCopy:     packageMtools,
+		utilityDnsmasq:   packageDnsmasq,
 		utilityIP:        packageIPRouteRPM,
 		utilityIPTables:  packageIPTables,
 		utilitySysctl:    packageProcpsRPM,
@@ -89,6 +95,7 @@ var utilityPackages = map[string]map[string]string{
 		utilityQEMUImg:   packageQEMUImg,
 		utilityMkfsVFat:  packageDosfstools,
 		utilityMCopy:     packageMtools,
+		utilityDnsmasq:   packageDnsmasq,
 		utilityIP:        packageIPRouteRPM,
 		utilityIPTables:  packageIPTables,
 		utilitySysctl:    packageProcpsRPM,
@@ -102,6 +109,7 @@ var utilityPackages = map[string]map[string]string{
 		utilityQEMUImg:   packageQEMUImg,
 		utilityMkfsVFat:  packageDosfstools,
 		utilityMCopy:     packageMtools,
+		utilityDnsmasq:   packageDnsmasq,
 		utilityIP:        packageIPRouteDeb,
 		utilityIPTables:  packageIPTables,
 		utilitySysctl:    packageProcpsRPM,

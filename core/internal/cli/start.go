@@ -49,7 +49,12 @@ func newStartCommand() *cobra.Command {
 				slog.String("log_level", logLevel),
 			)
 
-			return api.Run(cmd.Context(), addr, db, logger, api.WithEnvironmentOrchestrator(ch.NewClient(bastiondSocket)))
+			daemonClient := ch.NewClient(bastiondSocket)
+
+			return api.Run(cmd.Context(), addr, db, logger,
+				api.WithTemplateOrchestrator(daemonClient),
+				api.WithEnvironmentOrchestrator(daemonClient),
+			)
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", addr, "host API listen address")

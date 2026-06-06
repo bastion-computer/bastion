@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
@@ -165,9 +166,100 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 			t.Fatalf("%s: get template: %v", tc.key, err)
 		}
 
-		if string(got.Config) != string(tc.config) {
+		if !jsonEqual(got.Config, tc.config) {
 			t.Fatalf("%s: config = %s, want %s", tc.key, got.Config, tc.config)
 		}
+	}
+}
+
+func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
+	const envName = "BASTION_TEMPLATE_SUBSTITUTION_TEST"
+
+	t.Setenv(envName, "substituted-value")
+
+	db := openDB(t)
+	orchestrator := &fakeTemplateOrchestrator{}
+	service := template.NewService(db, template.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	created, err := service.Create(ctx, template.CreateRequest{
+		Key:    new("substitution-template"),
+		Config: json.RawMessage(`{"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}]}}`),
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	if len(orchestrator.prepared) != 1 {
+		t.Fatalf("prepared templates = %d, want 1", len(orchestrator.prepared))
+	}
+
+	var prepared struct {
+		Actions struct {
+			Init []struct {
+				Run string `json:"run"`
+			} `json:"init"`
+		} `json:"actions"`
+	}
+	if err := json.Unmarshal(orchestrator.prepared[0].Config, &prepared); err != nil {
+		t.Fatalf("unmarshal prepared config: %v", err)
+	}
+
+	if len(prepared.Actions.Init) != 1 || prepared.Actions.Init[0].Run != "printf 'substituted-value'" {
+		t.Fatalf("prepared template config = %s, want substituted env values", orchestrator.prepared[0].Config)
+	}
+
+	stored, err := service.Get(ctx, created.ID, "")
+	if err != nil {
+		t.Fatalf("get stored template: %v", err)
+	}
+
+	if !jsonEqual(stored.Config, orchestrator.prepared[0].Config) {
+		t.Fatalf("stored config = %s, want prepared config %s", stored.Config, orchestrator.prepared[0].Config)
+	}
+}
+
+func TestServiceRejectsUnsetTemplateEnvironmentVariableBeforePrepare(t *testing.T) {
+	t.Parallel()
+
+	missingName := "BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2"
+	db := openDB(t)
+	orchestrator := &fakeTemplateOrchestrator{}
+	service := template.NewService(db, template.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	_, err := service.Create(ctx, template.CreateRequest{
+		Key:    new("missing-substitution-template"),
+		Config: json.RawMessage(`{"actions":{"init":[{"run":"echo ${{ env.BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2 }}"}]}}`),
+	})
+	if !errors.Is(err, failure.ErrInvalid) || !strings.Contains(err.Error(), missingName) {
+		t.Fatalf("create template error = %v, want invalid missing env var", err)
+	}
+
+	if len(orchestrator.prepared) != 0 {
+		t.Fatalf("prepared templates = %d, want 0", len(orchestrator.prepared))
+	}
+}
+
+func TestServiceRemovesPreparedTemplateArtifacts(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	orchestrator := &fakeTemplateOrchestrator{}
+	service := template.NewService(db, template.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	created, err := service.Create(ctx, template.CreateRequest{Key: new("prepared-template"), Config: json.RawMessage(`{"actions":{"init":[]}}`)})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	if _, err := service.Remove(ctx, created.ID, ""); err != nil {
+		t.Fatalf("remove template: %v", err)
+	}
+
+	if len(orchestrator.removed) != 1 || orchestrator.removed[0] != created.ID {
+		t.Fatalf("removed prepared templates = %#v, want %s", orchestrator.removed, created.ID)
 	}
 }
 
@@ -282,4 +374,35 @@ func requireNoKeyJSON(t *testing.T, encoded []byte, label string) {
 	if strings.Contains(string(encoded), `"key"`) {
 		t.Fatalf("%s JSON = %s, want omitted key", label, encoded)
 	}
+}
+
+func jsonEqual(left, right json.RawMessage) bool {
+	var leftValue, rightValue any
+
+	if err := json.Unmarshal(left, &leftValue); err != nil {
+		return false
+	}
+
+	if err := json.Unmarshal(right, &rightValue); err != nil {
+		return false
+	}
+
+	return fmt.Sprintf("%#v", leftValue) == fmt.Sprintf("%#v", rightValue)
+}
+
+type fakeTemplateOrchestrator struct {
+	prepared []ch.Template
+	removed  []string
+}
+
+func (o *fakeTemplateOrchestrator) PrepareTemplate(_ context.Context, req ch.PrepareTemplateRequest) (ch.PreparedTemplate, error) {
+	o.prepared = append(o.prepared, ch.Template{ID: req.Template.ID, Key: req.Template.Key, Config: append(json.RawMessage(nil), req.Template.Config...)})
+
+	return ch.PreparedTemplate{TemplateID: req.Template.ID}, nil
+}
+
+func (o *fakeTemplateOrchestrator) RemoveTemplate(_ context.Context, templateID string) (ch.PreparedTemplate, error) {
+	o.removed = append(o.removed, templateID)
+
+	return ch.PreparedTemplate{TemplateID: templateID}, nil
 }

@@ -60,6 +60,7 @@ func newTemplatesCreateCommand(opts *rootOptions) *cobra.Command {
 			template, err := apiClient(opts).CreateTemplate(cmd.Context(), template.CreateRequest{
 				Key:    templateKey,
 				Config: contents,
+				Logs:   cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err
