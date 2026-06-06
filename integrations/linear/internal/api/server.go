@@ -75,6 +75,12 @@ func (s *Server) linearWebhook(w http.ResponseWriter, r *http.Request) {
 
 	payload, err := linear.ParseVerifiedWebhook(body, r.Header.Get(linear.SignatureHeader()), s.webhookSecret, time.Now())
 	if err != nil {
+		if linear.IsUnsupportedWebhook(err) {
+			s.logger.InfoContext(r.Context(), "ignored Linear webhook", slog.String("error", err.Error()))
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		s.logger.WarnContext(r.Context(), "rejected Linear webhook", slog.String("error", err.Error()))
 		http.Error(w, "invalid webhook", http.StatusUnauthorized)
 		return
