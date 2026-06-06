@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/bastion-computer/bastion/core/internal/client"
-	"github.com/bastion-computer/bastion/core/internal/sshtunnel"
+	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
 
 type sshRunner func(context.Context, io.Reader, io.Writer, io.Writer, *client.Client, string, []string) error

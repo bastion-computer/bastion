@@ -55,10 +55,53 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  build-linear:
+    name: Build Linear integration (${{ matrix.target.name }})
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: linux_x86_64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Build Linear integration binary
+        working-directory: integrations/linear
+        env:
+          BASTION_VERSION: ${{ github.ref_name }}
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
+        run: mise run build
+
+      - name: Package Linear integration binary
+        working-directory: integrations/linear
+        run: |
+          set -euo pipefail
+
+          archive="bastion-linear_${GITHUB_REF_NAME}_${{ matrix.target.name }}.tar.gz"
+          mkdir -p ../../dist
+          tar -C tmp -czf "../../dist/${archive}" bastion-linear
+          (cd ../../dist && sha256sum "${archive}" > "${archive}.sha256")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linear-${{ matrix.target.name }}
+          path: dist/*
+          if-no-files-found: error
+
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: build-core
+    needs: [build-core, build-linear]
     permissions:
       contents: write
 

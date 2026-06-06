@@ -24,7 +24,7 @@ The workflow builds the core package binaries with `BASTION_VERSION` set to the
 tag name, so `bastion version` reports the released version instead of `dev`.
 
 The current compatible release target is Linux x86_64, matching Bastion's current
-host runtime support. The uploaded release assets are:
+host runtime support. The uploaded core release assets are:
 
 - `bastion_<tag>_linux_x86_64.tar.gz`
 - `bastion_<tag>_linux_x86_64.tar.gz.sha256`
@@ -33,6 +33,19 @@ The archive contains both core binaries:
 
 - `bastion`
 - `bastiond`
+
+Integration binaries are published as separate archives so users do not need to
+download integrations they do not use. The Linear integration assets are:
+
+- `bastion-linear_<tag>_linux_x86_64.tar.gz`
+- `bastion-linear_<tag>_linux_x86_64.tar.gz.sha256`
+
+The Linear archive contains:
+
+- `bastion-linear`
+
+The shared installer installs the Linear integration when invoked with
+`--integration linear`.
 
 The release page is generated automatically by GitHub Actions with generated
 release notes.

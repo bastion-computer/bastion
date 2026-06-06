@@ -1,4 +1,4 @@
-// Package sshtunnel defines the wire protocol used by bastion ssh.
+// Package sshtunnel defines the wire protocol used by Bastion SSH sessions.
 package sshtunnel
 
 import (

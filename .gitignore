@@ -39,3 +39,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Go build output
 core/tmp/
+integrations/linear/tmp/
