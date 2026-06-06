@@ -27,6 +27,7 @@ Response:
 ```http
 POST /v1/templates
 Content-Type: application/json
+Accept: application/x-ndjson
 ```
 
 Request with an optional unique key:
@@ -54,17 +55,38 @@ Request without a key:
 }
 ```
 
-Response:
+Successful and failed template creation both stream newline-delimited JSON.
+
+Log event:
+
+```json
+{ "type": "log", "log": "..." }
+```
+
+Result event:
 
 ```json
 {
-  "id": "tpl_xxxxxx",
-  "key": "dev",
-  "createdAt": "<iso_timestamp>"
+  "type": "result",
+  "template": {
+    "id": "tpl_xxxxxx",
+    "key": "dev",
+    "createdAt": "<iso_timestamp>"
+  }
 }
 ```
 
 If no key was provided, the `key` field is omitted from responses.
+
+Error event:
+
+```json
+{
+  "type": "error",
+  "error": "prepare template vm: ...",
+  "status": 424
+}
+```
 
 ### List Templates
 

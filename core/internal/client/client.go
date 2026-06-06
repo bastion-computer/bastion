@@ -38,8 +38,31 @@ func New(baseURL string) *Client {
 
 // CreateTemplate stores a template.
 func (c *Client) CreateTemplate(ctx context.Context, req template.CreateRequest) (template.Metadata, error) {
+	return postHostStream(ctx, c.http, c.baseURL+"/v1/templates", req, req.Logs, decodeCreateTemplateStream)
+}
+
+func decodeCreateTemplateStream(decoder *json.Decoder, logs io.Writer) (template.Metadata, error) {
 	var out template.Metadata
-	return out, c.do(ctx, http.MethodPost, "/v1/templates", req, &out)
+
+	for {
+		var event template.CreateStreamEvent
+		if err := decoder.Decode(&event); err != nil {
+			return out, createTemplateStreamDecodeError(err)
+		}
+
+		created, done, err := handleCreateTemplateStreamEvent(event, logs)
+		if done || err != nil {
+			return created, err
+		}
+	}
+}
+
+func createTemplateStreamDecodeError(err error) error {
+	return hostStreamDecodeError(err, "template creation")
+}
+
+func handleCreateTemplateStreamEvent(event template.CreateStreamEvent, logs io.Writer) (template.Metadata, bool, error) {
+	return handleHostStreamEvent(event.Type, event.Log, event.Error, event.Status, event.Template, "template", "template init", logs)
 }
 
 // ListTemplates returns template metadata.
@@ -74,32 +97,7 @@ func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (template.T
 
 // CreateEnvironment creates an environment from a template.
 func (c *Client) CreateEnvironment(ctx context.Context, createReq environment.CreateRequest) (environment.Environment, error) {
-	var out environment.Environment
-
-	contents, err := json.Marshal(createReq)
-	if err != nil {
-		return out, fmt.Errorf("encode request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/environments", bytes.NewReader(contents))
-	if err != nil {
-		return out, fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/x-ndjson")
-
-	res, err := c.http.Do(req)
-	if err != nil {
-		return out, fmt.Errorf("call host API: %w", err)
-	}
-	defer func() { _ = res.Body.Close() }()
-
-	if res.StatusCode >= http.StatusBadRequest {
-		return out, decodeHostStatusError(res)
-	}
-
-	return decodeCreateEnvironmentStream(json.NewDecoder(res.Body), createReq.Logs)
+	return postHostStream(ctx, c.http, c.baseURL+"/v1/environments", createReq, createReq.Logs, decodeCreateEnvironmentStream)
 }
 
 func decodeCreateEnvironmentStream(decoder *json.Decoder, logs io.Writer) (environment.Environment, error) {
@@ -119,47 +117,83 @@ func decodeCreateEnvironmentStream(decoder *json.Decoder, logs io.Writer) (envir
 }
 
 func createEnvironmentStreamDecodeError(err error) error {
+	return hostStreamDecodeError(err, "environment creation")
+}
+
+func handleCreateEnvironmentStreamEvent(event environment.CreateStreamEvent, logs io.Writer) (environment.Environment, bool, error) {
+	return handleHostStreamEvent(event.Type, event.Log, event.Error, event.Status, event.Environment, "environment", "environment", logs)
+}
+
+func postHostStream[T any](ctx context.Context, client *http.Client, target string, in any, logs io.Writer, decode func(*json.Decoder, io.Writer) (T, error)) (T, error) {
+	var out T
+
+	contents, err := json.Marshal(in)
+	if err != nil {
+		return out, fmt.Errorf("encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(contents))
+	if err != nil {
+		return out, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	res, err := client.Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call host API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeHostStatusError(res)
+	}
+
+	return decode(json.NewDecoder(res.Body), logs)
+}
+
+func hostStreamDecodeError(err error, operation string) error {
 	if errors.Is(err, io.EOF) {
-		return errors.New("host API stream ended before environment creation completed")
+		return fmt.Errorf("host API stream ended before %s completed", operation)
 	}
 
 	return fmt.Errorf("decode host API stream: %w", err)
 }
 
-func handleCreateEnvironmentStreamEvent(event environment.CreateStreamEvent, logs io.Writer) (environment.Environment, bool, error) {
-	var out environment.Environment
+func handleHostStreamEvent[T any](eventType, logText, errorText string, status int, result *T, resultName, logLabel string, logs io.Writer) (T, bool, error) {
+	var out T
 
-	switch event.Type {
-	case environment.StreamEventLog:
-		if logs == nil || event.Log == "" {
+	switch eventType {
+	case template.StreamEventLog:
+		if logs == nil || logText == "" {
 			return out, false, nil
 		}
 
-		if _, err := logs.Write([]byte(event.Log)); err != nil {
-			return out, false, fmt.Errorf("stream environment init logs: %w", err)
+		if _, err := logs.Write([]byte(logText)); err != nil {
+			return out, false, fmt.Errorf("stream %s logs: %w", logLabel, err)
 		}
 
 		return out, false, nil
-	case environment.StreamEventResult:
-		if event.Environment == nil {
-			return out, false, errors.New("host API stream result missing environment")
+	case template.StreamEventResult:
+		if result == nil {
+			return out, false, fmt.Errorf("host API stream result missing %s", resultName)
 		}
 
-		return *event.Environment, true, nil
-	case environment.StreamEventError:
-		status := event.Status
+		return *result, true, nil
+	case template.StreamEventError:
 		if status == 0 {
 			status = http.StatusInternalServerError
 		}
 
-		message := strings.TrimSpace(event.Error)
+		message := strings.TrimSpace(errorText)
 		if message == "" {
 			message = "unknown error"
 		}
 
 		return out, false, fmt.Errorf("host API returned %s: %s", httpStatus(status), message)
 	default:
-		return out, false, fmt.Errorf("host API stream returned unknown event type %q", event.Type)
+		return out, false, fmt.Errorf("host API stream returned unknown event type %q", eventType)
 	}
 }
 

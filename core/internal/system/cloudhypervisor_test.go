@@ -50,6 +50,10 @@ func TestAddCloudHypervisorInstallsMissingUtilitiesWithFlag(t *testing.T) {
 		if name == packageManagerApt && slices.Contains(args, packageQEMUUtils) {
 			available.add(utilityQEMUImg)
 		}
+
+		if name == packageManagerApt && slices.Contains(args, packageDnsmasqDeb) {
+			available.add(utilityDnsmasq)
+		}
 	}}
 
 	var out bytes.Buffer
@@ -72,19 +76,34 @@ func TestAddCloudHypervisorInstallsMissingUtilitiesWithFlag(t *testing.T) {
 		t.Fatalf("result path = %q, want cloud-hypervisor store", result.Path)
 	}
 
-	if !runner.ran(packageManagerApt, "install", "-y", packageQEMUUtils) {
-		t.Fatalf("runner commands = %#v, want apt-get install qemu-utils", runner.commands)
+	if !runner.ran(packageManagerApt, "install", "-y", packageQEMUUtils, packageDnsmasqDeb) {
+		t.Fatalf("runner commands = %#v, want apt-get install qemu-utils dnsmasq-base", runner.commands)
 	}
 
 	manifest := newCloudHypervisorStore(dataDir).readManifest()
-	if manifest.CloudHypervisor != cloudHypervisorName || manifest.Kernel != ubuntuNobleKernelName || manifest.Initramfs != ubuntuNobleInitramfsName || manifest.RootFSImage != "ubuntu-24.04.img" || manifest.SSHKey != "ubuntu-24.04.id_rsa" {
-		t.Fatalf("unexpected manifest: %#v", manifest)
+	manifestAssets := cloudHypervisorManifest{
+		CloudHypervisor: manifest.CloudHypervisor,
+		Kernel:          manifest.Kernel,
+		Initramfs:       manifest.Initramfs,
+		RootFSImage:     manifest.RootFSImage,
+		SSHKey:          manifest.SSHKey,
+	}
+	wantAssets := cloudHypervisorManifest{
+		CloudHypervisor: cloudHypervisorName,
+		Kernel:          ubuntuNobleKernelName,
+		Initramfs:       ubuntuNobleInitramfsName,
+		RootFSImage:     "ubuntu-24.04.img",
+		SSHKey:          "ubuntu-24.04.id_rsa",
+	}
+
+	if manifestAssets != wantAssets {
+		t.Fatalf("manifest assets = %#v, want %#v", manifestAssets, wantAssets)
 	}
 
 	for _, want := range []string{
 		"bastion: checking host requirements",
 		"bastion: checking required utilities",
-		"bastion: installing missing utilities: qemu-img",
+		"bastion: installing missing utilities: qemu-img, dnsmasq",
 		"bastion: creating data directory",
 		"bastion: writing manifest",
 	} {

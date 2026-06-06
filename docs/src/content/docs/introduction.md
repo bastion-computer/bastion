@@ -44,9 +44,9 @@ Templates can override those values per environment.
 
 ## Templates
 
-Templates are immutable JSON records. A template defines optional VM resources
-and required `actions.init` steps. Init actions run once when an environment is
-created.
+Templates are immutable prepared snapshots. A template defines optional VM
+resources and required `actions.init` steps. Init actions run once when the
+template is created, then environments restore from that prepared snapshot.
 
 Actions can be inline shell commands:
 

@@ -34,6 +34,7 @@ func NewServer(addr string, db *database.Client, logger *slog.Logger, opts ...Ro
 }
 
 type routerConfig struct {
+	templateOrchestrator    template.Orchestrator
 	environmentOrchestrator environment.Orchestrator
 	environmentSSHRunner    environments.SSHRunner
 }
@@ -45,6 +46,13 @@ type RouterOption func(*routerConfig)
 func WithEnvironmentOrchestrator(orchestrator environment.Orchestrator) RouterOption {
 	return func(cfg *routerConfig) {
 		cfg.environmentOrchestrator = orchestrator
+	}
+}
+
+// WithTemplateOrchestrator configures VM preparation for template routes.
+func WithTemplateOrchestrator(orchestrator template.Orchestrator) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.templateOrchestrator = orchestrator
 	}
 }
 
@@ -70,7 +78,7 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	templateHandler := templates.NewHandler(template.NewService(db))
+	templateHandler := templates.NewHandler(template.NewService(db, template.WithOrchestrator(cfg.templateOrchestrator)))
 	templateRoutes := v1.Group("/templates")
 	templateRoutes.POST("", templateHandler.Create)
 	templateRoutes.GET("", templateHandler.List)

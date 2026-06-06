@@ -97,58 +97,6 @@ func TestServicePersistsLaunchVMFailure(t *testing.T) {
 	}
 }
 
-func TestServiceSubstitutesTemplateEnvironmentVariables(t *testing.T) {
-	const envName = "BASTION_TEMPLATE_SUBSTITUTION_TEST"
-
-	t.Setenv(envName, "substituted-value")
-
-	db := openDB(t)
-	templates := template.NewService(db)
-	orchestrator := newFakeOrchestrator()
-	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
-	ctx := context.Background()
-
-	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
-		Key:    new("substitution-template"),
-		Config: json.RawMessage(`{"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}]}}`),
-	})
-	if err != nil {
-		t.Fatalf("create template: %v", err)
-	}
-
-	if _, err := service.Create(ctx, environment.CreateRequest{TemplateKey: "substitution-template"}); err != nil {
-		t.Fatalf("create environment: %v", err)
-	}
-
-	if len(orchestrator.templates) != 1 {
-		t.Fatalf("launch templates = %d, want 1", len(orchestrator.templates))
-	}
-
-	var launched struct {
-		Actions struct {
-			Init []struct {
-				Run string `json:"run"`
-			} `json:"init"`
-		} `json:"actions"`
-	}
-	if err := json.Unmarshal(orchestrator.templates[0].Config, &launched); err != nil {
-		t.Fatalf("unmarshal launched template config: %v", err)
-	}
-
-	if len(launched.Actions.Init) != 1 || launched.Actions.Init[0].Run != "printf 'substituted-value'" {
-		t.Fatalf("launched template config = %s, want substituted env values", orchestrator.templates[0].Config)
-	}
-
-	stored, err := templates.Get(ctx, createdTemplate.ID, "")
-	if err != nil {
-		t.Fatalf("get stored template: %v", err)
-	}
-
-	if !strings.Contains(string(stored.Config), "${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}") {
-		t.Fatalf("stored template config = %s, want unresolved placeholder", stored.Config)
-	}
-}
-
 func TestServicePreservesTemplateResourcesForOrchestration(t *testing.T) {
 	t.Parallel()
 
@@ -186,43 +134,6 @@ func TestServicePreservesTemplateResourcesForOrchestration(t *testing.T) {
 
 	if launched.Resources.VCPU != 3 || launched.Resources.Memory != 4 || launched.Resources.Volume != 5 {
 		t.Fatalf("launched resources = %#v, want template resources", launched.Resources)
-	}
-}
-
-func TestServiceRejectsUnsetTemplateEnvironmentVariable(t *testing.T) {
-	t.Parallel()
-
-	missingName := "BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2"
-
-	db := openDB(t)
-	templates := template.NewService(db)
-	orchestrator := newFakeOrchestrator()
-	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
-	ctx := context.Background()
-
-	if _, err := templates.Create(ctx, template.CreateRequest{
-		Key:    new("missing-substitution-template"),
-		Config: json.RawMessage(`{"actions":{"init":[{"run":"echo ${{ env.BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2 }}"}]}}`),
-	}); err != nil {
-		t.Fatalf("create template: %v", err)
-	}
-
-	_, err := service.Create(ctx, environment.CreateRequest{TemplateKey: "missing-substitution-template"})
-	if !errors.Is(err, failure.ErrInvalid) || !strings.Contains(err.Error(), missingName) {
-		t.Fatalf("create environment error = %v, want invalid missing env var", err)
-	}
-
-	if orchestrator.launches != 0 {
-		t.Fatalf("orchestration launches = %d, want 0", orchestrator.launches)
-	}
-
-	page, err := service.List(ctx, 20, "", nil)
-	if err != nil {
-		t.Fatalf("list environments: %v", err)
-	}
-
-	if len(page.Entries) != 0 {
-		t.Fatalf("environment count = %d, want 0", len(page.Entries))
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -150,40 +151,21 @@ func NewRouter(manager Manager, logger *slog.Logger) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	v1.POST("/templates", func(c *gin.Context) {
+		serveDaemonCreate(c, newDaemonTemplateStreamAdapter, func(req *PrepareTemplateRequest, logs io.Writer) {
+			req.Logs = logs
+		}, manager.PrepareTemplate)
+	})
+
+	v1.DELETE("/templates/:id", func(c *gin.Context) {
+		prepared, err := manager.RemoveTemplate(c.Request.Context(), c.Param("id"))
+		respondDaemon(c, prepared, err)
+	})
+
 	v1.POST("/vms", func(c *gin.Context) {
-		var req LaunchRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			_ = c.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
-
-			return
-		}
-
-		launchCtx, cancel := context.WithCancel(c.Request.Context())
-		defer cancel()
-
-		stream := newDaemonLaunchStream(c.Writer, cancel)
-		if err := stream.Start(); err != nil {
-			_ = c.Error(err)
-
-			return
-		}
-
-		req.Logs = stream
-
-		vm, err := manager.Launch(launchCtx, req)
-		if err != nil {
-			_ = c.Error(err)
-			if writeErr := stream.Error(vm, err); writeErr != nil {
-				_ = c.Error(writeErr)
-			}
-
-			return
-		}
-
-		if err := stream.Result(vm); err != nil {
-			_ = c.Error(err)
-		}
+		serveDaemonCreate(c, newDaemonLaunchStreamAdapter, func(req *LaunchRequest, logs io.Writer) {
+			req.Logs = logs
+		}, manager.Launch)
 	})
 
 	v1.GET("/vms/:id", func(c *gin.Context) {
@@ -197,6 +179,62 @@ func NewRouter(manager Manager, logger *slog.Logger) *gin.Engine {
 	})
 
 	return router
+}
+
+type daemonCreateStream[T any] interface {
+	io.Writer
+	Start() error
+	Result(T) error
+	Error(T, error) error
+}
+
+func serveDaemonCreate[TReq, TResult any](
+	c *gin.Context,
+	newStream func(http.ResponseWriter, context.CancelFunc) daemonCreateStream[TResult],
+	setLogs func(*TReq, io.Writer),
+	run func(context.Context, TReq) (TResult, error),
+) {
+	var req TReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
+
+		return
+	}
+
+	streamCtx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+
+	stream := newStream(c.Writer, cancel)
+	if err := stream.Start(); err != nil {
+		_ = c.Error(err)
+
+		return
+	}
+
+	setLogs(&req, stream)
+
+	result, err := run(streamCtx, req)
+	if err != nil {
+		_ = c.Error(err)
+		if writeErr := stream.Error(result, err); writeErr != nil {
+			_ = c.Error(writeErr)
+		}
+
+		return
+	}
+
+	if err := stream.Result(result); err != nil {
+		_ = c.Error(err)
+	}
+}
+
+func newDaemonTemplateStreamAdapter(w http.ResponseWriter, cancel context.CancelFunc) daemonCreateStream[PreparedTemplate] {
+	return newDaemonTemplateStream(w, cancel)
+}
+
+func newDaemonLaunchStreamAdapter(w http.ResponseWriter, cancel context.CancelFunc) daemonCreateStream[VM] {
+	return newDaemonLaunchStream(w, cancel)
 }
 
 func respondDaemon(c *gin.Context, value any, err error) {
@@ -224,6 +262,79 @@ type daemonLaunchStream struct {
 	controller *http.ResponseController
 	cancel     context.CancelFunc
 	mu         sync.Mutex
+}
+
+type daemonTemplateStream struct {
+	w          http.ResponseWriter
+	encoder    *json.Encoder
+	controller *http.ResponseController
+	cancel     context.CancelFunc
+	mu         sync.Mutex
+}
+
+func newDaemonTemplateStream(w http.ResponseWriter, cancel context.CancelFunc) *daemonTemplateStream {
+	return &daemonTemplateStream{
+		w:          w,
+		encoder:    json.NewEncoder(w),
+		controller: http.NewResponseController(w),
+		cancel:     cancel,
+	}
+}
+
+func (s *daemonTemplateStream) Start() error {
+	s.w.Header().Set("Content-Type", "application/x-ndjson")
+	s.w.Header().Set("Cache-Control", "no-cache")
+	s.w.WriteHeader(http.StatusOK)
+
+	return s.flush()
+}
+
+func (s *daemonTemplateStream) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	if err := s.write(PrepareTemplateStreamEvent{Type: StreamEventLog, Log: string(p)}); err != nil {
+		return 0, err
+	}
+
+	return len(p), nil
+}
+
+func (s *daemonTemplateStream) Result(prepared PreparedTemplate) error {
+	return s.write(PrepareTemplateStreamEvent{Type: StreamEventResult, Template: &prepared})
+}
+
+func (s *daemonTemplateStream) Error(prepared PreparedTemplate, err error) error {
+	event := PrepareTemplateStreamEvent{Type: StreamEventError, Error: err.Error(), Status: daemonStatusForError(err)}
+	if prepared.TemplateID != "" {
+		event.Template = &prepared
+	}
+
+	return s.write(event)
+}
+
+func (s *daemonTemplateStream) write(event PrepareTemplateStreamEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.encoder.Encode(event); err != nil {
+		s.cancel()
+
+		return err
+	}
+
+	return s.flush()
+}
+
+func (s *daemonTemplateStream) flush() error {
+	if err := s.controller.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		s.cancel()
+
+		return err
+	}
+
+	return nil
 }
 
 func newDaemonLaunchStream(w http.ResponseWriter, cancel context.CancelFunc) *daemonLaunchStream {

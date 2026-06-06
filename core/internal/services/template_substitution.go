@@ -1,4 +1,4 @@
-package environment
+package services
 
 import (
 	"bytes"
@@ -13,7 +13,8 @@ import (
 
 var templateEnvExpression = regexp.MustCompile(`\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
 
-func substituteTemplateEnvironment(config json.RawMessage) (json.RawMessage, error) {
+// SubstituteTemplateEnvironment resolves ${{ env.NAME }} expressions in template JSON strings.
+func SubstituteTemplateEnvironment(config json.RawMessage) (json.RawMessage, error) {
 	var value any
 
 	decoder := json.NewDecoder(bytes.NewReader(config))

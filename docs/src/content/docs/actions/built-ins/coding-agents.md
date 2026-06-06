@@ -6,7 +6,7 @@ description: Built-in Bastion actions for coding agents.
 Coding agent actions install and configure agent CLIs inside the guest VM.
 
 Host environment substitutions such as `${{ env.ANTHROPIC_API_KEY }}` are
-resolved when the environment is created. The resolved values are then passed
+resolved when the template is created. The resolved values are then passed
 into the guest action and may be written to guest files by the action. Use scoped
 API keys appropriate for the environment.
 

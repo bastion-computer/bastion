@@ -3,8 +3,10 @@ title: Environments
 description: Create, list, inspect, and remove Bastion VM environments.
 ---
 
-An environment is a Cloud Hypervisor VM created from a template. It has its own
-guest file system, process space, network interface, and SSH server.
+An environment is a Cloud Hypervisor VM restored from a prepared template
+snapshot. It has its own process space, network interface, SSH server, and tiny
+qcow2 writable root disk overlay backed by the template's immutable prepared
+root disk.
 
 ## Create an Environment
 
@@ -34,8 +36,9 @@ Attach tags with repeated `--tag` flags:
 bastion env create --template-key dev --tag repo:bastion --tag agent:review
 ```
 
-During creation, Bastion streams init logs to stderr and writes the final JSON
-environment to stdout.
+During creation, Bastion restores the template snapshot, starts DHCP for the
+environment TAP network, waits for SSH, and writes the final JSON environment to
+stdout. Init actions already ran during `bastion templates create`.
 
 Example response:
 
@@ -145,11 +148,13 @@ When a failure is persisted, responses include `lastError`.
 ## Creation Logs
 
 `bastion env create` uses the host API streaming creation endpoint. API clients
-receive newline-delimited JSON events with these types:
+receive newline-delimited JSON events with these types, though init log events
+are normally emitted by `bastion templates create` because init runs during
+template preparation:
 
 | Event    | Meaning                                 |
 | -------- | --------------------------------------- |
-| `log`    | Guest init output.                      |
+| `log`    | Creation progress output, when present. |
 | `result` | Final environment record.               |
 | `error`  | Final error and HTTP-style status code. |
 

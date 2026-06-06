@@ -42,34 +42,44 @@ func NewClient(socketPath string) *Client {
 	}
 }
 
+// PrepareTemplate asks bastiond to prepare and snapshot a template VM.
+func (c *Client) PrepareTemplate(ctx context.Context, prepareReq PrepareTemplateRequest) (PreparedTemplate, error) {
+	return postDaemonStream(ctx, c, "/v1/templates", prepareReq, prepareReq.Logs, decodePrepareTemplateStream)
+}
+
+// RemoveTemplate asks bastiond to delete prepared template artifacts.
+func (c *Client) RemoveTemplate(ctx context.Context, templateID string) (PreparedTemplate, error) {
+	var prepared PreparedTemplate
+	return prepared, c.do(ctx, http.MethodDelete, "/v1/templates/"+url.PathEscape(templateID), nil, &prepared)
+}
+
+func decodePrepareTemplateStream(decoder *json.Decoder, logs io.Writer) (PreparedTemplate, error) {
+	var prepared PreparedTemplate
+
+	for {
+		var event PrepareTemplateStreamEvent
+		if err := decoder.Decode(&event); err != nil {
+			return prepared, prepareTemplateStreamDecodeError(err)
+		}
+
+		decoded, done, err := handlePrepareTemplateStreamEvent(event, logs)
+		if done || err != nil {
+			return decoded, err
+		}
+	}
+}
+
+func prepareTemplateStreamDecodeError(err error) error {
+	return daemonStreamDecodeError(err, "template preparation")
+}
+
+func handlePrepareTemplateStreamEvent(event PrepareTemplateStreamEvent, logs io.Writer) (PreparedTemplate, bool, error) {
+	return handleDaemonStreamEvent(event.Type, event.Log, event.Error, event.Status, event.Template, "template", "template init", logs)
+}
+
 // Launch asks bastiond to launch a VM.
 func (c *Client) Launch(ctx context.Context, launchReq LaunchRequest) (VM, error) {
-	var vm VM
-
-	contents, err := json.Marshal(launchReq)
-	if err != nil {
-		return vm, fmt.Errorf("encode bastiond request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://bastiond/v1/vms", bytes.NewReader(contents))
-	if err != nil {
-		return vm, fmt.Errorf("create bastiond request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/x-ndjson")
-
-	res, err := c.http.Do(req)
-	if err != nil {
-		return vm, fmt.Errorf("call bastiond at %s: %w", c.socketPath, err)
-	}
-	defer func() { _ = res.Body.Close() }()
-
-	if res.StatusCode >= http.StatusBadRequest {
-		return vm, decodeDaemonStatusError(res)
-	}
-
-	return decodeLaunchStream(json.NewDecoder(res.Body), launchReq.Logs)
+	return postDaemonStream(ctx, c, "/v1/vms", launchReq, launchReq.Logs, decodeLaunchStream)
 }
 
 func decodeLaunchStream(decoder *json.Decoder, logs io.Writer) (VM, error) {
@@ -89,51 +99,87 @@ func decodeLaunchStream(decoder *json.Decoder, logs io.Writer) (VM, error) {
 }
 
 func launchStreamDecodeError(err error) error {
+	return daemonStreamDecodeError(err, "VM launch")
+}
+
+func handleLaunchStreamEvent(event LaunchStreamEvent, logs io.Writer) (VM, bool, error) {
+	return handleDaemonStreamEvent(event.Type, event.Log, event.Error, event.Status, event.VM, "VM", "VM init", logs)
+}
+
+func postDaemonStream[T any](ctx context.Context, c *Client, path string, in any, logs io.Writer, decode func(*json.Decoder, io.Writer) (T, error)) (T, error) {
+	var out T
+
+	contents, err := json.Marshal(in)
+	if err != nil {
+		return out, fmt.Errorf("encode bastiond request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://bastiond"+path, bytes.NewReader(contents))
+	if err != nil {
+		return out, fmt.Errorf("create bastiond request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call bastiond at %s: %w", c.socketPath, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeDaemonStatusError(res)
+	}
+
+	return decode(json.NewDecoder(res.Body), logs)
+}
+
+func daemonStreamDecodeError(err error, operation string) error {
 	if errors.Is(err, io.EOF) {
-		return errors.New("bastiond stream ended before VM launch completed")
+		return fmt.Errorf("bastiond stream ended before %s completed", operation)
 	}
 
 	return fmt.Errorf("decode bastiond stream: %w", err)
 }
 
-func handleLaunchStreamEvent(event LaunchStreamEvent, logs io.Writer) (VM, bool, error) {
-	var vm VM
+func handleDaemonStreamEvent[T any](eventType, logText, errorText string, status int, result *T, resultName, logLabel string, logs io.Writer) (T, bool, error) {
+	var out T
 
-	switch event.Type {
+	switch eventType {
 	case StreamEventLog:
-		if logs == nil || event.Log == "" {
-			return vm, false, nil
+		if logs == nil || logText == "" {
+			return out, false, nil
 		}
 
-		if _, err := logs.Write([]byte(event.Log)); err != nil {
-			return vm, false, fmt.Errorf("stream VM init logs: %w", err)
+		if _, err := logs.Write([]byte(logText)); err != nil {
+			return out, false, fmt.Errorf("stream %s logs: %w", logLabel, err)
 		}
 
-		return vm, false, nil
+		return out, false, nil
 	case StreamEventResult:
-		if event.VM == nil {
-			return vm, false, errors.New("bastiond stream result missing VM")
+		if result == nil {
+			return out, false, fmt.Errorf("bastiond stream result missing %s", resultName)
 		}
 
-		return *event.VM, true, nil
+		return *result, true, nil
 	case StreamEventError:
-		if event.VM != nil {
-			vm = *event.VM
+		if result != nil {
+			out = *result
 		}
 
-		status := event.Status
 		if status == 0 {
 			status = http.StatusInternalServerError
 		}
 
-		message := strings.TrimSpace(event.Error)
+		message := strings.TrimSpace(errorText)
 		if message == "" {
 			message = "unknown error"
 		}
 
-		return vm, false, daemonStatusError(status, "bastiond returned %s: %s", httpStatus(status), message)
+		return out, false, daemonStatusError(status, "bastiond returned %s: %s", httpStatus(status), message)
 	default:
-		return vm, false, fmt.Errorf("bastiond stream returned unknown event type %q", event.Type)
+		return out, false, fmt.Errorf("bastiond stream returned unknown event type %q", eventType)
 	}
 }
 

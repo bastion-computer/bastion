@@ -90,6 +90,10 @@ Register it with Bastion:
 bastion templates create --key hello --file ./template.json
 ```
 
+Template creation boots a temporary VM, runs `actions.init`, and stores a Cloud
+Hypervisor snapshot plus an immutable prepared root disk. Init logs stream to
+stderr while the final template metadata is written to stdout.
+
 The `hello` key is optional, but it gives the template a stable human-friendly
 name for later commands.
 
@@ -111,8 +115,9 @@ Create an environment from the template:
 bastion env create --template-key hello --tag quickstart
 ```
 
-Environment creation streams init logs to stderr and prints the final JSON
-environment record to stdout.
+Environment creation restores the prepared template snapshot, creates a small
+qcow2 copy-on-write root disk overlay, gets a fresh DHCP lease, and prints the
+final JSON environment record to stdout.
 
 Example response:
 

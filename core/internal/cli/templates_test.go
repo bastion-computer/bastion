@@ -31,7 +31,7 @@ func TestTemplatesCreateCommandSendsOptionalKey(t *testing.T) {
 
 		gotReq <- req
 
-		if err := json.NewEncoder(w).Encode(template.Metadata{ID: "tpl_keyed", Key: req.Key}); err != nil {
+		if err := json.NewEncoder(w).Encode(template.CreateStreamEvent{Type: template.StreamEventResult, Template: &template.Metadata{ID: "tpl_keyed", Key: req.Key}}); err != nil {
 			t.Fatalf("encode create response: %v", err)
 		}
 	}))
@@ -79,7 +79,7 @@ func TestTemplatesCreateCommandOmitsAbsentKey(t *testing.T) {
 
 		gotReq <- req
 
-		if err := json.NewEncoder(w).Encode(template.Metadata{ID: "tpl_unkeyed"}); err != nil {
+		if err := json.NewEncoder(w).Encode(template.CreateStreamEvent{Type: template.StreamEventResult, Template: &template.Metadata{ID: "tpl_unkeyed"}}); err != nil {
 			t.Fatalf("encode create response: %v", err)
 		}
 	}))

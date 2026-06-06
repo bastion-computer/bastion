@@ -55,8 +55,15 @@ func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
 		Key:    new("invalid-template"),
 		Config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`),
 	})
-	if res.Code != http.StatusBadRequest {
-		t.Fatalf("create invalid template status = %d, want %d", res.Code, http.StatusBadRequest)
+	if res.Code != http.StatusOK {
+		t.Fatalf("create invalid template status = %d, want streaming %d", res.Code, http.StatusOK)
+	}
+
+	var event template.CreateStreamEvent
+	decode(t, res, &event)
+
+	if event.Type != template.StreamEventError || event.Status != http.StatusBadRequest {
+		t.Fatalf("create invalid template event = %#v, want bad request error event", event)
 	}
 
 	res = request(t, router, http.MethodGet, "/v1/templates/by-key/invalid-template", nil)
@@ -104,8 +111,7 @@ func TestTemplateAndEnvironmentOptionalKeys(t *testing.T) {
 		t.Fatalf("unkeyed template response includes key: %s", res.Body.String())
 	}
 
-	var unkeyedTemplate template.Metadata
-	decode(t, res, &unkeyedTemplate)
+	unkeyedTemplate := decodeTemplateCreateResult(t, res)
 
 	if unkeyedTemplate.ID == "" || unkeyedTemplate.Key != nil {
 		t.Fatalf("unkeyed template = %#v, want id without key", unkeyedTemplate)
@@ -325,10 +331,22 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 		t.Fatalf("create template status = %d, want %d", res.Code, http.StatusOK)
 	}
 
-	var created template.Metadata
-	decode(t, res, &created)
+	created := decodeTemplateCreateResult(t, res)
 
 	return created
+}
+
+func decodeTemplateCreateResult(t *testing.T, res *httptest.ResponseRecorder) template.Metadata {
+	t.Helper()
+
+	var event template.CreateStreamEvent
+	decode(t, res, &event)
+
+	if event.Type != template.StreamEventResult || event.Template == nil {
+		t.Fatalf("create template event = %#v, want result", event)
+	}
+
+	return *event.Template
 }
 
 func documentedTemplateConfig(t *testing.T, path string) json.RawMessage {
