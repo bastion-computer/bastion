@@ -1,6 +1,3 @@
 go 1.26
 
-use (
-	./core
-	./integrations/linear
-)
+use ./core

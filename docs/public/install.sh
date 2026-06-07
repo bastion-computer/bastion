@@ -6,14 +6,11 @@ readonly DEFAULT_INSTALL_DIR="/usr/local/bin"
 readonly TARGET="linux_x86_64"
 readonly SOCKET_PATH="/run/bastion/bastiond.sock"
 readonly SERVICE_ENV_FILE="${BASTION_SERVICE_ENV_FILE:-/etc/default/bastion}"
-readonly LINEAR_SERVICE_ENV_FILE="${BASTION_LINEAR_SERVICE_ENV_FILE:-/etc/default/bastion-linear}"
 
 INSTALL_DIR="${BASTION_INSTALL_DIR:-}"
 TMP_DIR=""
 BASTION_BIN=""
 BASTIOND_BIN=""
-LINEAR_BIN=""
-INSTALL_INTEGRATIONS=()
 
 cat <<'EOF'
 
@@ -46,7 +43,6 @@ Installs or updates Bastion for Linux x86_64 from the latest GitHub release.
 
 Options:
   -h, --help                 Show this help message.
-      --integration linear   Also install an integration service.
 EOF
 }
 
@@ -73,46 +69,12 @@ parse_args() {
         usage
         exit 0
         ;;
-      --integration)
-        if [ "$#" -lt 2 ]; then
-          fail "--integration requires a value"
-        fi
-        add_integration "$2"
-        shift
-        ;;
-      --integration=*)
-        add_integration "${1#--integration=}"
-        ;;
       *)
         fail "unknown argument: $1"
         ;;
     esac
     shift
   done
-}
-
-add_integration() {
-  case "$1" in
-    linear)
-      INSTALL_INTEGRATIONS+=("linear")
-      ;;
-    *)
-      fail "unsupported integration: $1"
-      ;;
-  esac
-}
-
-has_integration() {
-  local want=$1
-  local integration
-
-  for integration in "${INSTALL_INTEGRATIONS[@]}"; do
-    if [ "$integration" = "$want" ]; then
-      return 0
-    fi
-  done
-
-  return 1
 }
 
 require_command() {
@@ -224,39 +186,6 @@ download_and_verify() {
   fi
 }
 
-ensure_tmp_dir() {
-  if [ -z "$TMP_DIR" ]; then
-    TMP_DIR="$(mktemp -d)"
-  fi
-}
-
-download_and_verify_linear() {
-  local version=$1
-  local archive
-  local checksum
-  local release_url
-
-  archive="bastion-linear_${version}_${TARGET}.tar.gz"
-  checksum="${archive}.sha256"
-  release_url="https://github.com/${REPO}/releases/download/${version}"
-  ensure_tmp_dir
-
-  log "downloading Bastion Linear integration $version for $TARGET"
-  curl -fsSLo "$TMP_DIR/$archive" "$release_url/$archive"
-  curl -fsSLo "$TMP_DIR/$checksum" "$release_url/$checksum"
-
-  log "verifying Linear integration checksum"
-  (cd "$TMP_DIR" && sha256sum -c "$checksum")
-  log "Linear integration checksum verified"
-
-  mkdir -p "$TMP_DIR/extract-linear"
-  tar -xzf "$TMP_DIR/$archive" -C "$TMP_DIR/extract-linear"
-
-  if [ ! -x "$TMP_DIR/extract-linear/bastion-linear" ]; then
-    fail "Linear integration archive did not contain executable bastion-linear binary"
-  fi
-}
-
 install_binaries() {
   local version=$1
 
@@ -268,16 +197,6 @@ install_binaries() {
   BASTIOND_BIN="$INSTALL_DIR/bastiond"
 
   log "installed Bastion $version to $INSTALL_DIR"
-}
-
-install_linear_binary() {
-  local version=$1
-
-  run_as_root install -d -m 0755 "$INSTALL_DIR"
-  run_as_root install -m 0755 "$TMP_DIR/extract-linear/bastion-linear" "$INSTALL_DIR/bastion-linear"
-  LINEAR_BIN="$INSTALL_DIR/bastion-linear"
-
-  log "installed Bastion Linear integration $version to $INSTALL_DIR"
 }
 
 ensure_binaries() {
@@ -306,37 +225,6 @@ ensure_binaries() {
 
   download_and_verify "$latest_version"
   install_binaries "$latest_version"
-}
-
-ensure_linear_binary() {
-  local latest_version=$1
-  local existing_linear
-  local current_version
-
-  existing_linear="$(command -v bastion-linear 2>/dev/null || true)"
-  current_version="$(installed_version "$existing_linear" || true)"
-  if [ -n "$current_version" ] && [ "$current_version" = "$latest_version" ]; then
-    LINEAR_BIN="$existing_linear"
-    log "Bastion Linear integration $latest_version is already installed"
-    return
-  fi
-
-  if [ -n "$current_version" ]; then
-    log "updating Bastion Linear integration from $current_version to $latest_version"
-  else
-    log "installing Bastion Linear integration $latest_version"
-  fi
-
-  download_and_verify_linear "$latest_version"
-  install_linear_binary "$latest_version"
-}
-
-ensure_integrations() {
-  local latest_version=$1
-
-  if has_integration linear; then
-    ensure_linear_binary "$latest_version"
-  fi
 }
 
 service_home() {
@@ -443,39 +331,6 @@ EOF
   rm -rf "$unit_dir"
 }
 
-write_linear_service_unit() {
-  local service_user=$1
-  local service_group=$2
-  local unit_dir
-  local linear_unit
-
-  unit_dir="$(mktemp -d)"
-  linear_unit="$unit_dir/bastion-linear.service"
-
-  cat >"$linear_unit" <<EOF
-[Unit]
-Description=Bastion Linear integration
-After=network-online.target bastion-api.service
-Wants=network-online.target
-Requires=bastion-api.service
-
-[Service]
-Type=simple
-User=$service_user
-Group=$service_group
-EnvironmentFile=$LINEAR_SERVICE_ENV_FILE
-ExecStart=$LINEAR_BIN
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  run_as_root install -m 0644 "$linear_unit" /etc/systemd/system/bastion-linear.service
-  rm -rf "$unit_dir"
-}
-
 seed_service_environment_file() {
   local data_dir=$1
   local env_dir
@@ -511,43 +366,6 @@ EOF
   log "created service environment file at $SERVICE_ENV_FILE"
 }
 
-seed_linear_service_environment_file() {
-  local core_data_dir=$1
-  local env_dir
-  local tmp_file
-  local linear_data_dir
-  local quoted_linear_data_dir
-
-  if run_as_root test -f "$LINEAR_SERVICE_ENV_FILE"; then
-    log "preserving existing Linear integration environment file at $LINEAR_SERVICE_ENV_FILE"
-    return
-  fi
-
-  env_dir="${LINEAR_SERVICE_ENV_FILE%/*}"
-  tmp_file="$(mktemp)"
-  linear_data_dir="${BASTION_LINEAR_DATA_DIR:-$core_data_dir/linear}"
-  quoted_linear_data_dir="$(systemd_quote "$linear_data_dir")"
-
-  cat >"$tmp_file" <<EOF
-# Bastion Linear integration systemd service environment.
-# This file is created by install.sh --integration linear and preserved during updates.
-BASTION_API_URL="http://localhost:3148"
-BASTION_LINEAR_ADDR="localhost:3150"
-BASTION_LINEAR_DATA_DIR=$quoted_linear_data_dir
-BASTION_LINEAR_ENVIRONMENT_TAGS="linear"
-BASTION_LINEAR_LOG_FORMAT="json"
-LINEAR_API_URL="https://api.linear.app/graphql"
-LINEAR_API_TOKEN=""
-LINEAR_WEBHOOK_SECRET=""
-LINEAR_APP_USER_ID=""
-EOF
-
-  run_as_root install -d -m 0755 "$env_dir"
-  run_as_root install -m 0640 "$tmp_file" "$LINEAR_SERVICE_ENV_FILE"
-  rm -f "$tmp_file"
-  log "created Linear integration environment file at $LINEAR_SERVICE_ENV_FILE"
-}
-
 setup_services() {
   local service_user
   local service_group
@@ -555,7 +373,6 @@ setup_services() {
   local service_gid
   local home
   local data_dir
-  local service_names
 
   require_command systemctl
   if [ ! -d /run/systemd/system ]; then
@@ -573,17 +390,10 @@ setup_services() {
   run_as_root install -d -m 0750 -o "$service_user" -g "$service_group" "$data_dir"
   seed_service_environment_file "$data_dir"
   write_service_units "$service_user" "$service_group" "$service_uid" "$service_gid"
-  service_names=(bastiond.service bastion-api.service)
-
-  if has_integration linear; then
-    seed_linear_service_environment_file "$data_dir"
-    write_linear_service_unit "$service_user" "$service_group"
-    service_names+=(bastion-linear.service)
-  fi
 
   run_as_root systemctl daemon-reload
-  run_as_root systemctl enable "${service_names[@]}"
-  run_as_root systemctl restart "${service_names[@]}"
+  run_as_root systemctl enable bastiond.service bastion-api.service
+  run_as_root systemctl restart bastiond.service bastion-api.service
   log "services installed, enabled, and started"
 }
 
@@ -600,7 +410,6 @@ main() {
 
   latest_version="$(latest_release_tag)"
   ensure_binaries "$latest_version"
-  ensure_integrations "$latest_version"
   setup_services
 
   log "Bastion is ready"
