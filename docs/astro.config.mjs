@@ -84,10 +84,6 @@ export default defineConfig({
             { label: "Runtimes", slug: "actions/built-ins/runtimes" },
           ],
         },
-        {
-          label: "Integrations",
-          items: [{ label: "Linear", slug: "integrations/linear" }],
-        },
       ],
     }),
   ],
