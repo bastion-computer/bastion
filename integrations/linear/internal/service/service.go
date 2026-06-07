@@ -43,6 +43,7 @@ const (
 // LinearClient is the subset of Linear used by the worker.
 type LinearClient interface {
 	CreateActivity(context.Context, string, linear.ActivityContent, bool, string, map[string]any) error
+	AgentSessions(context.Context, string) ([]linear.AgentSessionSnapshot, error)
 	AgentSessionForIssue(context.Context, string, string) (linear.AgentSessionWebhook, bool, error)
 	CreateAgentSessionOnIssue(context.Context, string) (linear.AgentSessionWebhook, error)
 	UpdatePlan(context.Context, string, []linear.PlanStep) error
@@ -233,6 +234,10 @@ func (s *Service) worker(ctx context.Context) {
 	defer ticker.Stop()
 
 	for {
+		if err := s.syncAgentSessions(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			s.logger.WarnContext(ctx, "linear session reconciliation failed", slog.String("error", err.Error()))
+		}
+
 		if err := s.processNext(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			s.logger.ErrorContext(ctx, "linear worker failed", slog.String("error", err.Error()))
 		}
@@ -244,6 +249,96 @@ func (s *Service) worker(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (s *Service) syncAgentSessions(ctx context.Context) error {
+	if s.cfg.AppUserID == "" {
+		return nil
+	}
+
+	sessions, err := s.linear.AgentSessions(ctx, s.cfg.AppUserID)
+	if err != nil {
+		return err
+	}
+
+	for _, agentSession := range sessions {
+		if agentSession.ID == "" || agentSession.IssueID == "" {
+			continue
+		}
+		if err := s.syncAgentSession(ctx, agentSession); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) syncAgentSession(ctx context.Context, agentSession linear.AgentSessionSnapshot) error {
+	payload := linear.AgentSessionEventWebhookPayload{Action: "created", AgentSession: linear.AgentSessionWebhook{ID: agentSession.ID, Status: agentSession.Status, URL: agentSession.URL, IssueID: agentSession.IssueID, Issue: agentSession.Issue}}
+	inserted, err := s.recordWebhook(ctx, "linear-sync-session:"+agentSession.ID, []byte(`{"source":"linear-sync-session"}`))
+	if err != nil {
+		return err
+	}
+	if inserted {
+		created, err := s.upsertSession(ctx, payload)
+		if err != nil {
+			_ = s.deleteWebhook(ctx, "linear-sync-session:"+agentSession.ID)
+			return err
+		}
+		if created {
+			if err := s.enqueueJob(ctx, agentSession.ID, jobCreated, notificationPrompt(&linear.NotificationWebhook{Issue: agentSession.Issue})); err != nil {
+				_ = s.deleteWebhook(ctx, "linear-sync-session:"+agentSession.ID)
+				return err
+			}
+		}
+	}
+
+	for i := len(agentSession.Activities) - 1; i >= 0; i-- {
+		activity := agentSession.Activities[i]
+		if activity.ID == "" || activity.Content["type"] != "prompt" {
+			continue
+		}
+
+		if err := s.syncAgentPrompt(ctx, agentSession, activity); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) syncAgentPrompt(ctx context.Context, agentSession linear.AgentSessionSnapshot, activity linear.AgentActivitySnapshot) error {
+	webhookID := "linear-sync-activity:" + activity.ID
+	inserted, err := s.recordWebhook(ctx, webhookID, []byte(`{"source":"linear-sync-activity"}`))
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		return nil
+	}
+
+	payload := linear.AgentSessionEventWebhookPayload{Action: "prompted", AgentSession: linear.AgentSessionWebhook{ID: agentSession.ID, Status: agentSession.Status, URL: agentSession.URL, IssueID: agentSession.IssueID, Issue: agentSession.Issue}}
+	if _, err := s.upsertSession(ctx, payload); err != nil {
+		_ = s.deleteWebhook(ctx, webhookID)
+		return err
+	}
+
+	jobKind := jobPrompt
+	body := activityBody(activity)
+	if activity.Signal == "stop" {
+		jobKind = jobStop
+		body = ""
+	} else if body == "" {
+		body = "The user provided a follow-up prompt in Linear. Continue from the latest session context."
+	}
+
+	if err := s.enqueueJob(ctx, agentSession.ID, jobKind, body); err != nil {
+		_ = s.deleteWebhook(ctx, webhookID)
+		return err
+	}
+	s.wake()
+
+	return nil
 }
 
 func (s *Service) processNext(ctx context.Context) error {
@@ -559,6 +654,14 @@ func notificationPrompt(notification *linear.NotificationWebhook) string {
 	parts = append(parts, "Please work on this Linear issue using the repository in this Bastion environment.")
 
 	return strings.Join(parts, "\n\n")
+}
+
+func activityBody(activity linear.AgentActivitySnapshot) string {
+	if body, ok := activity.Content["body"].(string); ok {
+		return strings.TrimSpace(body)
+	}
+
+	return ""
 }
 
 type job struct {

@@ -97,6 +97,70 @@ func (c *Client) AgentSessionForIssue(ctx context.Context, issueID, appUserID st
 	return AgentSessionWebhook{}, false, nil
 }
 
+// AgentSessions returns recent sessions for issues still delegated to the app user.
+func (c *Client) AgentSessions(ctx context.Context, appUserID string) ([]AgentSessionSnapshot, error) {
+	var out struct {
+		Data struct {
+			AgentSessions struct {
+				Nodes []struct {
+					ID     string `json:"id"`
+					Status string `json:"status"`
+					URL    string `json:"url"`
+					Issue  *struct {
+						ID          string       `json:"id"`
+						Identifier  string       `json:"identifier"`
+						Title       string       `json:"title"`
+						Description string       `json:"description"`
+						URL         string       `json:"url"`
+						Team        *TeamWebhook `json:"team"`
+						Delegate    *struct {
+							ID string `json:"id"`
+						} `json:"delegate"`
+					} `json:"issue"`
+					AppUser struct {
+						ID string `json:"id"`
+					} `json:"appUser"`
+					Activities struct {
+						Nodes []struct {
+							ID      string          `json:"id"`
+							Signal  string          `json:"signal"`
+							Content ActivityContent `json:"content"`
+						} `json:"nodes"`
+					} `json:"activities"`
+				} `json:"nodes"`
+			} `json:"agentSessions"`
+		} `json:"data"`
+	}
+	err := c.graphql(ctx, `query AgentSessionsForReconciliation { agentSessions(first: 50) { nodes { id status url issue { id identifier title description url team { id key name } delegate { id } } appUser { id } activities(first: 20) { nodes { id signal content { __typename ... on AgentActivityPromptContent { type body } ... on AgentActivityResponseContent { type body } ... on AgentActivityErrorContent { type body } } } } } } }`, nil, &out)
+	if err != nil {
+		return nil, err
+	}
+
+	sessions := make([]AgentSessionSnapshot, 0, len(out.Data.AgentSessions.Nodes))
+	for _, node := range out.Data.AgentSessions.Nodes {
+		if appUserID != "" && node.AppUser.ID != appUserID {
+			continue
+		}
+		if node.Issue == nil || node.Issue.Delegate == nil || node.Issue.Delegate.ID != appUserID {
+			continue
+		}
+
+		issue := &IssueWebhook{ID: node.Issue.ID, Identifier: node.Issue.Identifier, Title: node.Issue.Title, Description: node.Issue.Description, URL: node.Issue.URL, Team: node.Issue.Team}
+		if issue.Team != nil {
+			issue.TeamID = issue.Team.ID
+		}
+
+		activities := make([]AgentActivitySnapshot, 0, len(node.Activities.Nodes))
+		for _, activity := range node.Activities.Nodes {
+			activities = append(activities, AgentActivitySnapshot{ID: activity.ID, Signal: activity.Signal, Content: activity.Content})
+		}
+
+		sessions = append(sessions, AgentSessionSnapshot{ID: node.ID, Status: node.Status, URL: node.URL, IssueID: node.Issue.ID, Issue: issue, Activities: activities})
+	}
+
+	return sessions, nil
+}
+
 // CreateAgentSessionOnIssue creates an agent session for a delegated issue.
 func (c *Client) CreateAgentSessionOnIssue(ctx context.Context, issueID string) (AgentSessionWebhook, error) {
 	var out struct {

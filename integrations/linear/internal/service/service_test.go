@@ -158,6 +158,39 @@ func TestServiceRetriesAssignmentNotificationAfterCreateSessionFailure(t *testin
 	}
 }
 
+func TestServiceReconcilesPromptActivityWithoutWebhook(t *testing.T) {
+	t.Parallel()
+
+	db, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	linearClient := newFakeLinear()
+	linearClient.sessions = []linear.AgentSessionSnapshot{{
+		ID:      "as_1",
+		Status:  "pending",
+		IssueID: "issue_1",
+		Issue:   &linear.IssueWebhook{ID: "issue_1", Identifier: "BAS-24", Title: "Debug Linear integration", TeamID: "team_1"},
+		Activities: []linear.AgentActivitySnapshot{{
+			ID:      "activity_1",
+			Content: linear.ActivityContent{"type": "prompt", "body": "say hello"},
+		}},
+	}}
+	bastionClient := fakeBastion{environments: []bastion.Environment{{ID: "env_1", Status: "running"}}}
+	opencodeClient := &fakeOpenCode{response: "hello"}
+	svc := New(db, linearClient, bastionClient, opencodeClient, Config{AppUserID: "app_1", WorkerInterval: time.Millisecond}, nil)
+
+	ctx := t.Context()
+	svc.Start(ctx)
+
+	activity := linearClient.waitActivity(t, "response")
+	if activity["body"] != "hello" {
+		t.Fatalf("response body = %q, want hello", activity["body"])
+	}
+}
+
 func TestServiceProcessesStopWebhook(t *testing.T) {
 	t.Parallel()
 
@@ -200,6 +233,7 @@ type fakeLinear struct {
 
 	createdSessionIssueID string
 	createSessionErr      error
+	sessions              []linear.AgentSessionSnapshot
 }
 
 func newFakeLinear() *fakeLinear {
@@ -209,6 +243,13 @@ func newFakeLinear() *fakeLinear {
 func (f *fakeLinear) CreateActivity(_ context.Context, _ string, content linear.ActivityContent, _ bool, _ string, _ map[string]any) error {
 	f.activities <- content
 	return nil
+}
+
+func (f *fakeLinear) AgentSessions(context.Context, string) ([]linear.AgentSessionSnapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]linear.AgentSessionSnapshot(nil), f.sessions...), nil
 }
 
 func (f *fakeLinear) AgentSessionForIssue(context.Context, string, string) (linear.AgentSessionWebhook, bool, error) {

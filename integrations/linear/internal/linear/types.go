@@ -55,6 +55,23 @@ type AgentActivityWebhook struct {
 	Signal         string          `json:"signal"`
 }
 
+// AgentSessionSnapshot is a recent Linear agent session with the activities needed for reconciliation.
+type AgentSessionSnapshot struct {
+	ID         string
+	Status     string
+	URL        string
+	IssueID    string
+	Issue      *IssueWebhook
+	Activities []AgentActivitySnapshot
+}
+
+// AgentActivitySnapshot is a Linear agent activity returned during reconciliation.
+type AgentActivitySnapshot struct {
+	ID      string
+	Signal  string
+	Content ActivityContent
+}
+
 // ActivityContent is a Linear agent activity content payload.
 type ActivityContent map[string]any
 
