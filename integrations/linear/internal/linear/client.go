@@ -58,6 +58,77 @@ func (c *Client) CreateActivity(ctx context.Context, sessionID string, content A
 	return nil
 }
 
+// AgentSessionForIssue returns the most recent agent session for an issue and app user.
+func (c *Client) AgentSessionForIssue(ctx context.Context, issueID, appUserID string) (AgentSessionWebhook, bool, error) {
+	var out struct {
+		Data struct {
+			AgentSessions struct {
+				Nodes []struct {
+					ID      string        `json:"id"`
+					Status  string        `json:"status"`
+					URL     string        `json:"url"`
+					Issue   *IssueWebhook `json:"issue"`
+					AppUser struct {
+						ID string `json:"id"`
+					} `json:"appUser"`
+				} `json:"nodes"`
+			} `json:"agentSessions"`
+		} `json:"data"`
+	}
+	err := c.graphql(ctx, `query AgentSessionsForIssue { agentSessions(first: 50) { nodes { id status url issue { id identifier title description url team { id key name } } appUser { id } } } }`, nil, &out)
+	if err != nil {
+		return AgentSessionWebhook{}, false, err
+	}
+
+	for _, node := range out.Data.AgentSessions.Nodes {
+		if node.Issue == nil || node.Issue.ID != issueID {
+			continue
+		}
+		if appUserID != "" && node.AppUser.ID != appUserID {
+			continue
+		}
+		if node.Issue.TeamID == "" && node.Issue.Team != nil {
+			node.Issue.TeamID = node.Issue.Team.ID
+		}
+
+		return AgentSessionWebhook{ID: node.ID, Status: node.Status, URL: node.URL, IssueID: issueID, Issue: node.Issue}, true, nil
+	}
+
+	return AgentSessionWebhook{}, false, nil
+}
+
+// CreateAgentSessionOnIssue creates an agent session for a delegated issue.
+func (c *Client) CreateAgentSessionOnIssue(ctx context.Context, issueID string) (AgentSessionWebhook, error) {
+	var out struct {
+		Data struct {
+			AgentSessionCreateOnIssue struct {
+				Success      bool                `json:"success"`
+				AgentSession AgentSessionWebhook `json:"agentSession"`
+			} `json:"agentSessionCreateOnIssue"`
+		} `json:"data"`
+	}
+	err := c.graphql(ctx, `mutation AgentSessionCreateOnIssue($input: AgentSessionCreateOnIssue!) { agentSessionCreateOnIssue(input: $input) { success agentSession { id status url issue { id identifier title description url team { id key name } } } } }`, map[string]any{
+		"input": map[string]any{"issueId": issueID},
+	}, &out)
+	if err != nil {
+		return AgentSessionWebhook{}, err
+	}
+	if !out.Data.AgentSessionCreateOnIssue.Success {
+		return AgentSessionWebhook{}, errors.New("linear agentSessionCreateOnIssue returned success=false")
+	}
+	if out.Data.AgentSessionCreateOnIssue.AgentSession.ID == "" {
+		return AgentSessionWebhook{}, errors.New("linear agentSessionCreateOnIssue returned missing agent session id")
+	}
+
+	agentSession := out.Data.AgentSessionCreateOnIssue.AgentSession
+	agentSession.IssueID = issueID
+	if agentSession.Issue != nil && agentSession.Issue.TeamID == "" && agentSession.Issue.Team != nil {
+		agentSession.Issue.TeamID = agentSession.Issue.Team.ID
+	}
+
+	return agentSession, nil
+}
+
 // UpdatePlan replaces the Linear agent session plan.
 func (c *Client) UpdatePlan(ctx context.Context, sessionID string, plan []PlanStep) error {
 	var out struct {
@@ -189,15 +260,15 @@ func (c *Client) graphql(ctx context.Context, query string, variables map[string
 		return fmt.Errorf("decode Linear GraphQL response: %w", err)
 	}
 
-	if res.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("linear GraphQL API returned %s", res.Status)
-	}
 	if len(envelope.Errors) > 0 {
 		messages := make([]string, 0, len(envelope.Errors))
 		for _, err := range envelope.Errors {
 			messages = append(messages, err.Message)
 		}
 		return fmt.Errorf("linear GraphQL error: %s", strings.Join(messages, "; "))
+	}
+	if res.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf("linear GraphQL API returned %s", res.Status)
 	}
 
 	wrapped, err := json.Marshal(struct {

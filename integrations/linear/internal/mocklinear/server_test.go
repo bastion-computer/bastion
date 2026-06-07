@@ -19,6 +19,21 @@ func TestMockLinearSupportsClientOperations(t *testing.T) {
 	defer server.Close()
 
 	client := linear.NewClient(server.URL, "token")
+	agentSession, err := client.CreateAgentSessionOnIssue(t.Context(), "issue_1")
+	if err != nil {
+		t.Fatalf("create agent session: %v", err)
+	}
+	if agentSession.ID == "" || agentSession.IssueID != "issue_1" {
+		t.Fatalf("agent session = %#v, want session for issue_1", agentSession)
+	}
+	found, ok, err := client.AgentSessionForIssue(t.Context(), "issue_1", "app_e2e")
+	if err != nil {
+		t.Fatalf("find agent session: %v", err)
+	}
+	if !ok || found.ID != agentSession.ID {
+		t.Fatalf("found agent session = %#v/%v, want %s", found, ok, agentSession.ID)
+	}
+
 	if err := client.CreateActivity(t.Context(), "as_1", linear.ActivityContent{"type": "thought", "body": "hi"}, true, "", nil); err != nil {
 		t.Fatalf("create activity: %v", err)
 	}

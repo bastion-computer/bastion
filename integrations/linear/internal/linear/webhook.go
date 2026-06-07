@@ -62,12 +62,23 @@ func ParseVerifiedWebhook(body []byte, signature, secret string, now time.Time) 
 		return AgentSessionEventWebhookPayload{}, errors.New("linear webhook timestamp is stale")
 	}
 
-	if payload.Type != "" && payload.Type != "AgentSessionEvent" {
+	switch payload.Type {
+	case "", "AgentSessionEvent":
+		if payload.AgentSession.ID == "" {
+			return AgentSessionEventWebhookPayload{}, errors.New("linear webhook missing agentSession.id")
+		}
+	case "AppUserNotification":
+		if payload.Action != "issueAssignedToYou" && payload.Action != "issueUnassignedFromYou" {
+			return AgentSessionEventWebhookPayload{}, UnsupportedWebhookError{Type: payload.Type, Action: payload.Action}
+		}
+		if payload.Notification == nil {
+			return AgentSessionEventWebhookPayload{}, errors.New("linear webhook missing notification")
+		}
+		if payload.Notification.IssueID == "" && (payload.Notification.Issue == nil || payload.Notification.Issue.ID == "") {
+			return AgentSessionEventWebhookPayload{}, errors.New("linear webhook missing notification issue")
+		}
+	default:
 		return AgentSessionEventWebhookPayload{}, UnsupportedWebhookError{Type: payload.Type, Action: payload.Action}
-	}
-
-	if payload.AgentSession.ID == "" {
-		return AgentSessionEventWebhookPayload{}, errors.New("linear webhook missing agentSession.id")
 	}
 
 	return payload, nil

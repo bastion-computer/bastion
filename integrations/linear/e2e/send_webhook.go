@@ -1,4 +1,4 @@
-// Package main sends a signed mock Linear AgentSessionEvent webhook.
+// Package main sends a signed mock Linear app-user assignment webhook.
 //
 //nolint:wsl_v5 // E2E helper builds one request payload in a compact main.
 package main
@@ -21,7 +21,6 @@ import (
 func main() {
 	url := flag.String("url", "", "Linear integration webhook URL")
 	secret := flag.String("secret", "", "webhook signing secret")
-	sessionID := flag.String("session", "as_e2e", "agent session ID")
 	issueID := flag.String("issue", "issue_e2e", "issue ID")
 	identifier := flag.String("identifier", "BAS-E2E", "issue identifier")
 	flag.Parse()
@@ -32,25 +31,26 @@ func main() {
 	}
 
 	payload := map[string]any{
-		"type":             "AgentSessionEvent",
-		"action":           "created",
+		"type":             "AppUserNotification",
+		"action":           "issueAssignedToYou",
 		"createdAt":        time.Now().UTC().Format(time.RFC3339Nano),
 		"organizationId":   "org_e2e",
 		"oauthClientId":    "oauth_e2e",
 		"appUserId":        "app_e2e",
 		"webhookId":        "wh_" + strconv.FormatInt(time.Now().UnixNano(), 10),
 		"webhookTimestamp": time.Now().UnixMilli(),
-		"promptContext":    "Please complete the Linear E2E task and return mock-opencode-response.",
-		"agentSession": map[string]any{
-			"id":             *sessionID,
-			"status":         "pending",
-			"organizationId": "org_e2e",
-			"issueId":        *issueID,
+		"notification": map[string]any{
+			"id":        "notif_" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			"type":      "issueAssignedToYou",
+			"issueId":   *issueID,
+			"userId":    "app_e2e",
+			"createdAt": time.Now().UTC().Format(time.RFC3339Nano),
+			"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
 			"issue": map[string]any{
 				"id":          *issueID,
 				"identifier":  *identifier,
 				"title":       "Linear E2E",
-				"description": "E2E verification issue",
+				"description": "Please complete the Linear E2E task and return mock-opencode-response.",
 				"url":         "https://linear.app/bastion/issue/" + *identifier,
 				"teamId":      "team_e2e",
 				"team": map[string]any{

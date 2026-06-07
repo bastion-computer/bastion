@@ -21,6 +21,7 @@ type Server struct {
 	Activities  []linear.ActivityContent
 	Plans       [][]linear.PlanStep
 	IssueUpdate []IssueUpdate
+	Sessions    []linear.AgentSessionWebhook
 	Attachments []linear.Attachment
 }
 
@@ -33,9 +34,10 @@ type IssueUpdate struct {
 
 // Snapshot is a copy of the mock server state.
 type Snapshot struct {
-	Activities  []linear.ActivityContent `json:"activities"`
-	Plans       [][]linear.PlanStep      `json:"plans"`
-	IssueUpdate []IssueUpdate            `json:"issueUpdates"`
+	Activities  []linear.ActivityContent     `json:"activities"`
+	Plans       [][]linear.PlanStep          `json:"plans"`
+	IssueUpdate []IssueUpdate                `json:"issueUpdates"`
+	Sessions    []linear.AgentSessionWebhook `json:"sessions"`
 }
 
 // New returns a mock Linear API server handler.
@@ -63,6 +65,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.Contains(req.Query, "agentActivityCreate"):
 		s.handleActivity(w, req.Variables)
+	case strings.Contains(req.Query, "agentSessions"):
+		s.handleAgentSessions(w)
+	case strings.Contains(req.Query, "agentSessionCreateOnIssue"):
+		s.handleSessionCreateOnIssue(w, req.Variables)
 	case strings.Contains(req.Query, "agentSessionUpdate"):
 		s.handleSessionUpdate(w, req.Variables)
 	case strings.Contains(req.Query, "TeamStartedStatuses") || strings.Contains(req.Query, "states(filter"):
@@ -94,8 +100,9 @@ func (s *Server) Snapshot() Snapshot {
 	activities := append([]linear.ActivityContent(nil), s.Activities...)
 	plans := append([][]linear.PlanStep(nil), s.Plans...)
 	updates := append([]IssueUpdate(nil), s.IssueUpdate...)
+	sessions := append([]linear.AgentSessionWebhook(nil), s.Sessions...)
 
-	return Snapshot{Activities: activities, Plans: plans, IssueUpdate: updates}
+	return Snapshot{Activities: activities, Plans: plans, IssueUpdate: updates, Sessions: sessions}
 }
 
 func (s *Server) handleActivity(w http.ResponseWriter, variables map[string]any) {
@@ -109,6 +116,49 @@ func (s *Server) handleActivity(w http.ResponseWriter, variables map[string]any)
 	s.mu.Unlock()
 
 	_, _ = w.Write([]byte(`{"data":{"agentActivityCreate":{"success":true}}}`))
+}
+
+func (s *Server) handleAgentSessions(w http.ResponseWriter) {
+	s.mu.Lock()
+	sessions := append([]linear.AgentSessionWebhook(nil), s.Sessions...)
+	s.mu.Unlock()
+
+	nodes := make([]map[string]any, 0, len(sessions))
+	for _, session := range sessions {
+		nodes = append(nodes, map[string]any{
+			"id":      session.ID,
+			"status":  session.Status,
+			"url":     session.URL,
+			"issue":   session.Issue,
+			"appUser": map[string]any{"id": "app_e2e"},
+		})
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"agentSessions": map[string]any{"nodes": nodes}}})
+}
+
+func (s *Server) handleSessionCreateOnIssue(w http.ResponseWriter, variables map[string]any) {
+	input, _ := variables["input"].(map[string]any)
+	issueID := stringValue(input["issueId"])
+	session := linear.AgentSessionWebhook{
+		ID:      "as_mock_" + strings.ReplaceAll(issueID, "-", "_"),
+		Status:  "pending",
+		IssueID: issueID,
+		Issue: &linear.IssueWebhook{
+			ID:         issueID,
+			Identifier: "BAS-E2E",
+			Title:      "Linear E2E",
+			TeamID:     "team_e2e",
+			Team:       &linear.TeamWebhook{ID: "team_e2e", Key: "BAS", Name: "Bastion"},
+		},
+		OrganizationID: "org_e2e",
+	}
+
+	s.mu.Lock()
+	s.Sessions = append(s.Sessions, session)
+	s.mu.Unlock()
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"agentSessionCreateOnIssue": map[string]any{"success": true, "agentSession": session}}})
 }
 
 func (s *Server) handleSessionUpdate(w http.ResponseWriter, variables map[string]any) {

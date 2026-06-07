@@ -43,6 +43,8 @@ const (
 // LinearClient is the subset of Linear used by the worker.
 type LinearClient interface {
 	CreateActivity(context.Context, string, linear.ActivityContent, bool, string, map[string]any) error
+	AgentSessionForIssue(context.Context, string, string) (linear.AgentSessionWebhook, bool, error)
+	CreateAgentSessionOnIssue(context.Context, string) (linear.AgentSessionWebhook, error)
 	UpdatePlan(context.Context, string, []linear.PlanStep) error
 	StartedState(context.Context, string) (string, error)
 	UpdateIssue(context.Context, string, string, string) error
@@ -118,18 +120,34 @@ func (s *Service) AcceptWebhook(ctx context.Context, payload linear.AgentSession
 		return nil
 	}
 
-	if err := s.upsertSession(ctx, payload); err != nil {
+	if payload.Type == "AppUserNotification" {
+		if err := s.acceptNotificationWebhook(ctx, payload); err != nil {
+			_ = s.deleteWebhook(ctx, payload.WebhookID)
+			return err
+		}
+
+		return nil
+	}
+
+	created, err := s.upsertSession(ctx, payload)
+	if err != nil {
+		_ = s.deleteWebhook(ctx, payload.WebhookID)
 		return err
 	}
 
 	switch payload.Action {
 	case "created":
+		if !created {
+			break
+		}
 		if err := s.enqueueJob(ctx, payload.AgentSession.ID, jobCreated, payload.PromptContext); err != nil {
+			_ = s.deleteWebhook(ctx, payload.WebhookID)
 			return err
 		}
 	case "prompted":
 		if payload.AgentActivity != nil && payload.AgentActivity.Signal == "stop" {
 			if err := s.enqueueJob(ctx, payload.AgentSession.ID, jobStop, ""); err != nil {
+				_ = s.deleteWebhook(ctx, payload.WebhookID)
 				return err
 			}
 			break
@@ -140,10 +158,65 @@ func (s *Service) AcceptWebhook(ctx context.Context, payload linear.AgentSession
 			body = "The user provided a follow-up prompt in Linear. Continue from the latest session context."
 		}
 		if err := s.enqueueJob(ctx, payload.AgentSession.ID, jobPrompt, body); err != nil {
+			_ = s.deleteWebhook(ctx, payload.WebhookID)
 			return err
 		}
 	default:
 		return fmt.Errorf("unsupported Linear agent session action %q", payload.Action)
+	}
+
+	s.wake()
+	return nil
+}
+
+func (s *Service) acceptNotificationWebhook(ctx context.Context, payload linear.AgentSessionEventWebhookPayload) error {
+	issueID := notificationIssueID(payload.Notification)
+	if issueID == "" {
+		return errors.New("linear app-user notification missing issue")
+	}
+
+	switch payload.Action {
+	case "issueAssignedToYou":
+		agentSession, ok, err := s.linear.AgentSessionForIssue(ctx, issueID, s.cfg.AppUserID)
+		if err != nil {
+			s.logger.WarnContext(ctx, "could not find existing Linear agent session", slog.String("error", err.Error()), slog.String("issue_id", issueID))
+		}
+		if !ok {
+			agentSession, err = s.linear.CreateAgentSessionOnIssue(ctx, issueID)
+			if err != nil {
+				return fmt.Errorf("create Linear agent session for assigned issue: %w", err)
+			}
+		}
+		if agentSession.IssueID == "" {
+			agentSession.IssueID = issueID
+		}
+		if agentSession.Issue == nil && payload.Notification != nil {
+			agentSession.Issue = payload.Notification.Issue
+		}
+
+		created, err := s.upsertSession(ctx, linear.AgentSessionEventWebhookPayload{
+			Action:        "created",
+			PromptContext: notificationPrompt(payload.Notification),
+			AgentSession:  agentSession,
+		})
+		if err != nil {
+			return err
+		}
+		if created {
+			if err := s.enqueueJob(ctx, agentSession.ID, jobCreated, notificationPrompt(payload.Notification)); err != nil {
+				return err
+			}
+		}
+	case "issueUnassignedFromYou":
+		session, ok, err := s.activeSessionByIssue(ctx, issueID)
+		if err != nil || !ok {
+			return err
+		}
+		if err := s.enqueueJob(ctx, session.AgentSessionID, jobStop, ""); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported Linear app-user notification action %q", payload.Action)
 	}
 
 	s.wake()
@@ -459,6 +532,35 @@ func (s session) prompt() string {
 	return strings.Join(parts, "\n\n")
 }
 
+func notificationIssueID(notification *linear.NotificationWebhook) string {
+	if notification == nil {
+		return ""
+	}
+	if notification.Issue != nil && notification.Issue.ID != "" {
+		return notification.Issue.ID
+	}
+
+	return notification.IssueID
+}
+
+func notificationPrompt(notification *linear.NotificationWebhook) string {
+	if notification == nil || notification.Issue == nil {
+		return ""
+	}
+
+	issue := notification.Issue
+	var parts []string
+	if issue.Identifier != "" || issue.Title != "" {
+		parts = append(parts, "Linear issue: "+strings.TrimSpace(issue.Identifier+" "+issue.Title))
+	}
+	if strings.TrimSpace(issue.Description) != "" {
+		parts = append(parts, "Description:\n"+strings.TrimSpace(issue.Description))
+	}
+	parts = append(parts, "Please work on this Linear issue using the repository in this Bastion environment.")
+
+	return strings.Join(parts, "\n\n")
+}
+
 type job struct {
 	ID             string
 	AgentSessionID string
@@ -489,7 +591,18 @@ func (s *Service) recordWebhook(ctx context.Context, webhookID string, raw []byt
 	return false, fmt.Errorf("record Linear webhook: %w", err)
 }
 
-func (s *Service) upsertSession(ctx context.Context, payload linear.AgentSessionEventWebhookPayload) error {
+func (s *Service) deleteWebhook(ctx context.Context, webhookID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM linear_webhook_events WHERE webhook_id = ?`, webhookID)
+	return err
+}
+
+func (s *Service) upsertSession(ctx context.Context, payload linear.AgentSessionEventWebhookPayload) (bool, error) {
+	var existing int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM linear_sessions WHERE agent_session_id = ?`, payload.AgentSession.ID).Scan(&existing)
+	if err != nil {
+		return false, fmt.Errorf("lookup Linear session: %w", err)
+	}
+
 	issueID := payload.AgentSession.IssueID
 	issueIdentifier := ""
 	issueTitle := ""
@@ -504,7 +617,7 @@ func (s *Service) upsertSession(ctx context.Context, payload linear.AgentSession
 		}
 	}
 
-	_, err := s.db.ExecContext(ctx, `INSERT INTO linear_sessions (agent_session_id, issue_id, issue_identifier, issue_title, team_id, status, prompt_context, created_at, updated_at)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO linear_sessions (agent_session_id, issue_id, issue_identifier, issue_title, team_id, status, prompt_context, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(agent_session_id) DO UPDATE SET
   issue_id = excluded.issue_id,
@@ -515,10 +628,10 @@ ON CONFLICT(agent_session_id) DO UPDATE SET
   updated_at = excluded.updated_at`,
 		payload.AgentSession.ID, issueID, issueIdentifier, issueTitle, teamID, sessionQueued, payload.PromptContext, now(), now())
 	if err != nil {
-		return fmt.Errorf("upsert Linear session: %w", err)
+		return false, fmt.Errorf("upsert Linear session: %w", err)
 	}
 
-	return nil
+	return existing == 0, nil
 }
 
 func (s *Service) enqueueJob(ctx context.Context, agentSessionID, kind, body string) error {
@@ -577,6 +690,19 @@ func (s *Service) session(ctx context.Context, agentSessionID string) (session, 
 	}
 
 	return out, nil
+}
+
+func (s *Service) activeSessionByIssue(ctx context.Context, issueID string) (session, bool, error) {
+	var out session
+	err := s.db.QueryRowContext(ctx, `SELECT agent_session_id, issue_id, issue_identifier, issue_title, team_id, status, environment_id, opencode_session_id, prompt_context FROM linear_sessions WHERE issue_id = ? AND status NOT IN (?, ?) ORDER BY updated_at DESC LIMIT 1`, issueID, sessionDone, sessionStopped).Scan(&out.AgentSessionID, &out.IssueID, &out.IssueIdentifier, &out.IssueTitle, &out.TeamID, &out.Status, &out.EnvironmentID, &out.OpenCodeSessionID, &out.PromptContext)
+	if errors.Is(err, sql.ErrNoRows) {
+		return session{}, false, nil
+	}
+	if err != nil {
+		return session{}, false, fmt.Errorf("load active Linear session by issue: %w", err)
+	}
+
+	return out, true, nil
 }
 
 func (s *Service) tryAssignEnvironment(ctx context.Context, agentSessionID, environmentID string) (bastion.Environment, bool, error) {

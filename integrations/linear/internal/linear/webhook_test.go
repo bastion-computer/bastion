@@ -75,6 +75,70 @@ func TestParseVerifiedWebhookReturnsUnsupportedType(t *testing.T) {
 	}
 }
 
+func TestParseVerifiedWebhookAcceptsAssignmentNotification(t *testing.T) {
+	t.Parallel()
+
+	secret := "secret"
+	now := time.Now()
+
+	body, err := json.Marshal(AgentSessionEventWebhookPayload{
+		Type:             "AppUserNotification",
+		Action:           "issueAssignedToYou",
+		WebhookID:        "wh_1",
+		WebhookTimestamp: float64(now.UnixMilli()),
+		Notification: &NotificationWebhook{
+			ID:      "notif_1",
+			Type:    "issueAssignedToYou",
+			IssueID: "issue_1",
+			Issue: &IssueWebhook{
+				ID:         "issue_1",
+				Identifier: "BAS-12",
+				Title:      "Implement Linear integration",
+				TeamID:     "team_1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal webhook: %v", err)
+	}
+
+	payload, err := ParseVerifiedWebhook(body, SignWebhook(body, secret), secret, now)
+	if err != nil {
+		t.Fatalf("parse verified webhook: %v", err)
+	}
+
+	if payload.Notification == nil || payload.Notification.IssueID != "issue_1" {
+		t.Fatalf("notification = %#v, want issue notification", payload.Notification)
+	}
+}
+
+func TestParseVerifiedWebhookIgnoresUnsupportedNotificationAction(t *testing.T) {
+	t.Parallel()
+
+	secret := "secret"
+	now := time.Now()
+
+	body, err := json.Marshal(map[string]any{
+		"type":             "AppUserNotification",
+		"action":           "issueSubscribed",
+		"webhookId":        "wh_1",
+		"webhookTimestamp": float64(now.UnixMilli()),
+		"notification": map[string]any{
+			"id":      "notif_1",
+			"type":    "issueSubscribed",
+			"issueId": "issue_1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal webhook: %v", err)
+	}
+
+	_, err = ParseVerifiedWebhook(body, SignWebhook(body, secret), secret, now)
+	if !IsUnsupportedWebhook(err) {
+		t.Fatalf("ParseVerifiedWebhook error = %v, want unsupported webhook", err)
+	}
+}
+
 func TestPromptBody(t *testing.T) {
 	t.Parallel()
 

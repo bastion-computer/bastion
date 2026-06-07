@@ -16,6 +16,7 @@ type AgentSessionEventWebhookPayload struct {
 	PromptContext    string                `json:"promptContext"`
 	AgentSession     AgentSessionWebhook   `json:"agentSession"`
 	AgentActivity    *AgentActivityWebhook `json:"agentActivity"`
+	Notification     *NotificationWebhook  `json:"notification"`
 }
 
 // AgentSessionWebhook is the nested agent session webhook object.
@@ -71,4 +72,15 @@ type Attachment struct {
 	URL        string         `json:"url"`
 	SourceType string         `json:"sourceType"`
 	Metadata   map[string]any `json:"metadata"`
+}
+
+// NotificationWebhook is the subset of app-user notification webhooks used by this integration.
+type NotificationWebhook struct {
+	ID        string        `json:"id"`
+	Type      string        `json:"type"`
+	IssueID   string        `json:"issueId"`
+	Issue     *IssueWebhook `json:"issue"`
+	UserID    string        `json:"userId"`
+	CreatedAt string        `json:"createdAt"`
+	UpdatedAt string        `json:"updatedAt"`
 }

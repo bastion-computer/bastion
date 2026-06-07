@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -61,6 +62,102 @@ func TestServiceProcessesCreatedWebhook(t *testing.T) {
 	}
 }
 
+func TestServiceProcessesAssignmentNotification(t *testing.T) {
+	t.Parallel()
+
+	db, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	linearClient := newFakeLinear()
+	bastionClient := fakeBastion{environments: []bastion.Environment{{ID: "env_1", Status: "running", Tags: []string{"linear"}}}}
+	opencodeClient := &fakeOpenCode{response: "implemented from assignment"}
+	svc := New(db, linearClient, bastionClient, opencodeClient, Config{Selector: Selector{Tags: []string{"linear"}}, AppUserID: "app_1", WorkerInterval: time.Millisecond}, nil)
+
+	ctx := t.Context()
+
+	svc.Start(ctx)
+
+	err = svc.AcceptWebhook(ctx, linear.AgentSessionEventWebhookPayload{
+		Type:             "AppUserNotification",
+		Action:           "issueAssignedToYou",
+		WebhookID:        "wh_1",
+		WebhookTimestamp: float64(time.Now().UnixMilli()),
+		Notification: &linear.NotificationWebhook{
+			ID:      "notif_1",
+			Type:    "issueAssignedToYou",
+			IssueID: "issue_1",
+			Issue: &linear.IssueWebhook{
+				ID:          "issue_1",
+				Identifier:  "BAS-24",
+				Title:       "Debug Linear integration",
+				Description: "Use the live Linear API.",
+				TeamID:      "team_1",
+			},
+		},
+	}, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("accept webhook: %v", err)
+	}
+
+	activity := linearClient.waitActivity(t, "response")
+	if activity["body"] != "implemented from assignment" {
+		t.Fatalf("response body = %q, want implemented from assignment", activity["body"])
+	}
+
+	if linearClient.createdSessionIssueID != "issue_1" {
+		t.Fatalf("created session issue ID = %q, want issue_1", linearClient.createdSessionIssueID)
+	}
+}
+
+func TestServiceRetriesAssignmentNotificationAfterCreateSessionFailure(t *testing.T) {
+	t.Parallel()
+
+	db, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	linearClient := newFakeLinear()
+	linearClient.createSessionErr = errors.New("temporary Linear error")
+	bastionClient := fakeBastion{environments: []bastion.Environment{{ID: "env_1", Status: "running"}}}
+	opencodeClient := &fakeOpenCode{response: "implemented after retry"}
+	svc := New(db, linearClient, bastionClient, opencodeClient, Config{WorkerInterval: time.Millisecond}, nil)
+
+	ctx := t.Context()
+	svc.Start(ctx)
+
+	payload := linear.AgentSessionEventWebhookPayload{
+		Type:             "AppUserNotification",
+		Action:           "issueAssignedToYou",
+		WebhookID:        "wh_1",
+		WebhookTimestamp: float64(time.Now().UnixMilli()),
+		Notification: &linear.NotificationWebhook{
+			ID:      "notif_1",
+			Type:    "issueAssignedToYou",
+			IssueID: "issue_1",
+			Issue:   &linear.IssueWebhook{ID: "issue_1", Identifier: "BAS-24", Title: "Debug Linear integration"},
+		},
+	}
+
+	if err := svc.AcceptWebhook(ctx, payload, []byte(`{}`)); err == nil {
+		t.Fatalf("accept webhook succeeded, want temporary error")
+	}
+
+	linearClient.createSessionErr = nil
+	if err := svc.AcceptWebhook(ctx, payload, []byte(`{}`)); err != nil {
+		t.Fatalf("accept webhook retry: %v", err)
+	}
+
+	activity := linearClient.waitActivity(t, "response")
+	if activity["body"] != "implemented after retry" {
+		t.Fatalf("response body = %q, want implemented after retry", activity["body"])
+	}
+}
+
 func TestServiceProcessesStopWebhook(t *testing.T) {
 	t.Parallel()
 
@@ -100,6 +197,9 @@ type fakeLinear struct {
 	issueID    string
 	stateID    string
 	delegateID string
+
+	createdSessionIssueID string
+	createSessionErr      error
 }
 
 func newFakeLinear() *fakeLinear {
@@ -109,6 +209,23 @@ func newFakeLinear() *fakeLinear {
 func (f *fakeLinear) CreateActivity(_ context.Context, _ string, content linear.ActivityContent, _ bool, _ string, _ map[string]any) error {
 	f.activities <- content
 	return nil
+}
+
+func (f *fakeLinear) AgentSessionForIssue(context.Context, string, string) (linear.AgentSessionWebhook, bool, error) {
+	return linear.AgentSessionWebhook{}, false, nil
+}
+
+func (f *fakeLinear) CreateAgentSessionOnIssue(_ context.Context, issueID string) (linear.AgentSessionWebhook, error) {
+	f.mu.Lock()
+	if f.createSessionErr != nil {
+		err := f.createSessionErr
+		f.mu.Unlock()
+		return linear.AgentSessionWebhook{}, err
+	}
+	f.createdSessionIssueID = issueID
+	f.mu.Unlock()
+
+	return linear.AgentSessionWebhook{ID: "as_created", IssueID: issueID, Issue: &linear.IssueWebhook{ID: issueID, Identifier: "BAS-24", Title: "Debug Linear integration", TeamID: "team_1"}}, nil
 }
 
 func (f *fakeLinear) UpdatePlan(context.Context, string, []linear.PlanStep) error { return nil }
