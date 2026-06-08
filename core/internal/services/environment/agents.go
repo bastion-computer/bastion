@@ -21,11 +21,20 @@ type AgentConnection struct {
 
 // AgentConnection returns private HTTP connection metadata for an environment agent.
 func (s *Service) AgentConnection(ctx context.Context, environmentID, agentName string) (AgentConnection, error) {
+	return s.agentConnection(ctx, environmentID, "", agentName)
+}
+
+// AgentConnectionByKey returns private HTTP connection metadata for an environment agent by environment key.
+func (s *Service) AgentConnectionByKey(ctx context.Context, key, agentName string) (AgentConnection, error) {
+	return s.agentConnection(ctx, "", key, agentName)
+}
+
+func (s *Service) agentConnection(ctx context.Context, environmentID, key, agentName string) (AgentConnection, error) {
 	if agentName != ch.AgentOpenCode {
 		return AgentConnection{}, fmt.Errorf("%w: environment agent %s not found", failure.ErrNotFound, agentName)
 	}
 
-	environment, err := s.Get(ctx, environmentID)
+	environment, err := s.getByIDOrKey(ctx, environmentID, key)
 	if err != nil {
 		return AgentConnection{}, err
 	}

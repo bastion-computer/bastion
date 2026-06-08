@@ -284,6 +284,9 @@ Response:
 GET /v1/environments/env_xxxxxx/agents/opencode
 GET /v1/environments/env_xxxxxx/agents/opencode/<path>
 POST /v1/environments/env_xxxxxx/agents/opencode/<path>
+GET /v1/environments/by-key/review-123/agents/opencode
+GET /v1/environments/by-key/review-123/agents/opencode/<path>
+POST /v1/environments/by-key/review-123/agents/opencode/<path>
 ```
 
 All HTTP methods are proxied to the environment's OpenCode server. The

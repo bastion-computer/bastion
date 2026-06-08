@@ -9,11 +9,22 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/bastion-computer/bastion/core/internal/handlers"
+	"github.com/bastion-computer/bastion/core/internal/services/environment"
 )
 
 // AgentProxy proxies HTTP requests to an environment agent server.
 func (h Handler) AgentProxy(c *gin.Context) {
-	connection, err := h.environments.AgentConnection(c.Request.Context(), c.Param("id"), c.Param("agent"))
+	var (
+		connection environment.AgentConnection
+		err        error
+	)
+
+	if key := c.Param("key"); key != "" {
+		connection, err = h.environments.AgentConnectionByKey(c.Request.Context(), key, c.Param("agent"))
+	} else {
+		connection, err = h.environments.AgentConnection(c.Request.Context(), c.Param("id"), c.Param("agent"))
+	}
+
 	if err != nil {
 		_ = c.Error(err)
 		c.JSON(handlers.ErrorStatus(err), gin.H{"error": err.Error()})
