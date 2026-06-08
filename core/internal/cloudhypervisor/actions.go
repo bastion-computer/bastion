@@ -11,8 +11,13 @@ import (
 	"strings"
 )
 
-// ErrVMInitFailed marks valid VM launches that failed during guest initialization.
+// ErrVMInitFailed marks valid VM launches that failed during guest lifecycle actions.
 var ErrVMInitFailed = errors.New("vm init failed")
+
+const (
+	actionPhaseInit  = "init"
+	actionPhaseStart = "start"
+)
 
 type templateConfig struct {
 	Resources templateResources `json:"resources"`
@@ -32,7 +37,8 @@ type resolvedResources struct {
 }
 
 type templateActions struct {
-	Init []templateAction `json:"init"`
+	Init  []templateAction `json:"init"`
+	Start []templateAction `json:"start,omitempty"`
 }
 
 type templateAction struct {
@@ -43,29 +49,27 @@ type templateAction struct {
 }
 
 func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {
-	m = m.withDefaults()
-
-	actions, err := parseInitActions(config)
-	if err != nil {
-		return err
-	}
-
-	for index, action := range actions {
-		if err := m.runInitAction(ctx, vm, index+1, action, logs); err != nil {
-			return initActionError{index: index + 1, err: err}
-		}
-	}
-
-	return nil
+	return m.runActions(ctx, vm, config, actionPhaseInit, logs)
 }
 
-func parseInitActions(config json.RawMessage) ([]templateAction, error) {
+func (m Manager) runStartActions(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {
+	return m.runActions(ctx, vm, config, actionPhaseStart, logs)
+}
+
+func parseActions(config json.RawMessage, phase string) ([]templateAction, error) {
 	parsed, err := parseTemplateConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
-	return parsed.Actions.Init, nil
+	switch phase {
+	case actionPhaseInit:
+		return parsed.Actions.Init, nil
+	case actionPhaseStart:
+		return parsed.Actions.Start, nil
+	default:
+		return nil, fmt.Errorf("unknown action phase %q", phase)
+	}
 }
 
 func parseTemplateResources(config json.RawMessage) (templateResources, error) {
@@ -164,14 +168,31 @@ func resourceGiBBytes(value int64, name string) (int64, error) {
 	return value * gibBytes, nil
 }
 
-func (m Manager) runInitAction(ctx context.Context, vm VM, index int, action templateAction, logs io.Writer) error {
+func (m Manager) runActions(ctx context.Context, vm VM, config json.RawMessage, phase string, logs io.Writer) error {
+	m = m.withDefaults()
+
+	actions, err := parseActions(config, phase)
+	if err != nil {
+		return err
+	}
+
+	for index, action := range actions {
+		if err := m.runAction(ctx, vm, phase, index+1, action, logs); err != nil {
+			return actionError{phase: phase, index: index + 1, err: err}
+		}
+	}
+
+	return nil
+}
+
+func (m Manager) runAction(ctx context.Context, vm VM, phase string, index int, action templateAction, logs io.Writer) error {
 	switch {
 	case action.Run != "":
 		return m.runGuestCommand(ctx, vm, runActionCommand(action), logs)
 	case action.Use != "":
-		return m.runPresetAction(ctx, vm, index, action, logs)
+		return m.runPresetAction(ctx, vm, phase, index, action, logs)
 	default:
-		return errors.New("init action must define run or use")
+		return fmt.Errorf("%s action must define run or use", phase)
 	}
 }
 
@@ -237,22 +258,30 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-type initActionError struct {
+type actionError struct {
+	phase string
 	index int
 	err   error
 }
 
-func (e initActionError) Error() string {
-	return fmt.Sprintf("init action %d failed: %v", e.index, e.err)
+func (e actionError) Error() string {
+	phase := e.phase
+	if phase == "" {
+		phase = actionPhaseInit
+	}
+
+	return fmt.Sprintf("%s action %d failed: %v", phase, e.index, e.err)
 }
 
-func (e initActionError) Unwrap() error {
+func (e actionError) Unwrap() error {
 	return e.err
 }
 
-func (e initActionError) Is(target error) bool {
+func (e actionError) Is(target error) bool {
 	return target == ErrVMInitFailed
 }
+
+type initActionError = actionError
 
 type guestCommandError struct {
 	message string

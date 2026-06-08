@@ -44,7 +44,7 @@ type presetActionInput struct {
 	Required    bool   `json:"required,omitempty"`
 }
 
-func (m Manager) runPresetAction(ctx context.Context, vm VM, index int, action templateAction, logs io.Writer) error {
+func (m Manager) runPresetAction(ctx context.Context, vm VM, phase string, index int, action templateAction, logs io.Writer) error {
 	preset, err := loadPresetAction(m.DataDir, action.Use)
 	if err != nil {
 		return err
@@ -54,7 +54,7 @@ func (m Manager) runPresetAction(ctx context.Context, vm VM, index int, action t
 		return err
 	}
 
-	stagedDir, err := stagePresetAction(vm, index, preset, action.With)
+	stagedDir, err := stagePresetAction(vm, phase, index, preset, action.With)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (m Manager) runPresetAction(ctx context.Context, vm VM, index int, action t
 		return nil
 	}
 
-	guestDir := guestPresetActionDir(index, preset.name)
+	guestDir := guestPresetActionDir(phase, index, preset.name)
 	if err := m.copyPresetActionToGuest(ctx, vm, stagedDir, path.Dir(guestDir), logs); err != nil {
 		return errors.Join(err, removeHostInputFile())
 	}
@@ -161,12 +161,12 @@ func validatePresetActionInputs(preset presetActionPackage, with map[string]any)
 	return nil
 }
 
-func stagePresetAction(vm VM, index int, preset presetActionPackage, with map[string]any) (string, error) {
+func stagePresetAction(vm VM, phase string, index int, preset presetActionPackage, with map[string]any) (string, error) {
 	if vm.EnvDir == "" {
 		return "", errors.New("environment directory is required")
 	}
 
-	stagedDir := filepath.Join(vm.EnvDir, presetactions.DirName, presetActionDirName(index, preset.name))
+	stagedDir := filepath.Join(vm.EnvDir, presetactions.DirName, presetActionDirName(phase, index, preset.name))
 	if err := os.RemoveAll(stagedDir); err != nil {
 		return "", fmt.Errorf("remove stale preset action staging directory: %w", err)
 	}
@@ -365,12 +365,12 @@ func copyDir(src, dst string) error {
 	})
 }
 
-func guestPresetActionDir(index int, name string) string {
-	return path.Join(guestActionsDir, presetActionDirName(index, name))
+func guestPresetActionDir(phase string, index int, name string) string {
+	return path.Join(guestActionsDir, presetActionDirName(phase, index, name))
 }
 
-func presetActionDirName(index int, name string) string {
-	return fmt.Sprintf("init-%d-%s", index, name)
+func presetActionDirName(phase string, index int, name string) string {
+	return fmt.Sprintf("%s-%d-%s", phase, index, name)
 }
 
 func presetInputEnvName(name string) string {

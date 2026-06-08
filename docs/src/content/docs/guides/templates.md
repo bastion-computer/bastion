@@ -6,9 +6,9 @@ description: Define reusable Bastion environment templates with JSON.
 Templates describe how Bastion prepares reusable environment snapshots. During
 template creation, Bastion boots a temporary Cloud Hypervisor VM, runs the init
 actions, snapshots the paused VM, and stores an immutable prepared root disk.
-Environments created from the template restore that snapshot instead of running
-init again. Template JSON records are immutable and validated against the public
-template schema.
+Environments created from the template restore that snapshot, run any start
+actions, and then become ready. Template JSON records are immutable and
+validated against the public template schema.
 Template keys are optional human-friendly aliases. When a key is set, it must be
 unique. Unkeyed templates are referenced by ID.
 
@@ -19,10 +19,10 @@ The current schema is available at
 
 A template has two top-level fields:
 
-| Field       | Required | Description                                                     |
-| ----------- | -------- | --------------------------------------------------------------- |
-| `resources` | No       | VM CPU, memory, and volume sizing.                              |
-| `actions`   | Yes      | Lifecycle actions. The current runtime supports `actions.init`. |
+| Field       | Required | Description                                     |
+| ----------- | -------- | ----------------------------------------------- |
+| `resources` | No       | VM CPU, memory, and volume sizing.              |
+| `actions`   | Yes      | Lifecycle actions: `init` and optional `start`. |
 
 Minimal template:
 
@@ -59,13 +59,22 @@ Use `resources` to override the default VM allocation.
 
 All resource values must be integers greater than or equal to `1`.
 
-## Init Actions
+## Lifecycle Actions
 
 `actions.init` is an ordered array of steps that run while the template VM is
 being prepared, after it boots and SSH is reachable. If any init action fails,
 template creation fails and no reusable template is registered.
 
-Each action must be one of:
+`actions.start` is an optional ordered array of steps that run during
+`bastion env create`, after the environment is restored from the template
+snapshot and SSH is reachable. If any start action fails, environment creation
+fails and the environment is recorded in an error state.
+
+Start actions are useful for per-environment setup that should not be baked into
+the template snapshot, such as writing environment-specific files, checking out
+ephemeral work, or starting services that should be initialized after restore.
+
+Each init or start action must be one of:
 
 | Action | Description                                                     |
 | ------ | --------------------------------------------------------------- |
@@ -86,6 +95,11 @@ Use `run` for one-off shell commands:
       {
         "run": "printf 'ready\\n' > status.txt",
         "working_directory": "/workspace"
+      }
+    ],
+    "start": [
+      {
+        "run": "printf 'environment ready\\n' > /workspace/start.txt"
       }
     ]
   }
@@ -125,6 +139,8 @@ underscores, and hyphens. Values under `with` can be strings, numbers, or
 booleans. Input names must start with a letter and can contain letters,
 numbers, and underscores.
 
+Preset actions can run in either `actions.init` or `actions.start`.
+
 See [Custom Actions](/ecosystem/custom-actions/) for custom action package
 layout. Built-in actions are documented by category under
 [Coding Agents](/ecosystem/built-ins/coding-agents/),
@@ -153,7 +169,8 @@ value from the `bastion start` process environment. If the variable is not set,
 template creation fails.
 
 Substitution works anywhere a string appears in the template JSON, including
-`run` commands, `working_directory`, and action package inputs.
+`actions.init`, `actions.start`, `run` commands, `working_directory`, and action
+package inputs.
 
 ## Create a Template
 
@@ -179,7 +196,8 @@ Exactly one of `--config` or `--file` is required.
 
 Creation may take several minutes for templates with package installs or other
 expensive init work. Bastion streams init logs to stderr and writes the final
-template metadata to stdout.
+template metadata to stdout. Start action logs stream later during
+`bastion env create`.
 
 Example response:
 

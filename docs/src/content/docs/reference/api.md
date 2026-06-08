@@ -181,6 +181,8 @@ Request by template ID:
 ```
 
 Successful and failed environment creation both stream newline-delimited JSON.
+If the template defines `actions.start`, those action logs are emitted as log
+events before the result event.
 
 Log event:
 

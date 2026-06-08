@@ -132,6 +132,13 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
+	if err := m.runStartActions(ctx, vm, req.Template.Config, req.Logs); err != nil {
+		failed, failErr := failVM(vm, err)
+		m.cleanupVM(context.Background(), failed, false)
+
+		return failed, failErr
+	}
+
 	vm.State = StateRunning
 	if err := writeVMState(vm); err != nil {
 		m.cleanupVM(context.Background(), vm, true)

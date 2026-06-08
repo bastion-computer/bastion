@@ -392,6 +392,20 @@ working_directory_config() {
   }'
 }
 
+start_action_config() {
+  jq -nc --arg run_id "$RUN_ID" '{
+    actions: {
+      init: [
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-start\nprintf init-complete > /opt/bastion-e2e-start/init-status"}
+      ],
+      start: [
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-start\nprintf \"run_id=\($run_id)\\n\" > /opt/bastion-e2e-start/run-id\nprintf \"start-stream-\($run_id)\\n\""},
+        {run: "set -eu\nprintf \"$(pwd)\\n\" > pwd\nprintf working-directory-start > status", working_directory: "/opt/bastion-e2e-start/workdir"}
+      ]
+    }
+  }'
+}
+
 failing_action_config() {
   jq -nc '{
     actions: {
@@ -404,22 +418,55 @@ failing_action_config() {
   }'
 }
 
-assert_template_rejected() {
-  local key="$RUN_ID-rejected"
-  local config='{"actions":{"init":[],"start":[{"run":"echo should-be-rejected"}]}}'
-  local output
+failing_start_action_config() {
+  jq -nc '{
+    actions: {
+      init: [],
+      start: [
+        {run: "set -eu\nprintf before > /tmp/bastion-e2e-start-before-failure"},
+        {run: "set -eu\nprintf '\''intentional start failure\\n'\'' >&2\nexit 42"},
+        {run: "set -eu\nprintf after > /tmp/bastion-e2e-start-after-failure"}
+      ]
+    }
+  }'
+}
 
-  log "verifying schema rejects actions.start"
-  if output="$(run_cli templates create --key "$key" --config "$config" 2>&1)"; then
-    CREATED_TEMPLATE_ID="$(json_get '.id // empty' <<<"$output")"
-    TEMPLATE_KEYS+=("$key")
-    if [ -n "$CREATED_TEMPLATE_ID" ]; then
-      TEMPLATE_IDS+=("$CREATED_TEMPLATE_ID")
-    fi
-    fail "template containing actions.start was accepted"
-  else
-    printf '%s\n' "$output" >/tmp/bastion-env-test-rejected.out
+run_start_action_case() {
+  local key="$RUN_ID-start"
+  local env_id
+  local output
+  local logs
+  local log_contents
+
+  create_template "$key" "$(start_action_config)"
+
+  logs="/tmp/bastion-env-test-start-$RUN_ID.log"
+  log "creating environment from $key with start actions"
+  if ! output="$(run_cli env create --template-key "$key" 2>"$logs")"; then
+    fail "environment from $key failed: $output $(<"$logs")"
   fi
+
+  CREATED_ENV_ID="$(json_get '.id' <<<"$output")"
+  CREATED_ENV_OUTPUT="$output"
+  if [ -z "$CREATED_ENV_ID" ] || [ "$CREATED_ENV_ID" = "null" ]; then
+    fail "environment from $key did not return an id"
+  fi
+
+  ENV_IDS+=("$CREATED_ENV_ID")
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  log_contents="$(<"$logs")"
+  if [[ "$log_contents" != *"start-stream-$RUN_ID"* ]]; then
+    fail "env create did not stream start action output: $log_contents"
+  fi
+
+  ssh_env "$env_id" grep -q "$RUN_ID" /opt/bastion-e2e-start/run-id
+  ssh_env "$env_id" grep -q init-complete /opt/bastion-e2e-start/init-status
+  ssh_env "$env_id" grep -q '^/opt/bastion-e2e-start/workdir$' /opt/bastion-e2e-start/workdir/pwd
+  ssh_env "$env_id" grep -q working-directory-start /opt/bastion-e2e-start/workdir/status
+
+  log "start action case passed for $env_id"
 }
 
 run_optional_template_key_case() {
@@ -647,22 +694,53 @@ run_failure_case() {
   log "failure case passed for template $key"
 }
 
+run_start_failure_case() {
+  local key="$RUN_ID-start-fails"
+  local output
+
+  create_template "$key" "$(failing_start_action_config)"
+
+  log "verifying failed start action rejects environment creation"
+  if output="$(run_cli env create --template-key "$key" 2>&1)"; then
+    CREATED_ENV_ID="$(json_get '.id // empty' <<<"$output")"
+    if [ -n "$CREATED_ENV_ID" ]; then
+      ENV_IDS+=("$CREATED_ENV_ID")
+    fi
+    fail "environment from $key unexpectedly succeeded despite failing start action"
+  fi
+
+  if [[ "$output" != *"424 Failed Dependency"* ]]; then
+    fail "failed start action returned unexpected env create error: $output"
+  fi
+
+  if [[ "$output" != *"start action 2 failed"* ]] || [[ "$output" != *"intentional start failure"* ]]; then
+    fail "failed env create error was unexpected: $output"
+  fi
+
+  if [[ "$output" == *"ssh -i"* ]] || [[ "$output" == *"root@"* ]]; then
+    fail "failed env create error leaked ssh wrapper details: $output"
+  fi
+
+  log "start failure case passed for template $key"
+}
+
 main() {
   precheck
   trap cleanup EXIT
 
   log "starting environment e2e run $RUN_ID"
-  assert_template_rejected
   run_case run_optional_template_key_case
   run_case run_basic_setup_case
   run_case run_env_substitution_case
   run_case run_working_directory_case
+  run_case run_start_action_case
   run_case run_preset_setup_node_case
   run_case run_preset_setup_mise_case
   run_case run_preset_setup_github_cli_case
   run_case run_preset_setup_opencode_case
   run_case run_node_docker_case
   run_case run_failure_case
+  run_case run_start_failure_case
   log "environment e2e run passed"
 }
 

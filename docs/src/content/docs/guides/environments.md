@@ -37,8 +37,9 @@ bastion env create --template-key dev --tag repo:bastion --tag agent:review
 ```
 
 During creation, Bastion restores the template snapshot, starts DHCP for the
-environment TAP network, waits for SSH, and writes the final JSON environment to
-stdout. Init actions already ran during `bastion templates create`.
+environment TAP network, waits for SSH, runs any `actions.start` steps, and
+writes the final JSON environment to stdout. Init actions already ran during
+`bastion templates create`.
 
 Example response:
 

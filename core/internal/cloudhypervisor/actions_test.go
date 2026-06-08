@@ -7,8 +7,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,121 +17,182 @@ import (
 	builtinActions "github.com/bastion-computer/bastion/core/actions"
 )
 
-func TestRunInitActionsRunsCommandsInOrder(t *testing.T) {
+const testSSHCommand = "ssh"
+
+func TestRunActionsRunsCommandsInOrder(t *testing.T) {
 	t.Parallel()
 
-	var got []string
+	cases := []struct {
+		phase  string
+		config json.RawMessage
+	}{
+		{phase: actionPhaseInit, config: json.RawMessage(`{"actions":{"init":[{"run":"echo one"},{"run":"printf '%s' two"}]}}`)},
+		{phase: actionPhaseStart, config: json.RawMessage(`{"actions":{"init":[{"run":"echo init"}],"start":[{"run":"echo one"},{"run":"printf '%s' two"}]}}`)},
+	}
 
-	manager := Manager{
-		stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
-			if name != "ssh" {
-				t.Fatalf("command name = %q, want ssh", name)
+	for _, tc := range cases {
+		t.Run(tc.phase, func(t *testing.T) {
+			t.Parallel()
+
+			var got []string
+
+			manager := Manager{stream: recordSSHCommands(t, &got)}
+
+			if err := runTestActions(manager, tc.phase, tc.config, nil); err != nil {
+				t.Fatalf("run %s actions: %v", tc.phase, err)
 			}
 
-			got = append(got, args[len(args)-1])
-
-			return nil
-		},
-	}
-
-	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo one"},{"run":"printf '%s' two"}]}}`), nil)
-	if err != nil {
-		t.Fatalf("run init actions: %v", err)
-	}
-
-	want := []string{
-		"sh -c 'echo one'",
-		"sh -c 'printf '\"'\"'%s'\"'\"' two'",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("commands = %#v, want %#v", got, want)
+			want := []string{
+				"sh -c 'echo one'",
+				"sh -c 'printf '\"'\"'%s'\"'\"' two'",
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("commands = %#v, want %#v", got, want)
+			}
+		})
 	}
 }
 
-func TestRunInitActionsRunsCommandInWorkingDirectory(t *testing.T) {
+func TestRunActionsRunsCommandInWorkingDirectory(t *testing.T) {
 	t.Parallel()
-
-	var got []string
-
-	manager := Manager{
-		stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
-			if name != "ssh" {
-				t.Fatalf("command name = %q, want ssh", name)
-			}
-
-			got = append(got, args[len(args)-1])
-
-			return nil
-		},
-	}
 
 	const (
 		dir = "/workspace/project dir"
 		run = `printf '%s' "$PWD" > pwd.txt`
 	)
 
-	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"printf '%s' \"$PWD\" > pwd.txt","working_directory":"/workspace/project dir"}]}}`), nil)
-	if err != nil {
-		t.Fatalf("run init actions: %v", err)
+	cases := []struct {
+		phase  string
+		config json.RawMessage
+	}{
+		{phase: actionPhaseInit, config: json.RawMessage(`{"actions":{"init":[{"run":"printf '%s' \"$PWD\" > pwd.txt","working_directory":"/workspace/project dir"}]}}`)},
+		{phase: actionPhaseStart, config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"printf '%s' \"$PWD\" > pwd.txt","working_directory":"/workspace/project dir"}]}}`)},
 	}
 
-	expectedGuestCommand := "mkdir -p " + shellQuote(dir) + " && cd " + shellQuote(dir) + " && sh -c " + shellQuote(run)
-	want := "sh -c " + shellQuote(expectedGuestCommand)
+	for _, tc := range cases {
+		t.Run(tc.phase, func(t *testing.T) {
+			t.Parallel()
 
-	if len(got) != 1 || got[0] != want {
-		t.Fatalf("commands = %#v, want %#v", got, []string{want})
-	}
-}
+			var got []string
 
-func TestRunInitActionsStreamsGuestCommandOutput(t *testing.T) {
-	t.Parallel()
+			manager := Manager{stream: recordSSHCommands(t, &got)}
 
-	manager := Manager{
-		stream: func(_ context.Context, logs io.Writer, _ string, _ ...string) error {
-			_, err := logs.Write([]byte("installing node\n"))
-
-			return err
-		},
-	}
-
-	var logs bytes.Buffer
-
-	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo installing"}]}}`), &logs)
-	if err != nil {
-		t.Fatalf("run init actions: %v", err)
-	}
-
-	if logs.String() != "installing node\n" {
-		t.Fatalf("logs = %q, want streamed guest command output", logs.String())
-	}
-}
-
-func TestRunInitActionsReportsFailingActionIndex(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-	manager := Manager{
-		stream: func(_ context.Context, _ io.Writer, _ string, _ ...string) error {
-			calls++
-			if calls == 2 {
-				return errors.New("boom")
+			if err := runTestActions(manager, tc.phase, tc.config, nil); err != nil {
+				t.Fatalf("run %s actions: %v", tc.phase, err)
 			}
 
-			return nil
-		},
+			expectedGuestCommand := "mkdir -p " + shellQuote(dir) + " && cd " + shellQuote(dir) + " && sh -c " + shellQuote(run)
+			want := "sh -c " + shellQuote(expectedGuestCommand)
+
+			if len(got) != 1 || got[0] != want {
+				t.Fatalf("commands = %#v, want %#v", got, []string{want})
+			}
+		})
+	}
+}
+
+func TestRunActionsStreamsGuestCommandOutput(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		phase  string
+		config json.RawMessage
+	}{
+		{phase: actionPhaseInit, config: json.RawMessage(`{"actions":{"init":[{"run":"echo installing"}]}}`)},
+		{phase: actionPhaseStart, config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo installing"}]}}`)},
 	}
 
-	err := manager.runInitActions(context.Background(), testActionVM(), json.RawMessage(`{"actions":{"init":[{"run":"echo one"},{"run":"false"},{"run":"echo three"}]}}`), nil)
-	if err == nil || !strings.Contains(err.Error(), "init action 2 failed") {
-		t.Fatalf("run init actions error = %v, want action 2 failure", err)
+	for _, tc := range cases {
+		t.Run(tc.phase, func(t *testing.T) {
+			t.Parallel()
+
+			manager := Manager{
+				stream: func(_ context.Context, logs io.Writer, _ string, _ ...string) error {
+					_, err := logs.Write([]byte("installing node\n"))
+
+					return err
+				},
+			}
+
+			var logs bytes.Buffer
+
+			if err := runTestActions(manager, tc.phase, tc.config, &logs); err != nil {
+				t.Fatalf("run %s actions: %v", tc.phase, err)
+			}
+
+			if logs.String() != "installing node\n" {
+				t.Fatalf("logs = %q, want streamed guest command output", logs.String())
+			}
+		})
+	}
+}
+
+func TestRunActionsReportFailingActionIndex(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		phase     string
+		config    json.RawMessage
+		wantError string
+	}{
+		{phase: actionPhaseInit, config: json.RawMessage(`{"actions":{"init":[{"run":"echo one"},{"run":"false"},{"run":"echo three"}]}}`), wantError: "init action 2 failed"},
+		{phase: actionPhaseStart, config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo one"},{"run":"false"},{"run":"echo three"}]}}`), wantError: "start action 2 failed"},
 	}
 
-	if !errors.Is(err, ErrVMInitFailed) {
-		t.Fatalf("run init actions error = %v, want vm init failure", err)
-	}
+	for _, tc := range cases {
+		t.Run(tc.phase, func(t *testing.T) {
+			t.Parallel()
 
-	if calls != 2 {
-		t.Fatalf("calls = %d, want 2", calls)
+			calls := 0
+			manager := Manager{
+				stream: func(_ context.Context, _ io.Writer, _ string, _ ...string) error {
+					calls++
+					if calls == 2 {
+						return errors.New("boom")
+					}
+
+					return nil
+				},
+			}
+
+			err := runTestActions(manager, tc.phase, tc.config, nil)
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("run %s actions error = %v, want action 2 failure", tc.phase, err)
+			}
+
+			if !errors.Is(err, ErrVMInitFailed) {
+				t.Fatalf("run %s actions error = %v, want vm action failure", tc.phase, err)
+			}
+
+			if calls != 2 {
+				t.Fatalf("calls = %d, want 2", calls)
+			}
+		})
+	}
+}
+
+func runTestActions(manager Manager, phase string, config json.RawMessage, logs io.Writer) error {
+	switch phase {
+	case actionPhaseInit:
+		return manager.runInitActions(context.Background(), testActionVM(), config, logs)
+	case actionPhaseStart:
+		return manager.runStartActions(context.Background(), testActionVM(), config, logs)
+	default:
+		return manager.runActions(context.Background(), testActionVM(), config, phase, logs)
+	}
+}
+
+func recordSSHCommands(t *testing.T, got *[]string) func(context.Context, io.Writer, string, ...string) error {
+	t.Helper()
+
+	return func(_ context.Context, _ io.Writer, name string, args ...string) error {
+		if name != testSSHCommand {
+			t.Fatalf("command name = %q, want %s", name, testSSHCommand)
+		}
+
+		*got = append(*got, args[len(args)-1])
+
+		return nil
 	}
 }
 
@@ -202,7 +263,7 @@ func TestRunInitActionsRunsPresetActionWithInputs(t *testing.T) {
 		t.Fatalf("call count = %d, want 3: %#v", len(calls), calls)
 	}
 
-	if calls[0].name != "ssh" || !strings.Contains(calls[0].args[len(calls[0].args)-1], "mkdir -p") || !strings.Contains(calls[0].args[len(calls[0].args)-1], guestActionsDir) {
+	if calls[0].name != testSSHCommand || !strings.Contains(calls[0].args[len(calls[0].args)-1], "mkdir -p") || !strings.Contains(calls[0].args[len(calls[0].args)-1], guestActionsDir) {
 		t.Fatalf("prepare guest directory call = %#v", calls[0])
 	}
 
@@ -211,13 +272,67 @@ func TestRunInitActionsRunsPresetActionWithInputs(t *testing.T) {
 	}
 
 	runCommand := calls[2].args[len(calls[2].args)-1]
-	for _, want := range []string{"cd ", guestPresetActionDir(1, "setup_node"), ". ./" + presetInputEnvFileName, "rm -f ./" + presetInputEnvFileName, "sh ./install_node.sh"} {
+	for _, want := range []string{"cd ", guestPresetActionDir(actionPhaseInit, 1, "setup_node"), ". ./" + presetInputEnvFileName, "rm -f ./" + presetInputEnvFileName, "sh ./install_node.sh"} {
 		if !strings.Contains(runCommand, want) {
 			t.Fatalf("preset run command = %q, want to contain %q", runCommand, want)
 		}
 	}
 
 	if _, err := os.Stat(filepath.Join(vm.EnvDir, "actions", "init-1-setup_node", presetInputEnvFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("host input env file error = %v, want not exist", err)
+	}
+}
+
+func TestRunStartActionsRunsPresetActionWithInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestPresetAction(t, dataDir, "setup_node", `{
+  "inputs": {
+    "version": {"type": "number", "required": true}
+  },
+  "run": "sh ./install_node.sh"
+}`)
+
+	type call struct {
+		name string
+		args []string
+	}
+
+	var calls []call
+
+	manager := Manager{
+		DataDir: dataDir,
+		stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
+			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+
+			return nil
+		},
+		run: func(_ context.Context, name string, args ...string) error {
+			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+
+			return nil
+		},
+	}
+
+	vm := testActionVM()
+	vm.EnvDir = t.TempDir()
+
+	err := manager.runStartActions(context.Background(), vm, json.RawMessage(`{"actions":{"init":[],"start":[{"use":"setup_node","with":{"version":24}}]}}`), nil)
+	if err != nil {
+		t.Fatalf("run start actions: %v", err)
+	}
+
+	if len(calls) != 3 {
+		t.Fatalf("call count = %d, want 3: %#v", len(calls), calls)
+	}
+
+	runCommand := calls[2].args[len(calls[2].args)-1]
+	if !strings.Contains(runCommand, path.Join(guestActionsDir, "start-1-setup_node")) {
+		t.Fatalf("preset run command = %q, want start action guest directory", runCommand)
+	}
+
+	if _, err := os.Stat(filepath.Join(vm.EnvDir, "actions", "start-1-setup_node", presetInputEnvFileName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("host input env file error = %v, want not exist", err)
 	}
 }

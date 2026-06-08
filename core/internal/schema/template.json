@@ -78,6 +78,9 @@
       "properties": {
         "init": {
           "$ref": "#/$defs/actionList"
+        },
+        "start": {
+          "$ref": "#/$defs/actionList"
         }
       },
       "required": ["init"],
