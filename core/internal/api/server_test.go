@@ -334,25 +334,33 @@ func TestAgentProxyRouteForwardsToOpenCode(t *testing.T) {
 
 	router := newTestRouter(t, slog.New(slog.NewTextHandler(&logs, nil)), api.WithEnvironmentOrchestrator(orchestrator))
 	template := createTemplateWithConfig(t, router, "agent-proxy-template", json.RawMessage(fmt.Sprintf(`{"agents":{"opencode":{"config":{"server":{"port":%d}}}},"actions":{"init":[]}}`, port)))
-	env := createEnvironment(t, router, requireStringPtr(t, template.Key))
+	envKey := "agent-proxy-environment"
+	env := createEnvironmentFromRequest(t, router, environment.CreateRequest{Key: new(envKey), TemplateKey: requireStringPtr(t, template.Key)})
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/environments/"+env.ID+"/agents/opencode/global/health?check=1", nil)
-	req.Header.Set("X-Test-Proxy", "yes")
-
-	res := httptest.NewRecorder()
-
-	router.ServeHTTP(res, req)
-
-	if res.Code != http.StatusOK {
-		t.Fatalf("agent proxy status = %d, want %d; body: %s; logs: %s", res.Code, http.StatusOK, res.Body.String(), logs.String())
+	paths := []string{
+		"/v1/environments/" + env.ID + "/agents/opencode/global/health?check=1",
+		"/v1/environments/by-key/" + envKey + "/agents/opencode/global/health?check=1",
 	}
 
-	if res.Header().Get("X-Agent") != "opencode" {
-		t.Fatalf("agent proxy X-Agent header = %q, want opencode", res.Header().Get("X-Agent"))
-	}
+	for _, path := range paths {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, nil)
+		req.Header.Set("X-Test-Proxy", "yes")
 
-	if strings.TrimSpace(res.Body.String()) != `{"healthy":true}` {
-		t.Fatalf("agent proxy body = %q, want health JSON", res.Body.String())
+		res := httptest.NewRecorder()
+
+		router.ServeHTTP(res, req)
+
+		if res.Code != http.StatusOK {
+			t.Fatalf("agent proxy %s status = %d, want %d; body: %s; logs: %s", path, res.Code, http.StatusOK, res.Body.String(), logs.String())
+		}
+
+		if res.Header().Get("X-Agent") != "opencode" {
+			t.Fatalf("agent proxy %s X-Agent header = %q, want opencode", path, res.Header().Get("X-Agent"))
+		}
+
+		if strings.TrimSpace(res.Body.String()) != `{"healthy":true}` {
+			t.Fatalf("agent proxy %s body = %q, want health JSON", path, res.Body.String())
+		}
 	}
 }
 

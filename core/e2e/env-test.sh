@@ -112,6 +112,7 @@ require_command() {
 }
 
 precheck() {
+  require_command curl
   require_command jq
 
   if [ ! -x "$BASTION" ]; then
@@ -250,6 +251,20 @@ assert_environment_running() {
   status="$(run_cli env get --id "$env_id" | json_get '.status')"
   if [ "$status" != "running" ]; then
     fail "environment $env_id status is $status, want running"
+  fi
+}
+
+assert_opencode_proxy_health() {
+  local label=$1
+  local url=$2
+  local output
+
+  if ! output="$(curl -fsS --connect-timeout 5 --max-time 10 "$url" 2>&1)"; then
+    fail "$label proxy health request failed: $output"
+  fi
+
+  if ! jq -e '.healthy == true' <<<"$output" >/dev/null; then
+    fail "$label proxy health response is $(jq -c . <<<"$output"), want healthy true"
   fi
 }
 
@@ -620,11 +635,13 @@ run_preset_setup_github_cli_case() {
 
 run_opencode_agent_case() {
   local key="$RUN_ID-opencode-agent"
+  local env_key="$RUN_ID-opencode-agent-env"
   local env_id
 
   create_template "$key" "$(opencode_agent_config)"
-  create_environment "$key"
+  create_environment "$key" --key "$env_key"
   env_id="$CREATED_ENV_ID"
+  assert_json_key "env create $env_id" "$CREATED_ENV_OUTPUT" "$env_key"
   assert_environment_running "$env_id"
 
   ssh_env "$env_id" "set -eu
@@ -643,6 +660,9 @@ if [ \"\$auth_mode\" != \"600\" ]; then
   printf 'auth mode is %s, want 600\n' \"\$auth_mode\" >&2
   exit 1
 fi"
+
+  assert_opencode_proxy_health "OpenCode id route" "${API_URL%/}/v1/environments/$env_id/agents/opencode/global/health"
+  assert_opencode_proxy_health "OpenCode key route" "${API_URL%/}/v1/environments/by-key/$env_key/agents/opencode/global/health"
 
   log "OpenCode agent case passed for $env_id"
 }
