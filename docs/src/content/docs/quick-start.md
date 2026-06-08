@@ -116,8 +116,8 @@ bastion env create --template-key hello --tag quickstart
 ```
 
 Environment creation restores the prepared template snapshot, creates a small
-qcow2 copy-on-write root disk overlay, gets a fresh DHCP lease, and prints the
-final JSON environment record to stdout.
+qcow2 copy-on-write root disk overlay, gets a fresh DHCP lease, runs any
+`actions.start` steps, and prints the final JSON environment record to stdout.
 
 Example response:
 

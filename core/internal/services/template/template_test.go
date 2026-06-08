@@ -142,8 +142,11 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		config json.RawMessage
 	}{
 		{key: "run-actions", config: json.RawMessage(`{"actions":{"init":[{"run":"echo node setup"},{"run":"echo docker setup"}]}}`)},
+		{key: "start-run-actions", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo env setup"},{"run":"echo env ready"}]}}`)},
 		{key: "working-directory-run-action", config: json.RawMessage(`{"actions":{"init":[{"run":"pwd","working_directory":"/workspace/project"}]}}`)},
+		{key: "start-working-directory-run-action", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"pwd","working_directory":"/workspace/project"}]}}`)},
 		{key: "preset-actions", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`)},
+		{key: "start-preset-actions", config: json.RawMessage(`{"actions":{"init":[],"start":[{"use":"setup_node","with":{"version":24}}]}}`)},
 		{key: "resources", config: json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`)},
 		{key: "mise-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
 		{key: "github-cli-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
@@ -184,7 +187,7 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 
 	created, err := service.Create(ctx, template.CreateRequest{
 		Key:    new("substitution-template"),
-		Config: json.RawMessage(`{"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}]}}`),
+		Config: json.RawMessage(`{"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}],"start":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }} again'"}]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
@@ -199,6 +202,9 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 			Init []struct {
 				Run string `json:"run"`
 			} `json:"init"`
+			Start []struct {
+				Run string `json:"run"`
+			} `json:"start"`
 		} `json:"actions"`
 	}
 	if err := json.Unmarshal(orchestrator.prepared[0].Config, &prepared); err != nil {
@@ -207,6 +213,10 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 
 	if len(prepared.Actions.Init) != 1 || prepared.Actions.Init[0].Run != "printf 'substituted-value'" {
 		t.Fatalf("prepared template config = %s, want substituted env values", orchestrator.prepared[0].Config)
+	}
+
+	if len(prepared.Actions.Start) != 1 || prepared.Actions.Start[0].Run != "printf 'substituted-value again'" {
+		t.Fatalf("prepared template config = %s, want substituted start env values", orchestrator.prepared[0].Config)
 	}
 
 	stored, err := service.Get(ctx, created.ID, "")
@@ -280,8 +290,8 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 		{name: "removed delegate commands", config: json.RawMessage(`{"actions":{"init":[]},"delegateCommands":{}}`)},
 		{name: "removed network rules", config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`)},
 		{name: "invalid preset action name", config: json.RawMessage(`{"actions":{"init":[{"use":"example/action"}]}}`)},
-		{name: "removed start action", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo hi"}]}}`)},
 		{name: "invalid action", config: json.RawMessage(`{"actions":{"init":[{"run":"echo hi","use":"example/action"}]}}`)},
+		{name: "invalid start action", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo hi","use":"example/action"}]}}`)},
 		{name: "empty working directory", config: json.RawMessage(`{"actions":{"init":[{"run":"pwd","working_directory":""}]}}`)},
 		{name: "working directory on preset action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","working_directory":"/workspace"}]}}`)},
 		{name: "invalid with input name", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"node-version":24}}]}}`)},
