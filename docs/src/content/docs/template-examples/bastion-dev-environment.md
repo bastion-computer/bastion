@@ -5,8 +5,9 @@ description: An example of how we use Bastion to build Bastion.
 
 This example creates a development environment for working on Bastion itself. It
 installs mise, configures GitHub CLI, configures OpenCode, clones the Bastion
-repository, installs the repository tools, and opens interactive SSH shells in
-the repository directory.
+repository, installs the repository tools, pulls the latest changes when each
+environment starts, and opens interactive SSH shells in the repository
+directory.
 
 ## Template
 
@@ -52,6 +53,12 @@ Create `template.json`:
         "with": {
           "path": "/workspace/bastion"
         }
+      }
+    ],
+    "start": [
+      {
+        "run": "git pull",
+        "working_directory": "/workspace/bastion"
       }
     ]
   }

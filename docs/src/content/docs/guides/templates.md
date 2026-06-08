@@ -71,8 +71,9 @@ snapshot and SSH is reachable. If any start action fails, environment creation
 fails and the environment is recorded in an error state.
 
 Start actions are useful for per-environment setup that should not be baked into
-the template snapshot, such as writing environment-specific files, checking out
-ephemeral work, or starting services that should be initialized after restore.
+the template snapshot. Use them for work that should happen each time an
+environment is created, such as running `git pull` in a cloned repository to get
+the latest code changes.
 
 Each init or start action must be one of:
 
