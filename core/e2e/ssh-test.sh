@@ -95,6 +95,7 @@ json_get() {
 
 ssh_template_config() {
   jq -nc --arg run_id "$RUN_ID" '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {run: "set -eu\nmkdir -p /opt/bastion-ssh-e2e/default-dir\nprintf \"%s\\n\" \"\($run_id)\" > /opt/bastion-ssh-e2e/init-run"},

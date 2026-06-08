@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -53,7 +56,7 @@ func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
 
 	res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{
 		Key:    new("invalid-template"),
-		Config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]},"networkRules":{}}`),
 	})
 	if res.Code != http.StatusOK {
 		t.Fatalf("create invalid template status = %d, want streaming %d", res.Code, http.StatusOK)
@@ -102,7 +105,7 @@ func TestTemplateAndEnvironmentOptionalKeys(t *testing.T) {
 
 	router := newTestRouter(t, slog.New(slog.DiscardHandler))
 
-	res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{Config: json.RawMessage(`{"actions":{"init":[]}}`)})
+	res := request(t, router, http.MethodPost, "/v1/templates", template.CreateRequest{Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)})
 	if res.Code != http.StatusOK {
 		t.Fatalf("create unkeyed template status = %d, want %d", res.Code, http.StatusOK)
 	}
@@ -307,6 +310,52 @@ func TestSSHRouteUpgradesAndRunsSSHRunner(t *testing.T) {
 	}
 }
 
+func TestAgentProxyRouteForwardsToOpenCode(t *testing.T) {
+	t.Parallel()
+
+	opencode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/global/health" || r.URL.RawQuery != "check=1" {
+			t.Fatalf("proxied request = %s %s?%s, want GET /global/health?check=1", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+
+		if r.Header.Get("X-Test-Proxy") != "yes" {
+			t.Fatalf("proxied header X-Test-Proxy = %q, want yes", r.Header.Get("X-Test-Proxy"))
+		}
+
+		w.Header().Set("X-Agent", "opencode")
+		_, _ = w.Write([]byte(`{"healthy":true}`))
+	}))
+	t.Cleanup(opencode.Close)
+
+	port := testServerPort(t, opencode.URL)
+	orchestrator := &agentProxyOrchestrator{vms: make(map[string]ch.VM)}
+
+	var logs bytes.Buffer
+
+	router := newTestRouter(t, slog.New(slog.NewTextHandler(&logs, nil)), api.WithEnvironmentOrchestrator(orchestrator))
+	template := createTemplateWithConfig(t, router, "agent-proxy-template", json.RawMessage(fmt.Sprintf(`{"agents":{"opencode":{"config":{"server":{"port":%d}}}},"actions":{"init":[]}}`, port)))
+	env := createEnvironment(t, router, requireStringPtr(t, template.Key))
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/environments/"+env.ID+"/agents/opencode/global/health?check=1", nil)
+	req.Header.Set("X-Test-Proxy", "yes")
+
+	res := httptest.NewRecorder()
+
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("agent proxy status = %d, want %d; body: %s; logs: %s", res.Code, http.StatusOK, res.Body.String(), logs.String())
+	}
+
+	if res.Header().Get("X-Agent") != "opencode" {
+		t.Fatalf("agent proxy X-Agent header = %q, want opencode", res.Header().Get("X-Agent"))
+	}
+
+	if strings.TrimSpace(res.Body.String()) != `{"healthy":true}` {
+		t.Fatalf("agent proxy body = %q, want health JSON", res.Body.String())
+	}
+}
+
 func newTestRouter(t *testing.T, logger *slog.Logger, opts ...api.RouterOption) http.Handler {
 	t.Helper()
 
@@ -323,9 +372,15 @@ func newTestRouter(t *testing.T, logger *slog.Logger, opts ...api.RouterOption) 
 func createTemplate(t *testing.T, handler http.Handler, key string) template.Metadata {
 	t.Helper()
 
+	return createTemplateWithConfig(t, handler, key, json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`))
+}
+
+func createTemplateWithConfig(t *testing.T, handler http.Handler, key string, config json.RawMessage) template.Metadata {
+	t.Helper()
+
 	res := request(t, handler, http.MethodPost, "/v1/templates", template.CreateRequest{
 		Key:    new(key),
-		Config: json.RawMessage(`{"actions":{"init":[]}}`),
+		Config: config,
 	})
 	if res.Code != http.StatusOK {
 		t.Fatalf("create template status = %d, want %d", res.Code, http.StatusOK)
@@ -334,6 +389,27 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 	created := decodeTemplateCreateResult(t, res)
 
 	return created
+}
+
+func testServerPort(t *testing.T, rawURL string) int {
+	t.Helper()
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+
+	_, portText, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		t.Fatalf("split test server host/port: %v", err)
+	}
+
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatalf("parse test server port: %v", err)
+	}
+
+	return port
 }
 
 func decodeTemplateCreateResult(t *testing.T, res *httptest.ResponseRecorder) template.Metadata {
@@ -512,6 +588,10 @@ type sshRouteOrchestrator struct {
 	vms map[string]ch.VM
 }
 
+type agentProxyOrchestrator struct {
+	vms map[string]ch.VM
+}
+
 func (o *sshRouteOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
 	vm := ch.VM{
 		EnvironmentID: req.EnvironmentID,
@@ -537,6 +617,36 @@ func (o *sshRouteOrchestrator) State(_ context.Context, environmentID string) (c
 }
 
 func (o *sshRouteOrchestrator) Remove(_ context.Context, environmentID string) (ch.VM, error) {
+	delete(o.vms, environmentID)
+
+	return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil
+}
+
+func (o *agentProxyOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
+	vm := ch.VM{
+		EnvironmentID: req.EnvironmentID,
+		VMID:          "vm-" + req.EnvironmentID,
+		State:         ch.StateRunning,
+		GuestIP:       "127.0.0.1",
+		SSHUser:       ch.SSHUser,
+		SSHPort:       ch.SSHPort,
+		SSHKeyPath:    "/tmp/test.id_rsa",
+	}
+	o.vms[req.EnvironmentID] = vm
+
+	return vm, nil
+}
+
+func (o *agentProxyOrchestrator) State(_ context.Context, environmentID string) (ch.VM, error) {
+	vm, ok := o.vms[environmentID]
+	if !ok {
+		return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil
+	}
+
+	return vm, nil
+}
+
+func (o *agentProxyOrchestrator) Remove(_ context.Context, environmentID string) (ch.VM, error) {
 	delete(o.vms, environmentID)
 
 	return ch.VM{EnvironmentID: environmentID, State: ch.StateStopped}, nil

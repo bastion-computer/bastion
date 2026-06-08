@@ -16,6 +16,13 @@ const (
 
 	// SSHPort is the default SSH port exposed by the guest.
 	SSHPort = 22
+
+	// AgentOpenCode is the template agent key for OpenCode.
+	AgentOpenCode = "opencode"
+
+	// OpenCodeDefaultPort is the default OpenCode HTTP server port.
+	OpenCodeDefaultPort = 4096
+
 	// NetworkIndexLimit is the number of /30 VM networks available in 10.241.0.0/16.
 	NetworkIndexLimit = 16000
 

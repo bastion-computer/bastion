@@ -97,6 +97,8 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 	environmentRoutes.GET("/by-key/:key", environmentHandler.GetByKey)
 	environmentRoutes.DELETE("/by-key/:key", environmentHandler.RemoveByKey)
 	environmentRoutes.POST("/:id/ssh", environmentHandler.SSH)
+	environmentRoutes.Any("/:id/agents/:agent", environmentHandler.AgentProxy)
+	environmentRoutes.Any("/:id/agents/:agent/*path", environmentHandler.AgentProxy)
 	environmentRoutes.GET("/:id", environmentHandler.Get)
 	environmentRoutes.DELETE("/:id", environmentHandler.Remove)
 

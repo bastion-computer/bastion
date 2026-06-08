@@ -24,6 +24,9 @@ Example:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [
       {
@@ -58,6 +61,9 @@ Example:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [
       {

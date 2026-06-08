@@ -74,10 +74,6 @@ export default defineConfig({
           items: [
             { label: "Custom Actions", slug: "actions/custom-actions" },
             {
-              label: "Coding Agents",
-              slug: "actions/built-ins/coding-agents",
-            },
-            {
               label: "Utility Tools",
               slug: "actions/built-ins/utility-tools",
             },

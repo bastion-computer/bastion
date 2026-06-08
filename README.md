@@ -67,7 +67,7 @@ mise run dev:bastion templates list
 Examples:
 
 ```sh
-mise run dev:bastion templates create --key dev-env --config '{"actions":{"init":[]}}'
+mise run dev:bastion templates create --key dev-env --config '{"agents":{"opencode":{}},"actions":{"init":[]}}'
 mise run dev:bastion env create --template-key dev-env
 mise run dev:bastion env list
 ```

@@ -20,6 +20,31 @@ Create `template.json`:
     "memory": 8,
     "volume": 40
   },
+  "agents": {
+    "opencode": {
+      "working_directory": "/workspace/bastion",
+      "auth": {
+        "openai": {
+          "type": "api",
+          "key": "${{ env.OPENAI_API_KEY }}"
+        }
+      },
+      "config": {
+        "model": "openai/gpt-5.5",
+        "permission": "allow",
+        "agent": {
+          "build": {
+            "model": "openai/gpt-5.5",
+            "variant": "xhigh"
+          },
+          "plan": {
+            "model": "openai/gpt-5.5",
+            "variant": "xhigh"
+          }
+        }
+      }
+    }
+  },
   "actions": {
     "init": [
       {
@@ -31,13 +56,6 @@ Create `template.json`:
           "token": "${{ env.GITHUB_TOKEN }}",
           "hostname": "github.com",
           "git_protocol": "https"
-        }
-      },
-      {
-        "use": "setup_opencode",
-        "with": {
-          "auth": "{\"openai\":{\"type\":\"api\",\"key\":\"${{ env.OPENAI_API_KEY }}\"}}",
-          "config": "{\"model\":\"openai/gpt-5.5\",\"permission\":\"allow\",\"agent\":{\"build\":{\"model\":\"openai/gpt-5.5\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"openai/gpt-5.5\",\"variant\":\"xhigh\"}}}"
         }
       },
       {
@@ -99,20 +117,29 @@ as the default SSH directory.
 ## Change OpenCode Providers
 
 The template uses OpenAI by default. To use Anthropic instead, change the
-`setup_opencode` auth and config JSON, then export `ANTHROPIC_API_KEY` on the
-host before creating the environment:
+`agents.opencode.auth` and `agents.opencode.config` objects, then export
+`ANTHROPIC_API_KEY` on the host before creating the environment:
 
 ```json
 {
-  "use": "setup_opencode",
-  "with": {
-    "auth": "{\"anthropic\":{\"type\":\"api\",\"key\":\"${{ env.ANTHROPIC_API_KEY }}\"}}",
-    "config": "{\"model\":\"anthropic/claude-sonnet-4-20250514\"}"
+  "agents": {
+    "opencode": {
+      "working_directory": "/workspace/bastion",
+      "auth": {
+        "anthropic": {
+          "type": "api",
+          "key": "${{ env.ANTHROPIC_API_KEY }}"
+        }
+      },
+      "config": {
+        "model": "anthropic/claude-sonnet-4-20250514"
+      }
+    }
   }
 }
 ```
 
-For other providers, update both JSON strings. Also update or remove the
+For other providers, update both objects. Also update or remove the
 `config` agent model and variant overrides when they should not use OpenAI
 `gpt-5.5` with `xhigh`.
 

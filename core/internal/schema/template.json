@@ -51,10 +51,113 @@
       "items": {
         "$ref": "#/$defs/action"
       }
+    },
+    "opencodeAuthInfo": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "oauth"
+            },
+            "refresh": {
+              "type": "string"
+            },
+            "access": {
+              "type": "string"
+            },
+            "expires": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "accountId": {
+              "type": "string"
+            },
+            "enterpriseUrl": {
+              "type": "string"
+            }
+          },
+          "required": ["type", "refresh", "access", "expires"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "api"
+            },
+            "key": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["type", "key"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "wellknown"
+            },
+            "key": {
+              "type": "string"
+            },
+            "token": {
+              "type": "string"
+            }
+          },
+          "required": ["type", "key", "token"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "opencodeAuth": {
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/opencodeAuthInfo"
+      }
+    },
+    "opencodeAgent": {
+      "type": "object",
+      "properties": {
+        "working_directory": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auth": {
+          "$ref": "#/$defs/opencodeAuth"
+        },
+        "config": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "agents": {
+      "type": "object",
+      "properties": {
+        "opencode": {
+          "$ref": "#/$defs/opencodeAgent"
+        }
+      },
+      "required": ["opencode"],
+      "additionalProperties": false
     }
   },
   "type": "object",
   "properties": {
+    "agents": {
+      "$ref": "#/$defs/agents"
+    },
     "resources": {
       "type": "object",
       "additionalProperties": false,
@@ -87,6 +190,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["actions"],
+  "required": ["agents", "actions"],
   "additionalProperties": false
 }

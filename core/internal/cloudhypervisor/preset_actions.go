@@ -293,7 +293,7 @@ func scpGuestArgs(vm VM, srcDir, guestDir string) ([]string, error) {
 
 func presetActionCommand(guestDir, command string) string {
 	return strings.Join([]string{
-		"set -eu",
+		shellStrictMode,
 		"cd " + shellQuote(guestDir),
 		"set -a",
 		". ./" + presetInputEnvFileName,

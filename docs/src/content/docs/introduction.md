@@ -45,14 +45,16 @@ Templates can override those values per environment.
 ## Templates
 
 Templates are immutable prepared snapshots. A template defines optional VM
-resources, required `actions.init` steps, and optional `actions.start` steps.
-Init actions run once when the template is created. Start actions run each time
-an environment is restored from that prepared snapshot.
+resources, required `agents.opencode`, required `actions.init` steps, and
+optional `actions.start` steps. Init actions run once when the template is
+created. Start actions run each time an environment is restored from that
+prepared snapshot.
 
 Actions can be inline shell commands:
 
 ```json
 {
+  "agents": { "opencode": {} },
   "actions": {
     "init": [{ "run": "mkdir -p /workspace" }]
   }
@@ -63,6 +65,7 @@ Actions can also reference built-in or custom action packages:
 
 ```json
 {
+  "agents": { "opencode": {} },
   "actions": {
     "init": [{ "use": "setup_node", "with": { "version": 24 } }]
   }

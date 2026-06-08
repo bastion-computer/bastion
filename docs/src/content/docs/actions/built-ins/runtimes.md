@@ -17,6 +17,9 @@ Example:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [
       {
@@ -46,6 +49,9 @@ Example:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [
       {
@@ -63,6 +69,9 @@ Omit `version` to install the latest mise release:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [{ "use": "setup_mise" }]
   }

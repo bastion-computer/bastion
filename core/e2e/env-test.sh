@@ -262,6 +262,7 @@ ssh_env() {
 
 basic_setup_config() {
   jq -nc --arg run_id "$RUN_ID" '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {run: "set -eu\nmkdir -p /opt/bastion-e2e /var/log/bastion-e2e"},
@@ -275,6 +276,7 @@ basic_setup_config() {
 
 node_docker_config() {
   jq -nc '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update"},
@@ -289,6 +291,7 @@ node_docker_config() {
 
 preset_setup_node_config() {
   jq -nc '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {use: "setup_node", with: {version: 24}},
@@ -300,6 +303,7 @@ preset_setup_node_config() {
 
 preset_setup_mise_config() {
   jq -nc '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {use: "setup_mise"}
@@ -325,6 +329,7 @@ preset_setup_github_cli_config() {
     'printf github-cli-ready > /opt/bastion-e2e-github-cli/auth')"
 
   jq -nc --arg token "$token" --arg verify "$verify" '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
@@ -334,38 +339,48 @@ preset_setup_github_cli_config() {
   }'
 }
 
-preset_setup_opencode_config() {
+opencode_agent_config() {
   local api_key="opencode-e2e-${RUN_ID}"
-  local auth
-  local config
   local verify_written
-  local verify_absent
+  local verify_started
 
-  auth="$(jq -nc --arg api_key "$api_key" '{anthropic: {type: "api", key: $api_key}}')"
-  config="$(jq -nc '{model: "anthropic/claude-sonnet-4-5", small_model: "anthropic/claude-haiku-4-5", share: "disabled", permission: "allow", autoupdate: false}')"
   verify_written="$(printf '%s\n' \
     'set -eu' \
     'mkdir -p /opt/bastion-e2e-opencode' \
     'opencode --version > /opt/bastion-e2e-opencode/version' \
-    'jq -e '\''.model == "anthropic/claude-sonnet-4-5" and .small_model == "anthropic/claude-haiku-4-5" and .share == "disabled" and .permission == "allow" and .autoupdate == false'\'' /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-ok' \
+    'jq -e '\''.model == "anthropic/claude-sonnet-4-5" and .small_model == "anthropic/claude-haiku-4-5" and .share == "disabled" and .permission == "allow" and .autoupdate == false and .server.port == 4097'\'' /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-ok' \
     "jq -e --arg api_key '$api_key' '.anthropic.type == \"api\" and .anthropic.key == \$api_key' /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-ok" \
     'stat -c %a /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-mode' \
     'stat -c %a /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-mode' \
-    'rm -f /root/.config/opencode/opencode.json /root/.local/share/opencode/auth.json')"
-  verify_absent="$(printf '%s\n' \
+    'systemctl is-enabled --quiet bastion-opencode.service' \
+    'grep -q "WorkingDirectory=/opt/bastion-e2e-opencode/workspace" /etc/systemd/system/bastion-opencode.service')"
+  verify_started="$(printf '%s\n' \
     'set -eu' \
-    'opencode --version > /opt/bastion-e2e-opencode/version-no-inputs' \
-    'test ! -e /root/.config/opencode/opencode.json' \
-    'test ! -e /root/.local/share/opencode/auth.json' \
-    'printf true > /opt/bastion-e2e-opencode/absent-ok')"
+    'systemctl is-active --quiet bastion-opencode.service' \
+    'curl -sS --connect-timeout 1 --max-time 2 http://127.0.0.1:4097/ > /opt/bastion-e2e-opencode/health' \
+    'printf true > /opt/bastion-e2e-opencode/started-ok')"
 
-  jq -nc --arg auth "$auth" --arg config "$config" --arg verify_written "$verify_written" --arg verify_absent "$verify_absent" '{
+  jq -nc --arg api_key "$api_key" --arg verify_written "$verify_written" --arg verify_started "$verify_started" '{
+    agents: {
+      opencode: {
+        working_directory: "/opt/bastion-e2e-opencode/workspace",
+        auth: {anthropic: {type: "api", key: $api_key}},
+        config: {
+          model: "anthropic/claude-sonnet-4-5",
+          small_model: "anthropic/claude-haiku-4-5",
+          share: "disabled",
+          permission: "allow",
+          autoupdate: false,
+          server: {port: 4097}
+        }
+      }
+    },
     actions: {
       init: [
-        {use: "setup_opencode", with: {auth: $auth, config: $config}},
-        {run: $verify_written},
-        {use: "setup_opencode"},
-        {run: $verify_absent}
+        {run: $verify_written}
+      ],
+      start: [
+        {run: $verify_started}
       ]
     }
   }'
@@ -373,6 +388,7 @@ preset_setup_opencode_config() {
 
 env_substitution_config() {
   jq -nc '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {run: "set -eu\nmkdir -p /opt/bastion-e2e-env\nprintf \"%s\\n\" \"${{ env.HOME }}\" > /opt/bastion-e2e-env/home"}
@@ -383,6 +399,7 @@ env_substitution_config() {
 
 working_directory_config() {
   jq -nc --arg run_id "$RUN_ID" '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {run: "set -eu\nprintf \"run_id=\($run_id)\\n\" > run-id\npwd > pwd\nmkdir -p nested\nprintf working-directory-ready > nested/status", working_directory: "/opt/bastion-e2e-working/new-dir"},
@@ -394,6 +411,7 @@ working_directory_config() {
 
 start_action_config() {
   jq -nc --arg run_id "$RUN_ID" '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {run: "set -eu\nmkdir -p /opt/bastion-e2e-start\nprintf init-complete > /opt/bastion-e2e-start/init-status"}
@@ -408,6 +426,7 @@ start_action_config() {
 
 failing_action_config() {
   jq -nc '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {run: "set -eu\nprintf before > /tmp/bastion-e2e-before-failure"},
@@ -420,6 +439,7 @@ failing_action_config() {
 
 failing_start_action_config() {
   jq -nc '{
+    agents: {opencode: {}},
     actions: {
       init: [],
       start: [
@@ -598,21 +618,21 @@ run_preset_setup_github_cli_case() {
   log "preset setup_github_cli case passed for $env_id"
 }
 
-run_preset_setup_opencode_case() {
-  local key="$RUN_ID-preset-opencode"
+run_opencode_agent_case() {
+  local key="$RUN_ID-opencode-agent"
   local env_id
 
-  create_template "$key" "$(preset_setup_opencode_config)"
+  create_template "$key" "$(opencode_agent_config)"
   create_environment "$key"
   env_id="$CREATED_ENV_ID"
   assert_environment_running "$env_id"
 
   ssh_env "$env_id" "set -eu
 test -s /opt/bastion-e2e-opencode/version
-test -s /opt/bastion-e2e-opencode/version-no-inputs
+test -s /opt/bastion-e2e-opencode/health
 grep -q true /opt/bastion-e2e-opencode/config-ok
 grep -q true /opt/bastion-e2e-opencode/auth-ok
-grep -q true /opt/bastion-e2e-opencode/absent-ok
+grep -q true /opt/bastion-e2e-opencode/started-ok
 config_mode=\$(cat /opt/bastion-e2e-opencode/config-mode)
 if [ \"\$config_mode\" != \"600\" ]; then
   printf 'config mode is %s, want 600\n' \"\$config_mode\" >&2
@@ -624,7 +644,7 @@ if [ \"\$auth_mode\" != \"600\" ]; then
   exit 1
 fi"
 
-  log "preset setup_opencode case passed for $env_id"
+  log "OpenCode agent case passed for $env_id"
 }
 
 run_env_substitution_case() {
@@ -737,7 +757,7 @@ main() {
   run_case run_preset_setup_node_case
   run_case run_preset_setup_mise_case
   run_case run_preset_setup_github_cli_case
-  run_case run_preset_setup_opencode_case
+  run_case run_opencode_agent_case
   run_case run_node_docker_case
   run_case run_failure_case
   run_case run_start_failure_case

@@ -132,6 +132,13 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
+	if err := m.startEnvironmentAgents(ctx, vm, req.Template.Config, req.Logs); err != nil {
+		failed, failErr := failVM(vm, err)
+		m.cleanupVM(context.Background(), failed, false)
+
+		return failed, failErr
+	}
+
 	if err := m.runStartActions(ctx, vm, req.Template.Config, req.Logs); err != nil {
 		failed, failErr := failVM(vm, err)
 		m.cleanupVM(context.Background(), failed, false)
@@ -235,32 +242,9 @@ func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest
 		return PreparedTemplate{}, err
 	}
 
-	if err := m.runInitActions(ctx, vm, req.Template.Config, req.Logs); err != nil {
-		failed, failErr := failVM(vm, err)
-		m.cleanupVM(context.Background(), failed, false)
-
-		_ = os.RemoveAll(workspace.dir)
-
-		return PreparedTemplate{}, failErr
-	}
-
-	if err := m.prepareGuestForSnapshot(ctx, vm); err != nil {
-		failed, failErr := failVM(vm, err)
-		m.cleanupVM(context.Background(), failed, false)
-
-		_ = os.RemoveAll(workspace.dir)
-
-		return PreparedTemplate{}, failErr
-	}
-
-	prepared, err := m.snapshotTemplate(ctx, req.Template.ID, vm, workspace)
+	prepared, err := m.prepareTemplateSnapshot(ctx, req, vm, workspace)
 	if err != nil {
-		failed, failErr := failVM(vm, err)
-		m.cleanupVM(context.Background(), failed, false)
-
-		_ = os.RemoveAll(workspace.dir)
-
-		return PreparedTemplate{}, failErr
+		return PreparedTemplate{}, err
 	}
 
 	m.cleanupVM(context.Background(), vm, false)
@@ -274,6 +258,36 @@ func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest
 	)
 
 	return prepared, nil
+}
+
+func (m Manager) prepareTemplateSnapshot(ctx context.Context, req PrepareTemplateRequest, vm VM, workspace workspace) (PreparedTemplate, error) {
+	if err := m.setupTemplateAgents(ctx, vm, req.Template.Config, req.Logs); err != nil {
+		return m.failTemplatePreparation(vm, workspace, err)
+	}
+
+	if err := m.runInitActions(ctx, vm, req.Template.Config, req.Logs); err != nil {
+		return m.failTemplatePreparation(vm, workspace, err)
+	}
+
+	if err := m.prepareGuestForSnapshot(ctx, vm); err != nil {
+		return m.failTemplatePreparation(vm, workspace, err)
+	}
+
+	prepared, err := m.snapshotTemplate(ctx, req.Template.ID, vm, workspace)
+	if err != nil {
+		return m.failTemplatePreparation(vm, workspace, err)
+	}
+
+	return prepared, nil
+}
+
+func (m Manager) failTemplatePreparation(vm VM, workspace workspace, err error) (PreparedTemplate, error) {
+	failed, failErr := failVM(vm, err)
+	m.cleanupVM(context.Background(), failed, false)
+
+	_ = os.RemoveAll(workspace.dir)
+
+	return PreparedTemplate{}, failErr
 }
 
 func (m Manager) prepareTemplateInputs(ctx context.Context, req PrepareTemplateRequest) (resolvedResources, workspace, error) {
@@ -1043,7 +1057,7 @@ func cloudHypervisorVMInfo(ctx context.Context, socketPath string) (cloudHypervi
 
 func (m Manager) prepareGuestForSnapshot(ctx context.Context, vm VM) error {
 	command := strings.Join([]string{
-		"set -eu",
+		shellStrictMode,
 		"sync",
 		"nohup sh -c 'sleep 1; ip addr flush dev eth0 || true; ip link set eth0 down || true; sleep 2; ip link set eth0 up || true; netplan apply || systemctl restart systemd-networkd || systemctl restart networking || dhclient eth0 || true' >/tmp/bastion-resume-network.log 2>&1 &",
 	}, "\n")
