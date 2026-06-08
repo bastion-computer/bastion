@@ -80,6 +80,7 @@ precheck() {
 
 nested_template_config() {
 	jq -nc '{
+		agents: {opencode: {}},
 		actions: {
 			init: [
 				{run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y --no-install-recommends ca-certificates curl jq tar sudo bash"},
@@ -209,7 +210,7 @@ done
 
 ./core/tmp/bastion --api-url "$INNER_API" templates list >/dev/null
 printf 'inner-api-ready\n'
-./core/tmp/bastion --api-url "$INNER_API" templates create --key "$CHILD_KEY" --config '{"actions":{"init":[{"run":"set -eu\nprintf nested-ok > /root/nested-ok"}]}}' >/dev/null
+./core/tmp/bastion --api-url "$INNER_API" templates create --key "$CHILD_KEY" --config '{"agents":{"opencode":{}},"actions":{"init":[{"run":"set -eu\nprintf nested-ok > /root/nested-ok"}]}}' >/dev/null
 printf 'inner-child-template-created\n'
 
 CHILD_ENV_OUTPUT="$(./core/tmp/bastion --api-url "$INNER_API" env create --template-key "$CHILD_KEY")"

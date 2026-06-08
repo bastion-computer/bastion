@@ -17,17 +17,21 @@ The current schema is available at
 
 ## Shape
 
-A template has two top-level fields:
+A template has three top-level fields:
 
 | Field       | Required | Description                                     |
 | ----------- | -------- | ----------------------------------------------- |
 | `resources` | No       | VM CPU, memory, and volume sizing.              |
+| `agents`    | Yes      | Agent servers Bastion installs and manages.     |
 | `actions`   | Yes      | Lifecycle actions: `init` and optional `start`. |
 
 Minimal template:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": []
   }
@@ -45,6 +49,9 @@ Use `resources` to override the default VM allocation.
     "memory": 8,
     "volume": 40
   },
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": []
   }
@@ -58,6 +65,62 @@ Use `resources` to override the default VM allocation.
 | `volume` | GiB        | `20`    | Guest root volume size. |
 
 All resource values must be integers greater than or equal to `1`.
+
+## Agents
+
+Every template must declare an `agents` object with `opencode`. Bastion installs
+OpenCode during template preparation before `actions.init`, snapshots the result,
+and restarts the OpenCode service during environment creation before
+`actions.start`.
+
+Minimal agent config:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": []
+  }
+}
+```
+
+OpenCode supports these optional fields:
+
+| Field               | Description                                      |
+| ------------------- | ------------------------------------------------ |
+| `working_directory` | Guest directory where the OpenCode service runs. |
+| `auth`              | JSON object written to OpenCode `auth.json`.     |
+| `config`            | JSON object written to OpenCode `opencode.json`. |
+
+Example with provider credentials and a custom model:
+
+```json
+{
+  "agents": {
+    "opencode": {
+      "working_directory": "/workspace/project",
+      "auth": {
+        "anthropic": {
+          "type": "api",
+          "key": "${{ env.ANTHROPIC_API_KEY }}"
+        }
+      },
+      "config": {
+        "model": "anthropic/claude-sonnet-4-20250514",
+        "permission": "ask"
+      }
+    }
+  },
+  "actions": {
+    "init": []
+  }
+}
+```
+
+OpenCode is exposed through the host API at
+`/v1/environments/:id/agents/opencode` after an environment is running.
 
 ## Lifecycle Actions
 
@@ -88,6 +151,9 @@ Use `run` for one-off shell commands:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [
       {
@@ -122,6 +188,9 @@ Use `use` for reusable setup packages stored under `<data-dir>/actions`:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [
       {
@@ -142,11 +211,10 @@ numbers, and underscores.
 
 Preset actions can run in either `actions.init` or `actions.start`.
 
-See [Custom Actions](/ecosystem/custom-actions/) for custom action package
+See [Custom Actions](/actions/custom-actions/) for custom action package
 layout. Built-in actions are documented by category under
-[Coding Agents](/ecosystem/built-ins/coding-agents/),
-[Utility Tools](/ecosystem/built-ins/utility-tools/), and
-[Runtimes](/ecosystem/built-ins/runtimes/).
+[Utility Tools](/actions/built-ins/utility-tools/) and
+[Runtimes](/actions/built-ins/runtimes/).
 
 ## Environment Substitution
 
@@ -155,6 +223,9 @@ template is created:
 
 ```json
 {
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [
       {
@@ -170,21 +241,21 @@ value from the `bastion start` process environment. If the variable is not set,
 template creation fails.
 
 Substitution works anywhere a string appears in the template JSON, including
-`actions.init`, `actions.start`, `run` commands, `working_directory`, and action
-package inputs.
+`agents.opencode`, `actions.init`, `actions.start`, `run` commands,
+`working_directory`, and action package inputs.
 
 ## Create a Template
 
 Create an unkeyed template from inline JSON:
 
 ```sh
-bastion templates create --config '{"actions":{"init":[]}}'
+bastion templates create --config '{"agents":{"opencode":{}},"actions":{"init":[]}}'
 ```
 
 Create a keyed template from inline JSON:
 
 ```sh
-bastion templates create --key dev --config '{"actions":{"init":[]}}'
+bastion templates create --key dev --config '{"agents":{"opencode":{}},"actions":{"init":[]}}'
 ```
 
 Create a keyed template from a file:

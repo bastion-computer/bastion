@@ -74,6 +74,9 @@ Create a template file:
     "memory": 2,
     "volume": 20
   },
+  "agents": {
+    "opencode": {}
+  },
   "actions": {
     "init": [
       {

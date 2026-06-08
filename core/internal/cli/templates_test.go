@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	templateCreateTestConfig = `{"actions":{"init":[]}}`
+	templateCreateTestConfig = `{"agents":{"opencode":{}},"actions":{"init":[]}}`
 	templateCreateTestKey    = "dev"
 )
 

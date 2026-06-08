@@ -310,7 +310,7 @@ verify_bastiond_restart_preserves_environment() {
   bastion system --data-dir "$data_dir" check
 
   CHILD_TEMPLATE_KEY="restart-child-$(date +%s)-$$"
-  bastion templates create --key "$CHILD_TEMPLATE_KEY" --config '{"resources":{"vcpu":1,"memory":1,"volume":5},"actions":{"init":[{"run":"set -eu\nprintf restart-ok >/root/restart-ok"}]}}' >/dev/null
+  bastion templates create --key "$CHILD_TEMPLATE_KEY" --config '{"agents":{"opencode":{}},"resources":{"vcpu":1,"memory":1,"volume":5},"actions":{"init":[{"run":"set -eu\nprintf restart-ok >/root/restart-ok"}]}}' >/dev/null
 
   output="$(bastion env create --template-key "$CHILD_TEMPLATE_KEY")"
   CHILD_ENV_ID="$(jq -r '.id // empty' <<<"$output")"

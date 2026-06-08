@@ -486,43 +486,67 @@ func TestSetupGitHubCLIPresetInputs(t *testing.T) {
 	}
 }
 
-func TestSetupOpenCodePresetInputsOnlyAcceptAuthAndConfig(t *testing.T) {
+func TestSetupTemplateAgentsInstallsOpenCodeAndWritesInputs(t *testing.T) {
 	t.Parallel()
 
-	dataDir := t.TempDir()
-	if err := builtinActions.Seed(dataDir); err != nil {
-		t.Fatalf("seed actions: %v", err)
+	var commands []string
+
+	manager := Manager{stream: recordSSHCommands(t, &commands)}
+
+	config := json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/project dir","auth":{"anthropic":{"type":"api","key":"test-key"}},"config":{"model":"anthropic/claude-sonnet-4-5","server":{"port":4097}}}},"actions":{"init":[]}}`)
+
+	if err := manager.setupTemplateAgents(context.Background(), testActionVM(), config, nil); err != nil {
+		t.Fatalf("setup template agents: %v", err)
 	}
 
-	preset, err := loadPresetAction(dataDir, "setup_opencode")
-	if err != nil {
-		t.Fatalf("load setup_opencode preset: %v", err)
+	if len(commands) != 1 {
+		t.Fatalf("commands = %#v, want one opencode setup command", commands)
 	}
 
-	if len(preset.manifest.Inputs) != 2 {
-		t.Fatalf("setup_opencode input count = %d, want 2: %#v", len(preset.manifest.Inputs), preset.manifest.Inputs)
-	}
-
-	for _, name := range []string{"auth", "config"} {
-		input, ok := preset.manifest.Inputs[name]
-		if !ok {
-			t.Fatalf("setup_opencode input %s is not defined: %#v", name, preset.manifest.Inputs)
+	for _, want := range []string{
+		"https://opencode.ai/install",
+		"/root/.config/opencode/opencode.json",
+		"/root/.local/share/opencode/auth.json",
+		"anthropic/claude-sonnet-4-5",
+		"test-key",
+		"bastion-opencode.service",
+		"/workspace/project dir",
+		`WorkingDirectory=/workspace/project\x20dir`,
+		"--port 4097",
+	} {
+		if !strings.Contains(commands[0], want) {
+			t.Fatalf("opencode setup command = %q, want to contain %q", commands[0], want)
 		}
+	}
+}
 
-		if input.Type != "string" || input.Required {
-			t.Fatalf("setup_opencode input %s = %#v, want optional string", name, input)
-		}
+func TestStartEnvironmentAgentsRestartsOpenCodeBeforeStartActions(t *testing.T) {
+	t.Parallel()
+
+	var commands []string
+
+	manager := Manager{stream: recordSSHCommands(t, &commands)}
+
+	config := json.RawMessage(`{"agents":{"opencode":{"config":{"server":{"port":4097}}}},"actions":{"init":[],"start":[{"run":"opencode --version"}]}}`)
+
+	if err := manager.startEnvironmentAgents(context.Background(), testActionVM(), config, nil); err != nil {
+		t.Fatalf("start environment agents: %v", err)
 	}
 
-	if err := validatePresetActionInputs(preset, map[string]any{
-		"auth":   `{"anthropic":{"type":"api","key":"test-key"}}`,
-		"config": `{"model":"anthropic/claude-sonnet-4-5"}`,
-	}); err != nil {
-		t.Fatalf("validate auth/config inputs: %v", err)
+	if err := manager.runStartActions(context.Background(), testActionVM(), config, nil); err != nil {
+		t.Fatalf("run start actions: %v", err)
 	}
 
-	if err := validatePresetActionInputs(preset, map[string]any{"provider": "anthropic"}); err == nil || !strings.Contains(err.Error(), "input provider is not defined") {
-		t.Fatalf("validate removed provider input error = %v, want not defined", err)
+	if len(commands) != 2 {
+		t.Fatalf("commands = %#v, want agent restart then start action", commands)
+	}
+
+	if !strings.Contains(commands[0], "systemctl restart bastion-opencode.service") || !strings.Contains(commands[0], "127.0.0.1:4097/") {
+		t.Fatalf("first command = %q, want opencode service restart and health wait", commands[0])
+	}
+
+	if !strings.Contains(commands[1], "opencode --version") {
+		t.Fatalf("second command = %q, want start action after agent restart", commands[1])
 	}
 }
 

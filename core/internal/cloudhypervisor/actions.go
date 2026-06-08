@@ -17,10 +17,12 @@ var ErrVMInitFailed = errors.New("vm init failed")
 const (
 	actionPhaseInit  = "init"
 	actionPhaseStart = "start"
+	shellStrictMode  = "set -eu"
 )
 
 type templateConfig struct {
 	Resources templateResources `json:"resources"`
+	Agents    templateAgents    `json:"agents"`
 	Actions   templateActions   `json:"actions"`
 }
 
@@ -39,6 +41,16 @@ type resolvedResources struct {
 type templateActions struct {
 	Init  []templateAction `json:"init"`
 	Start []templateAction `json:"start,omitempty"`
+}
+
+type templateAgents struct {
+	OpenCode *templateOpenCodeAgent `json:"opencode,omitempty"`
+}
+
+type templateOpenCodeAgent struct {
+	WorkingDirectory string         `json:"working_directory,omitempty"`
+	Auth             map[string]any `json:"auth,omitempty"`
+	Config           map[string]any `json:"config,omitempty"`
 }
 
 type templateAction struct {
@@ -83,6 +95,15 @@ func parseTemplateResources(config json.RawMessage) (templateResources, error) {
 	}
 
 	return parsed.Resources, nil
+}
+
+func parseTemplateAgents(config json.RawMessage) (templateAgents, error) {
+	parsed, err := parseTemplateConfig(config)
+	if err != nil {
+		return templateAgents{}, err
+	}
+
+	return parsed.Agents, nil
 }
 
 func resolveTemplateResources(config json.RawMessage) (resolvedResources, error) {

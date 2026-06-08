@@ -36,6 +36,9 @@ Request with an optional unique key:
 {
   "key": "dev",
   "config": {
+    "agents": {
+      "opencode": {}
+    },
     "actions": {
       "init": []
     }
@@ -48,6 +51,9 @@ Request without a key:
 ```json
 {
   "config": {
+    "agents": {
+      "opencode": {}
+    },
     "actions": {
       "init": []
     }
@@ -125,6 +131,9 @@ Response:
   "id": "tpl_xxxxxx",
   "key": "dev",
   "config": {
+    "agents": {
+      "opencode": {}
+    },
     "actions": {
       "init": []
     }
@@ -268,6 +277,17 @@ Response:
   "updatedAt": "<iso_timestamp>"
 }
 ```
+
+### Proxy OpenCode Agent
+
+```http
+GET /v1/environments/env_xxxxxx/agents/opencode
+GET /v1/environments/env_xxxxxx/agents/opencode/<path>
+POST /v1/environments/env_xxxxxx/agents/opencode/<path>
+```
+
+All HTTP methods are proxied to the environment's OpenCode server. The
+environment must be running and its template must define `agents.opencode`.
 
 ### Remove Environment
 

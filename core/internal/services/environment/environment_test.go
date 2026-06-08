@@ -72,7 +72,7 @@ func TestServicePersistsLaunchVMFailure(t *testing.T) {
 
 	if _, err := templates.Create(ctx, template.CreateRequest{
 		Key:    new(testTemplateKey),
-		Config: json.RawMessage(`{"actions":{"init":[{"run":"false"}]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"false"}]}}`),
 	}); err != nil {
 		t.Fatalf("create template: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestServicePreservesTemplateResourcesForOrchestration(t *testing.T) {
 
 	if _, err := templates.Create(ctx, template.CreateRequest{
 		Key:    new("resource-template"),
-		Config: json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`),
 	}); err != nil {
 		t.Fatalf("create template: %v", err)
 	}
@@ -252,7 +252,7 @@ func createTaggedTestTemplate(ctx context.Context, t *testing.T, templates *temp
 
 	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
 		Key:    new(testTemplateKey),
-		Config: json.RawMessage(`{"actions":{"init":[]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
@@ -264,7 +264,7 @@ func createTaggedTestTemplate(ctx context.Context, t *testing.T, templates *temp
 func createUnkeyedTestTemplate(ctx context.Context, t *testing.T, templates *template.Service) template.Metadata {
 	t.Helper()
 
-	createdTemplate, err := templates.Create(ctx, template.CreateRequest{Config: json.RawMessage(`{"actions":{"init":[]}}`)})
+	createdTemplate, err := templates.Create(ctx, template.CreateRequest{Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)})
 	if err != nil {
 		t.Fatalf("create unkeyed template: %v", err)
 	}
@@ -331,7 +331,7 @@ func createEnvironmentFromTemplate(ctx context.Context, t *testing.T, templates 
 
 	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
 		Key:    new(testTemplateKey),
-		Config: json.RawMessage(`{"actions":{"init":[]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)

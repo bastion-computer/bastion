@@ -24,7 +24,7 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 
 	created, err := service.Create(ctx, template.CreateRequest{
 		Key:    new("dev-env"),
-		Config: json.RawMessage(`{"actions":{"init":[]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
@@ -50,7 +50,7 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 		t.Fatalf("get template: %v", err)
 	}
 
-	if got.ID != created.ID || string(got.Config) != `{"actions":{"init":[]}}` {
+	if got.ID != created.ID || !jsonEqual(got.Config, json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)) {
 		t.Fatalf("unexpected template: %#v", got)
 	}
 
@@ -76,7 +76,7 @@ func TestServiceCreatesTemplatesWithOptionalKeys(t *testing.T) {
 	db := openDB(t)
 	service := template.NewService(db)
 	ctx := context.Background()
-	config := json.RawMessage(`{"actions":{"init":[]}}`)
+	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
 
 	keyed, err := service.Create(ctx, template.CreateRequest{Key: new("keyed-template"), Config: config})
 	if err != nil {
@@ -119,7 +119,7 @@ func TestServiceRejectsDuplicateAndBlankTemplateKeys(t *testing.T) {
 	db := openDB(t)
 	service := template.NewService(db)
 	ctx := context.Background()
-	config := json.RawMessage(`{"actions":{"init":[]}}`)
+	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
 
 	if _, err := service.Create(ctx, template.CreateRequest{Key: new("keyed-template"), Config: config}); err != nil {
 		t.Fatalf("create keyed template: %v", err)
@@ -141,17 +141,17 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		key    string
 		config json.RawMessage
 	}{
-		{key: "run-actions", config: json.RawMessage(`{"actions":{"init":[{"run":"echo node setup"},{"run":"echo docker setup"}]}}`)},
-		{key: "start-run-actions", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo env setup"},{"run":"echo env ready"}]}}`)},
-		{key: "working-directory-run-action", config: json.RawMessage(`{"actions":{"init":[{"run":"pwd","working_directory":"/workspace/project"}]}}`)},
-		{key: "start-working-directory-run-action", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"pwd","working_directory":"/workspace/project"}]}}`)},
-		{key: "preset-actions", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`)},
-		{key: "start-preset-actions", config: json.RawMessage(`{"actions":{"init":[],"start":[{"use":"setup_node","with":{"version":24}}]}}`)},
-		{key: "resources", config: json.RawMessage(`{"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`)},
-		{key: "mise-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
-		{key: "github-cli-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
-		{key: "opencode-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_opencode","with":{"auth":"{\"anthropic\":{\"type\":\"api\",\"key\":\"test-key\"}}","config":"{\"model\":\"anthropic/claude-sonnet-4-5\",\"permission\":\"allow\"}"}}]}}`)},
-		{key: "default-ssh-directory-preset-action", config: json.RawMessage(`{"actions":{"init":[{"use":"set_default_ssh_directory","with":{"path":"/workspace/bastion"}}]}}`)},
+		{key: "run-actions", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo node setup"},{"run":"echo docker setup"}]}}`)},
+		{key: "start-run-actions", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[],"start":[{"run":"echo env setup"},{"run":"echo env ready"}]}}`)},
+		{key: "working-directory-run-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"pwd","working_directory":"/workspace/project"}]}}`)},
+		{key: "start-working-directory-run-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[],"start":[{"run":"pwd","working_directory":"/workspace/project"}]}}`)},
+		{key: "preset-actions", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`)},
+		{key: "start-preset-actions", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[],"start":[{"use":"setup_node","with":{"version":24}}]}}`)},
+		{key: "resources", config: json.RawMessage(`{"agents":{"opencode":{}},"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`)},
+		{key: "opencode-agent", config: json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/project","auth":{"anthropic":{"type":"api","key":"test-key"}},"config":{"model":"anthropic/claude-sonnet-4-5","permission":"allow"}}},"actions":{"init":[]}}`)},
+		{key: "mise-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
+		{key: "github-cli-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
+		{key: "default-ssh-directory-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"set_default_ssh_directory","with":{"path":"/workspace/bastion"}}]}}`)},
 	}
 
 	for _, tc := range cases {
@@ -187,7 +187,7 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 
 	created, err := service.Create(ctx, template.CreateRequest{
 		Key:    new("substitution-template"),
-		Config: json.RawMessage(`{"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}],"start":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }} again'"}]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}","auth":{"anthropic":{"type":"api","key":"${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}},"config":{"model":"anthropic/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}}},"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}],"start":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }} again'"}]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
@@ -198,6 +198,19 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 	}
 
 	var prepared struct {
+		Agents struct {
+			OpenCode struct {
+				WorkingDirectory string `json:"working_directory"`
+				Auth             struct {
+					Anthropic struct {
+						Key string `json:"key"`
+					} `json:"anthropic"`
+				} `json:"auth"`
+				Config struct {
+					Model string `json:"model"`
+				} `json:"config"`
+			} `json:"opencode"`
+		} `json:"agents"`
 		Actions struct {
 			Init []struct {
 				Run string `json:"run"`
@@ -213,6 +226,10 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 
 	if len(prepared.Actions.Init) != 1 || prepared.Actions.Init[0].Run != "printf 'substituted-value'" {
 		t.Fatalf("prepared template config = %s, want substituted env values", orchestrator.prepared[0].Config)
+	}
+
+	if prepared.Agents.OpenCode.WorkingDirectory != "/workspace/substituted-value" || prepared.Agents.OpenCode.Auth.Anthropic.Key != "substituted-value" || prepared.Agents.OpenCode.Config.Model != "anthropic/substituted-value" {
+		t.Fatalf("prepared template config = %s, want substituted opencode agent values", orchestrator.prepared[0].Config)
 	}
 
 	if len(prepared.Actions.Start) != 1 || prepared.Actions.Start[0].Run != "printf 'substituted-value again'" {
@@ -240,7 +257,7 @@ func TestServiceRejectsUnsetTemplateEnvironmentVariableBeforePrepare(t *testing.
 
 	_, err := service.Create(ctx, template.CreateRequest{
 		Key:    new("missing-substitution-template"),
-		Config: json.RawMessage(`{"actions":{"init":[{"run":"echo ${{ env.BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2 }}"}]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo ${{ env.BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2 }}"}]}}`),
 	})
 	if !errors.Is(err, failure.ErrInvalid) || !strings.Contains(err.Error(), missingName) {
 		t.Fatalf("create template error = %v, want invalid missing env var", err)
@@ -259,7 +276,7 @@ func TestServiceRemovesPreparedTemplateArtifacts(t *testing.T) {
 	service := template.NewService(db, template.WithOrchestrator(orchestrator))
 	ctx := context.Background()
 
-	created, err := service.Create(ctx, template.CreateRequest{Key: new("prepared-template"), Config: json.RawMessage(`{"actions":{"init":[]}}`)})
+	created, err := service.Create(ctx, template.CreateRequest{Key: new("prepared-template"), Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
 	}
@@ -285,19 +302,23 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 		config json.RawMessage
 	}{
 		{name: "invalid json", config: json.RawMessage(`{`)},
-		{name: "missing actions", config: json.RawMessage(`{}`)},
-		{name: "schema metadata property", config: json.RawMessage(`{"$schema":"https://bastion.computer/schemas/template.json","actions":{"init":[]}}`)},
-		{name: "removed delegate commands", config: json.RawMessage(`{"actions":{"init":[]},"delegateCommands":{}}`)},
-		{name: "removed network rules", config: json.RawMessage(`{"actions":{"init":[]},"networkRules":{}}`)},
-		{name: "invalid preset action name", config: json.RawMessage(`{"actions":{"init":[{"use":"example/action"}]}}`)},
-		{name: "invalid action", config: json.RawMessage(`{"actions":{"init":[{"run":"echo hi","use":"example/action"}]}}`)},
-		{name: "invalid start action", config: json.RawMessage(`{"actions":{"init":[],"start":[{"run":"echo hi","use":"example/action"}]}}`)},
-		{name: "empty working directory", config: json.RawMessage(`{"actions":{"init":[{"run":"pwd","working_directory":""}]}}`)},
-		{name: "working directory on preset action", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","working_directory":"/workspace"}]}}`)},
-		{name: "invalid with input name", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"node-version":24}}]}}`)},
-		{name: "invalid with input value", config: json.RawMessage(`{"actions":{"init":[{"use":"setup_node","with":{"version":{}}}]}}`)},
-		{name: "unknown top-level property", config: json.RawMessage(`{"actions":{"init":[]},"legacy":{}}`)},
-		{name: "non integer vcpu", config: json.RawMessage(`{"resources":{"vcpu":1.5},"actions":{"init":[]}}`)},
+		{name: "missing agents", config: json.RawMessage(`{"actions":{"init":[]}}`)},
+		{name: "empty agents", config: json.RawMessage(`{"agents":{},"actions":{"init":[]}}`)},
+		{name: "unknown agent", config: json.RawMessage(`{"agents":{"other":{}},"actions":{"init":[]}}`)},
+		{name: "invalid opencode auth", config: json.RawMessage(`{"agents":{"opencode":{"auth":{"anthropic":{"type":"api"}}}},"actions":{"init":[]}}`)},
+		{name: "missing actions", config: json.RawMessage(`{"agents":{"opencode":{}}}`)},
+		{name: "schema metadata property", config: json.RawMessage(`{"agents":{"opencode":{}},"$schema":"https://bastion.computer/schemas/template.json","actions":{"init":[]}}`)},
+		{name: "removed delegate commands", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]},"delegateCommands":{}}`)},
+		{name: "removed network rules", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]},"networkRules":{}}`)},
+		{name: "invalid preset action name", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"example/action"}]}}`)},
+		{name: "invalid action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo hi","use":"example/action"}]}}`)},
+		{name: "invalid start action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[],"start":[{"run":"echo hi","use":"example/action"}]}}`)},
+		{name: "empty working directory", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"pwd","working_directory":""}]}}`)},
+		{name: "working directory on preset action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","working_directory":"/workspace"}]}}`)},
+		{name: "invalid with input name", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","with":{"node-version":24}}]}}`)},
+		{name: "invalid with input value", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","with":{"version":{}}}]}}`)},
+		{name: "unknown top-level property", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]},"legacy":{}}`)},
+		{name: "non integer vcpu", config: json.RawMessage(`{"agents":{"opencode":{}},"resources":{"vcpu":1.5},"actions":{"init":[]}}`)},
 	}
 
 	for i, tc := range cases {
@@ -330,7 +351,7 @@ func TestServiceRejectsRemovingTemplateInUseByEnvironment(t *testing.T) {
 
 	created, err := templates.Create(ctx, template.CreateRequest{
 		Key:    new("dev-env"),
-		Config: json.RawMessage(`{"actions":{"init":[]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
