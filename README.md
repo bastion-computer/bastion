@@ -77,3 +77,7 @@ The task defaults to `http://localhost:3148`. Set `BASTION_API_URL` to target an
 ```sh
 BASTION_API_URL=http://localhost:3148 mise run dev:bastion templates list
 ```
+
+## Contact
+
+Reach out to [hazim@bastion.computer](mailto:hazim@bastion.computer) or join the [Bastion GitHub discussions](https://github.com/orgs/bastion-computer/discussions).
