@@ -80,6 +80,15 @@ export default defineConfig({
             { label: "Runtimes", slug: "actions/built-ins/runtimes" },
           ],
         },
+        {
+          label: "Examples",
+          items: [
+            {
+              label: "Remote access with Tailscale",
+              slug: "examples/remote-access-with-tailscale",
+            },
+          ],
+        },
       ],
     }),
   ],
