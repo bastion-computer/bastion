@@ -185,10 +185,14 @@ allow_docs_from_guests() {
 
 install_template_config() {
   jq -nc '{
+    agents: {opencode: {}},
     actions: {
       init: [
         {
           run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y --no-install-recommends ca-certificates curl tar bash coreutils iproute2 jq kmod systemd systemd-sysv\nsystemctl --version >/dev/null"
+        },
+        {
+          run: "set -eu\nrm -f /swapfile\nfallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048\nchmod 600 /swapfile\nmkswap /swapfile\nswapon /swapfile"
         }
       ]
     }
@@ -308,6 +312,8 @@ verify_bastiond_restart_preserves_environment() {
 
   bastion system --data-dir "$data_dir" add cloud-hypervisor --with-utilities
   bastion system --data-dir "$data_dir" check
+  sync
+  echo 3 > /proc/sys/vm/drop_caches || true
 
   CHILD_TEMPLATE_KEY="restart-child-$(date +%s)-$$"
   bastion templates create --key "$CHILD_TEMPLATE_KEY" --config '{"agents":{"opencode":{}},"resources":{"vcpu":1,"memory":1,"volume":5},"actions":{"init":[{"run":"set -eu\nprintf restart-ok >/root/restart-ok"}]}}' >/dev/null
@@ -379,7 +385,7 @@ grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastiond.se
 grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not read /etc/default/bastion"
 
 inner_network_prefix="$(choose_inner_network_prefix)"
-printf '\nBASTION_E2E_SENTINEL=preserve\nBASTION_VM_CPUS=1\nBASTION_VM_MEMORY_BYTES=1073741824\nBASTION_VM_NETWORK_PREFIX=%s\n' "$inner_network_prefix" >>/etc/default/bastion
+printf '\nBASTION_E2E_SENTINEL=preserve\nBASTION_VM_CPUS=1\nBASTION_VM_MEMORY_BYTES=805306368\nBASTION_VM_NETWORK_PREFIX=%s\n' "$inner_network_prefix" >>/etc/default/bastion
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastiond.service
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastion-api.service
 

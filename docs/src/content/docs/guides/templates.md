@@ -122,6 +122,8 @@ Example with provider credentials and a custom model:
 OpenCode is exposed through the host API at
 `/v1/environments/:id/agents/opencode` or
 `/v1/environments/by-key/:key/agents/opencode` after an environment is running.
+Use `bastion opencode --id ENV_ID` or `bastion opencode --key ENV_KEY` to start
+the local OpenCode TUI against that proxied server.
 
 ## Lifecycle Actions
 

@@ -67,7 +67,7 @@ func TestEnvironmentGetCommandUsesID(t *testing.T) {
 	cmd := newEnvironmentGetCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--id", cliTestEnvironmentID})
+	cmd.SetArgs([]string{cliTestIDFlag, cliTestEnvironmentID})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -139,7 +139,7 @@ func TestEnvironmentRemoveCommandUsesID(t *testing.T) {
 	cmd := newEnvironmentRemoveCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--id", cliTestEnvironmentID})
+	cmd.SetArgs([]string{cliTestIDFlag, cliTestEnvironmentID})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

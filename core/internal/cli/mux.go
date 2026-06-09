@@ -23,6 +23,9 @@ const (
 	muxNordMenuStyle         = "bg=#2E3440,fg=#D8DEE9"
 	muxNordMenuSelectedStyle = "bg=#88C0D0,fg=#2E3440,bold"
 	muxNordMenuBorderStyle   = "fg=#88C0D0,bg=#2E3440,bold"
+	muxDisplayMenuCommand    = "display-menu"
+	muxConnectionSSH         = "ssh"
+	muxConnectionOpenCode    = "opencode"
 )
 
 //go:embed bastion-tmux.conf
@@ -60,6 +63,7 @@ func newMuxCommandWithRunner(opts *rootOptions, tmux tmuxRunner) *cobra.Command 
 	cmd.AddCommand(
 		newMuxPendingCommand(opts, tmux),
 		newMuxSelectCommand(opts, tmux),
+		newMuxConnectMenuCommand(tmux),
 		newMuxConnectCommand(tmux),
 	)
 
@@ -81,7 +85,7 @@ func newMuxPendingCommand(opts *rootOptions, tmux tmuxRunner) *cobra.Command {
 				return err
 			}
 
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Select a Bastion environment from the menu to start SSH.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Select a Bastion environment and connection mode from the menus.")
 			if err := runMuxSelect(cmd.Context(), tmux, apiClient(opts), target); err != nil {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), err)
 			}
@@ -115,7 +119,7 @@ func newMuxSelectCommand(opts *rootOptions, tmux tmuxRunner) *cobra.Command {
 	return cmd
 }
 
-func newMuxConnectCommand(tmux tmuxRunner) *cobra.Command {
+func newMuxConnectMenuCommand(tmux tmuxRunner) *cobra.Command {
 	var (
 		target        muxTarget
 		environmentID string
@@ -123,7 +127,7 @@ func newMuxConnectCommand(tmux tmuxRunner) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:    "connect --target-window WINDOW --target-pane PANE --id ID --name NAME",
+		Use:    "connect-menu --target-window WINDOW --target-pane PANE --id ID --name NAME",
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -135,7 +139,7 @@ func newMuxConnectCommand(tmux tmuxRunner) *cobra.Command {
 				return errors.New("environment id and name are required")
 			}
 
-			return runMuxConnect(cmd.Context(), tmux, target, environmentID, name)
+			return runMuxConnectMenu(cmd.Context(), tmux, target, environmentID, name)
 		},
 	}
 	cmd.Flags().StringVar(&target.session, "target-session", muxSessionName, "tmux session to inspect")
@@ -143,6 +147,40 @@ func newMuxConnectCommand(tmux tmuxRunner) *cobra.Command {
 	cmd.Flags().StringVar(&target.pane, "target-pane", "", "tmux pane to replace")
 	cmd.Flags().StringVar(&environmentID, "id", "", "environment ID")
 	cmd.Flags().StringVar(&name, "name", "", "window base name")
+
+	return cmd
+}
+
+func newMuxConnectCommand(tmux tmuxRunner) *cobra.Command {
+	var (
+		target        muxTarget
+		environmentID string
+		name          string
+		mode          string
+	)
+
+	cmd := &cobra.Command{
+		Use:    "connect --target-window WINDOW --target-pane PANE --id ID --name NAME --mode MODE",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireMuxTarget(target); err != nil {
+				return err
+			}
+
+			if environmentID == "" || name == "" {
+				return errors.New("environment id and name are required")
+			}
+
+			return runMuxConnect(cmd.Context(), tmux, target, environmentID, name, mode)
+		},
+	}
+	cmd.Flags().StringVar(&target.session, "target-session", muxSessionName, "tmux session to inspect")
+	cmd.Flags().StringVar(&target.window, "target-window", "", "tmux window to rename")
+	cmd.Flags().StringVar(&target.pane, "target-pane", "", "tmux pane to replace")
+	cmd.Flags().StringVar(&environmentID, "id", "", "environment ID")
+	cmd.Flags().StringVar(&name, "name", "", "window base name")
+	cmd.Flags().StringVar(&mode, "mode", muxConnectionSSH, "connection mode")
 
 	return cmd
 }
@@ -302,7 +340,22 @@ func runMuxSelect(ctx context.Context, tmux tmuxRunner, api *client.Client, targ
 	return err
 }
 
-func runMuxConnect(ctx context.Context, tmux tmuxRunner, target muxTarget, environmentID, baseName string) error {
+func runMuxConnectMenu(ctx context.Context, tmux tmuxRunner, target muxTarget, environmentID, name string) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve bastion executable: %w", err)
+	}
+
+	_, err = tmux.run(ctx, muxConnectionMenuArgs(executable, target, environmentID, name)...)
+
+	return err
+}
+
+func runMuxConnect(ctx context.Context, tmux tmuxRunner, target muxTarget, environmentID, baseName, mode string) error {
+	if err := requireMuxConnectionMode(mode); err != nil {
+		return err
+	}
+
 	windowList, err := tmux.run(ctx, "list-windows", "-t", target.session, "-F", "#{window_id}\t#{@bastion_environment_id}")
 	if err != nil {
 		return err
@@ -315,10 +368,15 @@ func runMuxConnect(ctx context.Context, tmux tmuxRunner, target muxTarget, envir
 		return fmt.Errorf("resolve bastion executable: %w", err)
 	}
 
+	connectionCommand, err := muxConnectionShellCommand(executable, environmentID, mode)
+	if err != nil {
+		return err
+	}
+
 	commands := [][]string{
 		{"set-window-option", "-q", "-t", target.window, "@bastion_environment_id", environmentID},
 		{"rename-window", "-t", target.window, name},
-		{"respawn-pane", "-k", "-t", target.pane, muxSSHShellCommand(executable, environmentID)},
+		{"respawn-pane", "-k", "-t", target.pane, connectionCommand},
 	}
 
 	for _, args := range commands {
@@ -330,9 +388,18 @@ func runMuxConnect(ctx context.Context, tmux tmuxRunner, target muxTarget, envir
 	return nil
 }
 
+func requireMuxConnectionMode(mode string) error {
+	switch mode {
+	case muxConnectionSSH, muxConnectionOpenCode:
+		return nil
+	default:
+		return fmt.Errorf("unsupported mux connection mode %q", mode)
+	}
+}
+
 func muxMenuArgs(executable string, target muxTarget, environments []environment.Environment) []string {
 	args := []string{
-		"display-menu",
+		muxDisplayMenuCommand,
 		"-t",
 		target.pane,
 		"-x",
@@ -357,15 +424,48 @@ func muxMenuArgs(executable string, target muxTarget, environments []environment
 		args = append(args,
 			muxEnvironmentMenuLabel(env),
 			"",
-			muxConnectTmuxCommand(executable, target, env.ID, muxEnvironmentLabel(env)),
+			muxConnectMenuTmuxCommand(executable, target, env.ID, muxEnvironmentLabel(env)),
 		)
 	}
 
 	return args
 }
 
-func muxConnectTmuxCommand(executable string, target muxTarget, environmentID, name string) string {
-	return "run-shell -b " + tmuxQuote(muxConnectTargetShellCommand(executable, target, environmentID, name))
+func muxConnectionMenuArgs(executable string, target muxTarget, environmentID, name string) []string {
+	args := []string{
+		muxDisplayMenuCommand,
+		"-t",
+		target.pane,
+		"-x",
+		"C",
+		"-y",
+		"C",
+		"-s",
+		muxNordMenuStyle,
+		"-H",
+		muxNordMenuSelectedStyle,
+		"-S",
+		muxNordMenuBorderStyle,
+		"-T",
+		"Connect to " + name,
+	}
+
+	return append(args,
+		"SSH",
+		"",
+		muxConnectTmuxCommand(executable, target, environmentID, name, muxConnectionSSH),
+		"OpenCode",
+		"",
+		muxConnectTmuxCommand(executable, target, environmentID, name, muxConnectionOpenCode),
+	)
+}
+
+func muxConnectMenuTmuxCommand(executable string, target muxTarget, environmentID, name string) string {
+	return "run-shell -b " + tmuxQuote(muxConnectMenuTargetShellCommand(executable, target, environmentID, name))
+}
+
+func muxConnectTmuxCommand(executable string, target muxTarget, environmentID, name, mode string) string {
+	return "run-shell -b " + tmuxQuote(muxConnectTargetShellCommand(executable, target, environmentID, name, mode))
 }
 
 func requireMuxTarget(target muxTarget) error {
@@ -447,12 +547,31 @@ func muxPendingShellCommand(executable, apiURL string) string {
 	return "BASTION_API_URL=" + shellQuote(apiURL) + " " + shellCommand(executable, "mux", "pending")
 }
 
-func muxConnectTargetShellCommand(executable string, target muxTarget, environmentID, name string) string {
-	return shellCommand(executable, "mux", "connect", "--target-session", target.session, "--target-window", target.window, "--target-pane", target.pane, "--id", environmentID, "--name", name)
+func muxConnectMenuTargetShellCommand(executable string, target muxTarget, environmentID, name string) string {
+	return shellCommand(executable, "mux", "connect-menu", "--target-session", target.session, "--target-window", target.window, "--target-pane", target.pane, "--id", environmentID, "--name", name)
+}
+
+func muxConnectTargetShellCommand(executable string, target muxTarget, environmentID, name, mode string) string {
+	return shellCommand(executable, "mux", "connect", "--target-session", target.session, "--target-window", target.window, "--target-pane", target.pane, "--id", environmentID, "--name", name, "--mode", mode)
 }
 
 func muxSSHShellCommand(executable, environmentID string) string {
 	return shellCommand(executable, "ssh", "--id", environmentID)
+}
+
+func muxOpenCodeShellCommand(executable, environmentID string) string {
+	return shellCommand(executable, "opencode", "--id", environmentID)
+}
+
+func muxConnectionShellCommand(executable, environmentID, mode string) (string, error) {
+	switch mode {
+	case muxConnectionSSH:
+		return muxSSHShellCommand(executable, environmentID), nil
+	case muxConnectionOpenCode:
+		return muxOpenCodeShellCommand(executable, environmentID), nil
+	default:
+		return "", fmt.Errorf("unsupported mux connection mode %q", mode)
+	}
 }
 
 func shellCommand(executable string, args ...string) string {

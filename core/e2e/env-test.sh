@@ -268,6 +268,47 @@ assert_opencode_proxy_health() {
   fi
 }
 
+assert_bastion_opencode_attach() {
+  local label=$1
+  local ref_flag=$2
+  local ref_value=$3
+  local expected_url=$4
+  local fake_bin="$CORE_DIR/tmp/opencode-e2e-$RUN_ID-$label"
+  local proxy_file="$fake_bin/proxy-url"
+  local got_url
+
+  rm -rf "$fake_bin"
+  mkdir -p "$fake_bin"
+  cat >"$fake_bin/opencode" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ne 2 ] || [ "$1" != "attach" ]; then
+  printf 'unexpected opencode invocation: %s\n' "$*" >&2
+  exit 64
+fi
+
+curl -fsS --connect-timeout 5 --max-time 10 "$2/global/health" | jq -e '.healthy == true' >/dev/null
+printf '%s\n' "$2" >"${BASTION_E2E_OPENCODE_PROXY_FILE:?}"
+SH
+  chmod +x "$fake_bin/opencode"
+
+  if ! (export PATH="$fake_bin:$PATH" BASTION_E2E_OPENCODE_PROXY_FILE="$proxy_file"; run_cli opencode "$ref_flag" "$ref_value"); then
+    fail "$label bastion opencode attach failed"
+  fi
+
+  if [ ! -s "$proxy_file" ]; then
+    fail "$label fake opencode did not record a proxy URL"
+  fi
+
+  got_url="$(<"$proxy_file")"
+  if [ "$got_url" != "$expected_url" ]; then
+    fail "$label proxy URL was $got_url, want $expected_url"
+  fi
+
+  rm -rf "$fake_bin"
+}
+
 ssh_env() {
   local env_id=$1
   shift
@@ -663,6 +704,8 @@ fi"
 
   assert_opencode_proxy_health "OpenCode id route" "${API_URL%/}/v1/environments/$env_id/agents/opencode/global/health"
   assert_opencode_proxy_health "OpenCode key route" "${API_URL%/}/v1/environments/by-key/$env_key/agents/opencode/global/health"
+  assert_bastion_opencode_attach "OpenCode CLI id route" --id "$env_id" "${API_URL%/}/v1/environments/$env_id/agents/opencode"
+  assert_bastion_opencode_attach "OpenCode CLI key route" --key "$env_key" "${API_URL%/}/v1/environments/by-key/$env_key/agents/opencode"
 
   log "OpenCode agent case passed for $env_id"
 }

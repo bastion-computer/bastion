@@ -1,6 +1,6 @@
 ---
 title: Quick Start
-description: Install Bastion, launch an environment, and connect over SSH.
+description: Install Bastion, launch an environment, and connect over SSH or OpenCode.
 ---
 
 This guide takes you from a fresh Linux host to a running Bastion environment.
@@ -147,6 +147,15 @@ Open an interactive shell:
 
 ```sh
 bastion ssh --id env_xxxxxx
+```
+
+## Connect With OpenCode
+
+If you have `opencode` installed locally, attach it to the environment's OpenCode
+server through the Bastion API proxy:
+
+```sh
+bastion opencode --id env_xxxxxx
 ```
 
 ## Clean Up

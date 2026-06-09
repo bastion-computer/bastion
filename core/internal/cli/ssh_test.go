@@ -22,25 +22,9 @@ func TestSSHCommandUsesAPIManagedSSH(t *testing.T) {
 	server := newSSHCommandTestServer(t, gotReq)
 	t.Cleanup(server.Close)
 
-	var stdout bytes.Buffer
-
-	cmd := newSSHCommand(&rootOptions{apiURL: server.URL})
-	cmd.SetIn(bytes.NewBuffer(nil))
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--id", cliTestEnvironmentID, "--", sshTestCommandTrue})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-
-	got := <-gotReq
+	got := runSSHCommandTest(t, server.URL, gotReq, []string{cliTestIDFlag, cliTestEnvironmentID, "--", sshTestCommandTrue})
 	if len(got.Command) != 1 || got.Command[0] != sshTestCommandTrue || got.PTY {
 		t.Fatalf("SSH request = %#v, want command true without pty", got)
-	}
-
-	if stdout.String() != "ok\n" {
-		t.Fatalf("stdout = %q, want ok", stdout.String())
 	}
 }
 
@@ -51,26 +35,34 @@ func TestSSHCommandUsesEnvironmentKey(t *testing.T) {
 	server := newSSHCommandKeyTestServer(t, gotReq)
 	t.Cleanup(server.Close)
 
+	got := runSSHCommandTest(t, server.URL, gotReq, []string{cliTestKeyFlag, cliTestEnvironmentKey, "--", sshTestCommandTrue})
+	if len(got.Command) != 1 || got.Command[0] != sshTestCommandTrue || got.PTY {
+		t.Fatalf("SSH request = %#v, want command true without pty", got)
+	}
+}
+
+func runSSHCommandTest(t *testing.T, apiURL string, gotReq <-chan sshtunnel.Request, args []string) sshtunnel.Request {
+	t.Helper()
+
 	var stdout bytes.Buffer
 
-	cmd := newSSHCommand(&rootOptions{apiURL: server.URL})
+	cmd := newSSHCommand(&rootOptions{apiURL: apiURL})
 	cmd.SetIn(bytes.NewBuffer(nil))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{cliTestKeyFlag, cliTestEnvironmentKey, "--", sshTestCommandTrue})
+	cmd.SetArgs(args)
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 
 	got := <-gotReq
-	if len(got.Command) != 1 || got.Command[0] != sshTestCommandTrue || got.PTY {
-		t.Fatalf("SSH request = %#v, want command true without pty", got)
-	}
 
 	if stdout.String() != "ok\n" {
 		t.Fatalf("stdout = %q, want ok", stdout.String())
 	}
+
+	return got
 }
 
 func TestReadSSHOutputReturnsRemoteExitStatus(t *testing.T) {

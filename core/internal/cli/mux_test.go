@@ -185,11 +185,23 @@ func TestMuxConnectTargetCommandQuotesShellArguments(t *testing.T) {
 	t.Parallel()
 
 	target := muxTarget{session: muxSessionName, window: "@1", pane: "%2"}
-	got := muxConnectTargetShellCommand("/tmp/bastion cli", target, "env_123", "dev env")
-	want := "'/tmp/bastion cli' 'mux' 'connect' '--target-session' 'bastion' '--target-window' '@1' '--target-pane' '%2' '--id' 'env_123' '--name' 'dev env'"
+	got := muxConnectTargetShellCommand("/tmp/bastion cli", target, "env_123", "dev env", muxConnectionOpenCode)
+	want := "'/tmp/bastion cli' 'mux' 'connect' '--target-session' 'bastion' '--target-window' '@1' '--target-pane' '%2' '--id' 'env_123' '--name' 'dev env' '--mode' 'opencode'"
 
 	if got != want {
 		t.Fatalf("connect command = %q, want %q", got, want)
+	}
+}
+
+func TestMuxConnectMenuTargetCommandQuotesShellArguments(t *testing.T) {
+	t.Parallel()
+
+	target := muxTarget{session: muxSessionName, window: "@1", pane: "%2"}
+	got := muxConnectMenuTargetShellCommand("/tmp/bastion cli", target, "env_123", "dev env")
+	want := "'/tmp/bastion cli' 'mux' 'connect-menu' '--target-session' 'bastion' '--target-window' '@1' '--target-pane' '%2' '--id' 'env_123' '--name' 'dev env'"
+
+	if got != want {
+		t.Fatalf("connect menu command = %q, want %q", got, want)
 	}
 }
 
@@ -215,7 +227,7 @@ func TestMuxMenuArgsBuildsEnvironmentMenu(t *testing.T) {
 		t.Fatalf("menu args length = %d, want 18: %#v", len(args), args)
 	}
 
-	if got := args[:15]; !reflect.DeepEqual(got, []string{"display-menu", "-t", "%2", "-x", "C", "-y", "C", "-s", muxNordMenuStyle, "-H", muxNordMenuSelectedStyle, "-S", muxNordMenuBorderStyle, "-T", "Bastion environments"}) {
+	if got := args[:15]; !reflect.DeepEqual(got, []string{muxDisplayMenuCommand, "-t", "%2", "-x", "C", "-y", "C", "-s", muxNordMenuStyle, "-H", muxNordMenuSelectedStyle, "-S", muxNordMenuBorderStyle, "-T", "Bastion environments"}) {
 		t.Fatalf("menu prefix = %#v, want centered Nord display-menu", got)
 	}
 
@@ -227,8 +239,35 @@ func TestMuxMenuArgsBuildsEnvironmentMenu(t *testing.T) {
 		t.Fatalf("menu key = %q, want empty shortcut", args[16])
 	}
 
-	if !strings.Contains(args[17], "'mux' 'connect'") || !strings.Contains(args[17], "'--id' '"+cliTestEnvironmentID+"'") {
-		t.Fatalf("menu command = %q, want mux connect command", args[17])
+	if !strings.Contains(args[17], "'mux' 'connect-menu'") || !strings.Contains(args[17], "'--id' '"+cliTestEnvironmentID+"'") {
+		t.Fatalf("menu command = %q, want mux connect-menu command", args[17])
+	}
+}
+
+func TestMuxConnectionMenuArgsBuildsConnectionMenu(t *testing.T) {
+	t.Parallel()
+
+	target := muxTarget{session: muxSessionName, window: "@1", pane: "%2"}
+	args := muxConnectionMenuArgs("/tmp/bastion", target, cliTestEnvironmentID, "dev")
+
+	if len(args) != 21 {
+		t.Fatalf("connection menu args length = %d, want 21: %#v", len(args), args)
+	}
+
+	if got := args[:15]; !reflect.DeepEqual(got, []string{muxDisplayMenuCommand, "-t", "%2", "-x", "C", "-y", "C", "-s", muxNordMenuStyle, "-H", muxNordMenuSelectedStyle, "-S", muxNordMenuBorderStyle, "-T", "Connect to dev"}) {
+		t.Fatalf("connection menu prefix = %#v, want centered Nord display-menu", got)
+	}
+
+	if args[15] != "SSH" || args[18] != "OpenCode" {
+		t.Fatalf("connection labels = %q/%q, want SSH/OpenCode", args[15], args[18])
+	}
+
+	if !strings.Contains(args[17], "'--mode' 'ssh'") {
+		t.Fatalf("ssh menu command = %q, want ssh mode", args[17])
+	}
+
+	if !strings.Contains(args[20], "'--mode' 'opencode'") {
+		t.Fatalf("opencode menu command = %q, want opencode mode", args[20])
 	}
 }
 
@@ -240,7 +279,7 @@ func TestMuxConnectRenamesAndRespawnsPane(t *testing.T) {
 	}}
 	target := muxTarget{session: muxSessionName, window: "@3", pane: "%3"}
 
-	if err := runMuxConnect(context.Background(), tmux, target, "env_same", "dev"); err != nil {
+	if err := runMuxConnect(context.Background(), tmux, target, "env_same", "dev", muxConnectionSSH); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 
@@ -254,6 +293,39 @@ func TestMuxConnectRenamesAndRespawnsPane(t *testing.T) {
 
 	if got := tmux.calls[len(tmux.calls)-1]; len(got) != 5 || got[0] != "respawn-pane" || got[1] != "-k" || got[2] != "-t" || got[3] != "%3" || !strings.Contains(got[4], "'ssh' '--id' 'env_same'") {
 		t.Fatalf("respawn-pane call = %#v", got)
+	}
+}
+
+func TestMuxConnectCanRespawnOpenCodePane(t *testing.T) {
+	t.Parallel()
+
+	tmux := &fakeMuxTmuxRunner{outputs: map[string]string{
+		muxTmuxKey("list-windows", "-t", muxSessionName, "-F", "#{window_id}\t#{@bastion_environment_id}"): "@1\tenv_same\n@2\tenv_other\n",
+	}}
+	target := muxTarget{session: muxSessionName, window: "@3", pane: "%3"}
+
+	if err := runMuxConnect(context.Background(), tmux, target, "env_same", "dev", muxConnectionOpenCode); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	if got := tmux.calls[len(tmux.calls)-1]; len(got) != 5 || got[0] != "respawn-pane" || got[1] != "-k" || got[2] != "-t" || got[3] != "%3" || !strings.Contains(got[4], "'opencode' '--id' 'env_same'") {
+		t.Fatalf("respawn-pane call = %#v", got)
+	}
+}
+
+func TestMuxConnectRejectsUnknownModeBeforeTmuxCalls(t *testing.T) {
+	t.Parallel()
+
+	tmux := &fakeMuxTmuxRunner{}
+	target := muxTarget{session: muxSessionName, window: "@3", pane: "%3"}
+
+	err := runMuxConnect(context.Background(), tmux, target, "env_same", "dev", "telnet")
+	if err == nil || !strings.Contains(err.Error(), "unsupported mux connection mode") {
+		t.Fatalf("connect error = %v, want unsupported mode", err)
+	}
+
+	if len(tmux.calls) != 0 {
+		t.Fatalf("tmux calls = %#v, want none", tmux.calls)
 	}
 }
 
