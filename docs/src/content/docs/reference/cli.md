@@ -98,9 +98,22 @@ bastion ssh (--id ID | --key KEY) -- COMMAND [ARG...]
 With no command and terminal stdin/stdout, the CLI opens an interactive PTY. With
 a command, it forwards stdout, stderr, and the remote exit code.
 
+## `bastion opencode`
+
+Starts the local OpenCode TUI and attaches it to an OpenCode server running in an
+environment through the host API proxy.
+
+```sh
+bastion opencode (--id ID | --key KEY)
+```
+
+The command requires `opencode` to be installed locally and runs
+`opencode attach PROXY_URL` under the hood. `PROXY_URL` points at the proxied
+OpenCode agent endpoint for the selected environment.
+
 ## `bastion mux`
 
-Opens a Bastion-managed tmux session for persistent SSH tabs.
+Opens a Bastion-managed tmux session for persistent environment tabs.
 
 ```sh
 bastion mux
@@ -109,7 +122,9 @@ bastion mux
 The command creates or attaches to a `bastion` tmux session with Bastion's tmux
 configuration loaded. New tabs open an environment picker menu populated from
 `bastion env list`; use arrow keys and Enter to select an environment. Selecting
-an environment replaces the tab with `bastion ssh --id ID`.
+an environment opens a second menu for the connection mode. Selecting `SSH`
+replaces the tab with `bastion ssh --id ID`; selecting `OpenCode` replaces it
+with `bastion opencode --id ID`.
 
 Tabs are named from the environment key, or the environment ID when no key is
 set. Duplicate tabs connected to the same environment receive suffixes such as
