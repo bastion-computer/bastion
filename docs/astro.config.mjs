@@ -48,15 +48,6 @@ export default defineConfig({
           ],
         },
         {
-          label: "Examples",
-          items: [
-            {
-              label: "Remote access with Tailscale",
-              slug: "examples/remote-access-with-tailscale",
-            },
-          ],
-        },
-        {
           label: "Reference",
           items: [
             { label: "CLI", slug: "reference/cli" },
@@ -87,6 +78,15 @@ export default defineConfig({
               slug: "actions/built-ins/utility-tools",
             },
             { label: "Runtimes", slug: "actions/built-ins/runtimes" },
+          ],
+        },
+        {
+          label: "Examples",
+          items: [
+            {
+              label: "Remote access with Tailscale",
+              slug: "examples/remote-access-with-tailscale",
+            },
           ],
         },
       ],
