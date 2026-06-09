@@ -3,10 +3,11 @@ set -euo pipefail
 
 readonly REPO="bastion-computer/bastion"
 readonly DEFAULT_INSTALL_DIR="/usr/local/bin"
-readonly TARGET="linux_x86_64"
 readonly SOCKET_PATH="/run/bastion/bastiond.sock"
 readonly SERVICE_ENV_FILE="${BASTION_SERVICE_ENV_FILE:-/etc/default/bastion}"
 
+TARGET=""
+INSTALL_SERVICES=0
 INSTALL_DIR="${BASTION_INSTALL_DIR:-}"
 TMP_DIR=""
 BASTION_BIN=""
@@ -39,7 +40,11 @@ usage() {
   cat <<'EOF'
 Usage: install.sh
 
-Installs or updates Bastion for Linux x86_64 from the latest GitHub release.
+Installs or updates Bastion from the latest GitHub release.
+
+Supported targets:
+  - Linux x86_64 host install with bastion, bastiond, and systemd services.
+  - macOS Apple silicon CLI install with bastion only.
 
 Options:
   -h, --help                 Show this help message.
@@ -103,17 +108,55 @@ check_platform() {
   os="$(uname -s)"
   arch="$(uname -m)"
 
-  if [ "$os" != "Linux" ]; then
-    fail "Bastion currently supports Linux only; found $os"
-  fi
-
-  case "$arch" in
-    x86_64 | amd64)
+  case "$os:$arch" in
+    Linux:x86_64 | Linux:amd64)
+      TARGET="linux_x86_64"
+      INSTALL_SERVICES=1
+      ;;
+    Darwin:arm64 | Darwin:aarch64)
+      TARGET="darwin_arm64"
+      INSTALL_SERVICES=0
+      ;;
+    Linux:*)
+      fail "Bastion Linux host installs currently support x86_64 only; found $arch"
+      ;;
+    Darwin:*)
+      fail "Bastion macOS CLI installs currently support Apple silicon only; found $arch"
       ;;
     *)
-      fail "Bastion currently supports x86_64 only; found $arch"
+      fail "Bastion currently supports Linux x86_64 hosts and macOS Apple silicon CLI installs; found $os $arch"
       ;;
   esac
+}
+
+require_checksum_command() {
+  if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then
+    return
+  fi
+
+  fail "sha256sum or shasum is required"
+}
+
+verify_checksum() {
+  local archive=$1
+  local checksum=$2
+  local expected
+  local actual
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$TMP_DIR" && sha256sum -c "$checksum")
+    return
+  fi
+
+  if ! IFS=' ' read -r expected _ <"$TMP_DIR/$checksum" || [ -z "$expected" ]; then
+    fail "release checksum file is empty"
+  fi
+
+  actual="$(shasum -a 256 "$TMP_DIR/$archive")"
+  actual="${actual%% *}"
+  if [ "$actual" != "$expected" ]; then
+    fail "checksum mismatch for $archive"
+  fi
 }
 
 latest_release_tag() {
@@ -175,14 +218,18 @@ download_and_verify() {
   curl -fsSLo "$TMP_DIR/$checksum" "$release_url/$checksum"
 
   log "verifying release checksum"
-  (cd "$TMP_DIR" && sha256sum -c "$checksum")
+  verify_checksum "$archive" "$checksum"
   log "checksum verified"
 
   mkdir -p "$TMP_DIR/extract"
   tar -xzf "$TMP_DIR/$archive" -C "$TMP_DIR/extract"
 
-  if [ ! -x "$TMP_DIR/extract/bastion" ] || [ ! -x "$TMP_DIR/extract/bastiond" ]; then
-    fail "release archive did not contain executable bastion and bastiond binaries"
+  if [ ! -x "$TMP_DIR/extract/bastion" ]; then
+    fail "release archive did not contain an executable bastion binary"
+  fi
+
+  if [ "$INSTALL_SERVICES" -eq 1 ] && [ ! -x "$TMP_DIR/extract/bastiond" ]; then
+    fail "release archive did not contain an executable bastiond binary"
   fi
 }
 
@@ -191,10 +238,12 @@ install_binaries() {
 
   run_as_root install -d -m 0755 "$INSTALL_DIR"
   run_as_root install -m 0755 "$TMP_DIR/extract/bastion" "$INSTALL_DIR/bastion"
-  run_as_root install -m 0755 "$TMP_DIR/extract/bastiond" "$INSTALL_DIR/bastiond"
 
   BASTION_BIN="$INSTALL_DIR/bastion"
-  BASTIOND_BIN="$INSTALL_DIR/bastiond"
+  if [ "$INSTALL_SERVICES" -eq 1 ]; then
+    run_as_root install -m 0755 "$TMP_DIR/extract/bastiond" "$INSTALL_DIR/bastiond"
+    BASTIOND_BIN="$INSTALL_DIR/bastiond"
+  fi
 
   log "installed Bastion $version to $INSTALL_DIR"
 }
@@ -210,9 +259,11 @@ ensure_binaries() {
   resolve_install_dir "$existing_bastion"
 
   current_version="$(installed_version "$existing_bastion" || true)"
-  if [ -n "$current_version" ] && [ "$current_version" = "$latest_version" ] && [ -n "$existing_bastiond" ]; then
+  if [ -n "$current_version" ] && [ "$current_version" = "$latest_version" ] && { [ "$INSTALL_SERVICES" -eq 0 ] || [ -n "$existing_bastiond" ]; }; then
     BASTION_BIN="$existing_bastion"
-    BASTIOND_BIN="$existing_bastiond"
+    if [ "$INSTALL_SERVICES" -eq 1 ]; then
+      BASTIOND_BIN="$existing_bastiond"
+    fi
     log "Bastion $latest_version is already installed"
     return
   fi
@@ -404,13 +455,17 @@ main() {
   check_platform
   require_command curl
   require_command tar
-  require_command sha256sum
+  require_checksum_command
   require_command install
   require_command mktemp
 
   latest_version="$(latest_release_tag)"
   ensure_binaries "$latest_version"
-  setup_services
+  if [ "$INSTALL_SERVICES" -eq 1 ]; then
+    setup_services
+  else
+    log "macOS CLI install complete; use bastion --api-url to connect to a remote Bastion host API"
+  fi
 
   log "Bastion is ready"
 }

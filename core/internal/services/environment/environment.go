@@ -1,3 +1,5 @@
+//go:build !darwin
+
 // Package environment manages Bastion environment records.
 package environment
 

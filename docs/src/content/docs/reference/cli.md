@@ -17,6 +17,9 @@ diagnostics are written to stderr.
 
 Starts the local host API service.
 
+On macOS, `bastion start` is a no-op that prints a compatibility message. Use
+`--api-url` to connect the macOS CLI to a remote Linux Bastion host API.
+
 ```sh
 bastion start [flags]
 ```
@@ -32,6 +35,9 @@ bastion start [flags]
 ## `bastion system`
 
 Manages host dependencies and Cloud Hypervisor assets.
+
+On macOS, `bastion system` and its subcommands are no-ops that print a
+compatibility message because Cloud Hypervisor host setup is Linux-only.
 
 ```sh
 bastion system [--data-dir DIR] check
@@ -144,7 +150,8 @@ build time.
 ## `bastiond`
 
 `bastiond` is the privileged Cloud Hypervisor daemon. It is a separate binary and
-must run as root.
+must run as root. It is included in Linux host archives only; macOS releases ship
+the client-only `bastion` binary.
 
 ```sh
 sudo bastiond [flags]

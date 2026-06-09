@@ -23,16 +23,23 @@ matching `v*` is pushed.
 The workflow builds the core package binaries with `BASTION_VERSION` set to the
 tag name, so `bastion version` reports the released version instead of `dev`.
 
-The current compatible release target is Linux x86_64, matching Bastion's current
-host runtime support. The uploaded core release assets are:
+The compatible release targets are Linux x86_64 for host runtime support and
+macOS Apple silicon for client-only CLI support. The uploaded core release
+assets are:
 
 - `bastion_<tag>_linux_x86_64.tar.gz`
 - `bastion_<tag>_linux_x86_64.tar.gz.sha256`
+- `bastion_<tag>_darwin_arm64.tar.gz`
+- `bastion_<tag>_darwin_arm64.tar.gz.sha256`
 
-The archive contains both core binaries:
+The Linux archive contains both core binaries:
 
 - `bastion`
 - `bastiond`
+
+The macOS archive contains the client CLI only:
+
+- `bastion`
 
 The release page is generated automatically by GitHub Actions with generated
 release notes.
