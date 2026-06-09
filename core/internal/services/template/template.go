@@ -1,3 +1,5 @@
+//go:build !darwin
+
 // Package template manages environment templates.
 package template
 

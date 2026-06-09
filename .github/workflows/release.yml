@@ -23,6 +23,12 @@ jobs:
             runner: ubuntu-latest
             goos: linux
             goarch: amd64
+            binaries: bastion bastiond
+          - name: darwin_arm64
+            runner: macos-14
+            goos: darwin
+            goarch: arm64
+            binaries: bastion
 
     steps:
       - uses: actions/checkout@v4
@@ -45,9 +51,14 @@ jobs:
           set -euo pipefail
 
           archive="bastion_${GITHUB_REF_NAME}_${{ matrix.target.name }}.tar.gz"
+          binaries="${{ matrix.target.binaries }}"
           mkdir -p ../dist
-          tar -C tmp -czf "../dist/${archive}" bastion bastiond
-          (cd ../dist && sha256sum "${archive}" > "${archive}.sha256")
+          tar -C tmp -czf "../dist/${archive}" ${binaries}
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd ../dist && sha256sum "${archive}" > "${archive}.sha256")
+          else
+            (cd ../dist && shasum -a 256 "${archive}" > "${archive}.sha256")
+          fi
 
       - uses: actions/upload-artifact@v4
         with:

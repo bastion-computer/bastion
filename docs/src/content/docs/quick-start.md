@@ -31,6 +31,9 @@ default. It also seeds `/etc/default/bastion` with service environment values
 such as `BASTION_DATA_DIR`, `BASTION_ADDR`, and `BASTIOND_SOCKET`. Edit that file
 to customize service settings; future installer runs preserve it.
 
+On macOS Apple silicon, the same installer installs the client-only `bastion`
+CLI. Use `bastion --api-url` to connect it to a remote Linux Bastion host API.
+
 If you only want the binaries, download the release archive from the
 [GitHub releases page](https://github.com/bastion-computer/bastion/releases).
 

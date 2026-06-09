@@ -1,16 +1,13 @@
-//go:build !darwin
+//go:build darwin
 
 package cli
 
 import (
-	"log/slog"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
-	"github.com/bastion-computer/bastion/core/internal/api"
-	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
 	"github.com/bastion-computer/bastion/core/internal/config"
-	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/logging"
 )
 
@@ -26,37 +23,9 @@ func newStartCommand() *cobra.Command {
 		Short: "Start the Bastion host API service",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			logger, err := logging.New(cmd.ErrOrStderr(), logFormat, logLevel)
-			if err != nil {
-				return err
-			}
+			_, err := fmt.Fprintln(cmd.ErrOrStderr(), "bastion start is not supported on macOS; use --api-url to connect to a remote Bastion host API")
 
-			resolvedDataDir, err := config.ExpandPath(dataDir)
-			if err != nil {
-				return err
-			}
-
-			db, err := database.Open(resolvedDataDir)
-			if err != nil {
-				return err
-			}
-
-			defer func() { _ = db.Close() }()
-
-			logger.InfoContext(cmd.Context(), "host API listening",
-				slog.String("addr", addr),
-				slog.String("data_dir", resolvedDataDir),
-				slog.String("bastiond_socket", bastiondSocket),
-				slog.String("log_format", logFormat),
-				slog.String("log_level", logLevel),
-			)
-
-			daemonClient := ch.NewClient(bastiondSocket)
-
-			return api.Run(cmd.Context(), addr, db, logger,
-				api.WithTemplateOrchestrator(daemonClient),
-				api.WithEnvironmentOrchestrator(daemonClient),
-			)
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", addr, "host API listen address")

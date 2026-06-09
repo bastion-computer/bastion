@@ -31,8 +31,13 @@ if [ -n "${BASTION_VERSION:-}" ]; then
   ldflags="-X github.com/bastion-computer/bastion/core/internal/config.Version=${BASTION_VERSION}"
 fi
 
-go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
-go build -ldflags "$ldflags" -o ./tmp/bastiond ./cmd/bastiond
+if [ "$(go env GOOS)" = "darwin" ]; then
+  CGO_ENABLED=0 go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
+  rm -f ./tmp/bastiond
+else
+  go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
+  go build -ldflags "$ldflags" -o ./tmp/bastiond ./cmd/bastiond
+fi
 '''
 
 [tasks.test]

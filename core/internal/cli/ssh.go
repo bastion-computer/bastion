@@ -173,7 +173,7 @@ func isTerminal(value any) bool {
 		return false
 	}
 
-	_, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	_, err := unix.IoctlGetTermios(fd, ioctlGetTermios)
 
 	return err == nil
 }
@@ -215,7 +215,7 @@ func makeRawTerminal(value any) (func() error, error) {
 		return nil, errors.New("stdin is not a terminal")
 	}
 
-	termios, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	termios, err := unix.IoctlGetTermios(fd, ioctlGetTermios)
 	if err != nil {
 		return nil, fmt.Errorf("get terminal state: %w", err)
 	}
@@ -229,12 +229,12 @@ func makeRawTerminal(value any) (func() error, error) {
 	raw.Cc[unix.VMIN] = 1
 	raw.Cc[unix.VTIME] = 0
 
-	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &raw); err != nil {
+	if err := unix.IoctlSetTermios(fd, ioctlSetTermios, &raw); err != nil {
 		return nil, fmt.Errorf("set terminal raw mode: %w", err)
 	}
 
 	return func() error {
-		return unix.IoctlSetTermios(fd, unix.TCSETS, &original)
+		return unix.IoctlSetTermios(fd, ioctlSetTermios, &original)
 	}, nil
 }
 
