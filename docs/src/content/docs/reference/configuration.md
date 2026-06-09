@@ -3,8 +3,8 @@ title: Configuration
 description: Runtime paths, environment variables, and VM defaults.
 ---
 
-Bastion configuration is provided with CLI flags and environment variables. CLI
-flags take precedence over environment defaults.
+Bastion configuration is provided with CLI flags, environment variables, and
+persisted client overrides. CLI flags take precedence over environment values.
 
 ## Host API
 
@@ -42,9 +42,29 @@ daemon does not terminate Cloud Hypervisor VM child processes.
 
 These settings apply to CLI commands that call the host API.
 
-| Flag        | Environment       | Default                 | Description        |
-| ----------- | ----------------- | ----------------------- | ------------------ |
-| `--api-url` | `BASTION_API_URL` | `http://localhost:3148` | Host API base URL. |
+| Flag         | Environment        | Default                 | Description                                   |
+| ------------ | ------------------ | ----------------------- | --------------------------------------------- |
+| `--api-url`  | `BASTION_API_URL`  | `http://localhost:3148` | Host API base URL.                            |
+| `--data-dir` | `BASTION_DATA_DIR` | `~/.bastion`            | Directory containing persisted client config. |
+
+The host API URL resolves in this order:
+
+1. `--api-url`
+2. `BASTION_API_URL`
+3. `<data-dir>/client.json`
+4. `http://localhost:3148`
+
+Persist a remote API URL with:
+
+```sh
+bastion client set api-url https://bastion.example
+```
+
+Inspect the resolved value and source with:
+
+```sh
+bastion client config
+```
 
 ## Daemon
 
@@ -100,6 +120,7 @@ Default data directory:
 
 ```text
 ~/.bastion/
+├── client.json
 ├── sqlite.db
 ├── actions/
 ├── cloud-hypervisor/
@@ -119,6 +140,7 @@ Important paths:
 
 | Path                               | Description                                                   |
 | ---------------------------------- | ------------------------------------------------------------- |
+| `<data-dir>/client.json`           | Persisted CLI client option overrides.                        |
 | `<data-dir>/sqlite.db`             | Host API metadata database.                                   |
 | `<data-dir>/actions`               | Built-in and custom action packages.                          |
 | `<data-dir>/cloud-hypervisor`      | Cloud Hypervisor binary, guest images, SSH key, and manifest. |

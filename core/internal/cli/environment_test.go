@@ -160,8 +160,8 @@ func TestEnvironmentListCommandSendsTagFilters(t *testing.T) {
 
 	gotTags := make(chan []string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/environments" {
-			t.Fatalf("request = %s %s, want GET /v1/environments", r.Method, r.URL.Path)
+		if r.Method != http.MethodGet || r.URL.Path != cliTestEnvironmentsPath {
+			t.Fatalf("request = %s %s, want GET %s", r.Method, r.URL.Path, cliTestEnvironmentsPath)
 		}
 
 		query := r.URL.Query()
@@ -210,8 +210,8 @@ func newEnvironmentCreateTestServer(t *testing.T, gotReq chan<- environment.Crea
 	t.Helper()
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/environments" {
-			t.Fatalf("request = %s %s, want POST /v1/environments", r.Method, r.URL.Path)
+		if r.Method != http.MethodPost || r.URL.Path != cliTestEnvironmentsPath {
+			t.Fatalf("request = %s %s, want POST %s", r.Method, r.URL.Path, cliTestEnvironmentsPath)
 		}
 
 		var req environment.CreateRequest

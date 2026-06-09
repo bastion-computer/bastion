@@ -12,7 +12,11 @@ import (
 )
 
 const (
+	clientUse      = "client"
+	environmentUse = "env"
 	listUse        = "list"
+	removeUse      = "remove"
+	setUse         = "set"
 	getIDKeyUse    = "get [--id ID | --key KEY]"
 	removeIDKeyUse = "remove [--id ID | --key KEY]"
 )

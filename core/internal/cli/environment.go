@@ -10,7 +10,7 @@ import (
 
 func newEnvironmentCommand(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "env",
+		Use:   environmentUse,
 		Short: "Manage environments",
 	}
 	cmd.AddCommand(

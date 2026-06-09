@@ -17,15 +17,17 @@ const cloudHypervisorDependency = "cloud-hypervisor"
 
 type systemOptions struct {
 	dataDir               string
+	dataDirValue          *string
 	check                 func(context.Context, string) system.Node
 	addCloudHypervisor    func(context.Context, system.AddCloudHypervisorOptions) (system.Result, error)
 	removeCloudHypervisor func(context.Context, string) (system.Result, error)
 	newRunner             func(io.Writer, io.Writer) system.Runner
 }
 
-func newSystemCommand() *cobra.Command {
+func newSystemCommand(rootOpts *rootOptions) *cobra.Command {
 	return newSystemCommandWithOptions(systemOptions{
-		dataDir:               config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
+		dataDir:               rootOpts.dataDir,
+		dataDirValue:          &rootOpts.dataDir,
 		check:                 system.Check,
 		addCloudHypervisor:    system.AddCloudHypervisor,
 		removeCloudHypervisor: system.RemoveCloudHypervisor,
@@ -34,6 +36,10 @@ func newSystemCommand() *cobra.Command {
 }
 
 func newSystemCommandWithOptions(opts systemOptions) *cobra.Command {
+	if opts.dataDir == "" && opts.dataDirValue == nil {
+		opts.dataDir = config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir())
+	}
+
 	if opts.check == nil {
 		opts.check = system.Check
 	}
@@ -51,11 +57,15 @@ func newSystemCommandWithOptions(opts systemOptions) *cobra.Command {
 	}
 
 	cmdOpts := &opts
+
 	cmd := &cobra.Command{
 		Use:   "system",
 		Short: "Manage host system dependencies",
 	}
-	cmd.PersistentFlags().StringVar(&cmdOpts.dataDir, "data-dir", cmdOpts.dataDir, "directory for system assets")
+	if cmdOpts.dataDirValue == nil {
+		cmd.PersistentFlags().StringVar(&cmdOpts.dataDir, rootFlagDataDir, cmdOpts.dataDir, "directory for system assets")
+	}
+
 	cmd.AddCommand(
 		newSystemCheckCommand(cmdOpts),
 		newSystemAddCommand(cmdOpts),
@@ -71,7 +81,7 @@ func newSystemCheckCommand(opts *systemOptions) *cobra.Command {
 		Short: "Check host system dependencies",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dataDir, err := config.ExpandPath(opts.dataDir)
+			dataDir, err := config.ExpandPath(opts.currentDataDir())
 			if err != nil {
 				return err
 			}
@@ -108,7 +118,7 @@ func newSystemAddCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 		Short: "Install Cloud Hypervisor system assets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dataDir, err := config.ExpandPath(opts.dataDir)
+			dataDir, err := config.ExpandPath(opts.currentDataDir())
 			if err != nil {
 				return err
 			}
@@ -140,7 +150,7 @@ func newSystemAddCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 
 func newSystemRemoveCommand(opts *systemOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "remove",
+		Use:   removeUse,
 		Short: "Remove a host system dependency",
 	}
 	cmd.AddCommand(newSystemRemoveCloudHypervisorCommand(opts))
@@ -154,7 +164,7 @@ func newSystemRemoveCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 		Short: "Remove Cloud Hypervisor system assets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dataDir, err := config.ExpandPath(opts.dataDir)
+			dataDir, err := config.ExpandPath(opts.currentDataDir())
 			if err != nil {
 				return err
 			}
@@ -175,6 +185,14 @@ func newSystemRemoveCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 
 func defaultSystemRunner(out, errOut io.Writer) system.Runner {
 	return system.NewExecRunner(out, errOut)
+}
+
+func (opts *systemOptions) currentDataDir() string {
+	if opts.dataDirValue != nil {
+		return *opts.dataDirValue
+	}
+
+	return opts.dataDir
 }
 
 func writeSystemNotes(w io.Writer, notes []string) error {
