@@ -63,7 +63,7 @@ func TestSystemAddCloudHypervisorCommandPassesWithUtilitiesAndDataDir(t *testing
 	})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--data-dir", dataDir, "add", cloudHypervisorDependency, "--with-utilities"})
+	cmd.SetArgs([]string{cliTestDataDirFlag, dataDir, "add", cloudHypervisorDependency, "--with-utilities"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -104,7 +104,7 @@ func TestSystemRemoveCloudHypervisorCommandPrintsUtilityNote(t *testing.T) {
 	})
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--data-dir", dataDir, "remove", cloudHypervisorDependency})
+	cmd.SetArgs([]string{cliTestDataDirFlag, dataDir, removeUse, cloudHypervisorDependency})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

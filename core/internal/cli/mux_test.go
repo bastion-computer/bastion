@@ -113,8 +113,8 @@ func TestCollectMuxEnvironmentsPagesThroughList(t *testing.T) {
 
 	gotCursors := make(chan string, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/environments" {
-			t.Fatalf("request = %s %s, want GET /v1/environments", r.Method, r.URL.Path)
+		if r.Method != http.MethodGet || r.URL.Path != cliTestEnvironmentsPath {
+			t.Fatalf("request = %s %s, want GET %s", r.Method, r.URL.Path, cliTestEnvironmentsPath)
 		}
 
 		query := r.URL.Query()

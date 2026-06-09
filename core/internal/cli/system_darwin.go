@@ -6,14 +6,11 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-
-	"github.com/bastion-computer/bastion/core/internal/config"
 )
 
 const cloudHypervisorDependency = "cloud-hypervisor"
 
-func newSystemCommand() *cobra.Command {
-	dataDir := config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir())
+func newSystemCommand(_ *rootOptions) *cobra.Command {
 	run := func(cmd *cobra.Command, _ []string) error {
 		_, err := fmt.Fprintln(cmd.ErrOrStderr(), "bastion system is not supported on macOS; use --api-url to connect to a remote Bastion host API")
 
@@ -25,7 +22,6 @@ func newSystemCommand() *cobra.Command {
 		Short: "Manage host system dependencies",
 		RunE:  run,
 	}
-	cmd.PersistentFlags().StringVar(&dataDir, "data-dir", dataDir, "directory for system assets")
 
 	check := &cobra.Command{
 		Use:   "check",
@@ -50,7 +46,7 @@ func newSystemCommand() *cobra.Command {
 	add.AddCommand(addCloudHypervisor)
 
 	remove := &cobra.Command{
-		Use:   "remove",
+		Use:   removeUse,
 		Short: "Remove a host system dependency",
 		RunE:  run,
 	}

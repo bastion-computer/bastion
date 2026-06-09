@@ -9,9 +9,13 @@ diagnostics are written to stderr.
 
 ## Global Flags
 
-| Flag        | Environment       | Default                 | Description                           |
-| ----------- | ----------------- | ----------------------- | ------------------------------------- |
-| `--api-url` | `BASTION_API_URL` | `http://localhost:3148` | Host API URL used by client commands. |
+| Flag         | Environment        | Default                 | Description                                          |
+| ------------ | ------------------ | ----------------------- | ---------------------------------------------------- |
+| `--api-url`  | `BASTION_API_URL`  | `http://localhost:3148` | Host API URL used by client commands.                |
+| `--data-dir` | `BASTION_DATA_DIR` | `~/.bastion`            | Persistent data directory and client config storage. |
+
+Client commands resolve `--api-url` in this order: explicit flag,
+`BASTION_API_URL`, `<data-dir>/client.json`, then the built-in default.
 
 ## `bastion start`
 
@@ -49,6 +53,37 @@ bastion system [--data-dir DIR] remove cloud-hypervisor
 | ------------------ | ------------ | --------------------------------------------------------------------- |
 | `--data-dir`       | `~/.bastion` | Directory for system assets. Can also be set with `BASTION_DATA_DIR`. |
 | `--with-utilities` | `false`      | Install missing supported utilities without prompting.                |
+
+## `bastion client`
+
+Manages persistent local CLI client configuration.
+
+```sh
+bastion client [--data-dir DIR] set api-url URL
+bastion client [--data-dir DIR] remove api-url
+bastion client [--data-dir DIR] config
+```
+
+| Command          | Description                                                           |
+| ---------------- | --------------------------------------------------------------------- |
+| `set api-url`    | Persist the host API URL used when no `--api-url` flag or env is set. |
+| `remove api-url` | Remove the persisted host API URL override.                           |
+| `config`         | Print resolved client flag values and their sources as JSON.          |
+
+The override is stored in `<data-dir>/client.json`. Use this when connecting to
+a remote Bastion API often enough that passing `--api-url` every time is noisy:
+
+```sh
+bastion client set api-url https://bastion.example
+bastion env list
+```
+
+Use `--data-dir` to keep separate client profiles:
+
+```sh
+bastion client --data-dir ~/.bastion-remote set api-url https://bastion.example
+bastion --data-dir ~/.bastion-remote env list
+```
 
 ## `bastion templates`
 

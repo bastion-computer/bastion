@@ -79,12 +79,13 @@ The core migrations are the schema source of truth. Development tools such as Dr
 
 ## CLI
 
-CLI commands call the host API configured by `--api-url` or `BASTION_API_URL`. The default is `http://localhost:3148`.
+CLI commands call the host API configured by `--api-url`, `BASTION_API_URL`, or a persisted override in `<data-dir>/client.json`. The default is `http://localhost:3148`.
 
 Supported command groups are intentionally limited to the current product scope:
 
 - `bastion templates ...`
 - `bastion env ...`
+- `bastion client set api-url URL`, `bastion client remove api-url`, and `bastion client config`
 - `bastion mux`
 - `bastion ssh (--id ID | --key KEY) [-- COMMAND...]`
 
