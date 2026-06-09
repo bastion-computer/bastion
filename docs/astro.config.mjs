@@ -48,6 +48,15 @@ export default defineConfig({
           ],
         },
         {
+          label: "Examples",
+          items: [
+            {
+              label: "Remote access with Tailscale",
+              slug: "examples/remote-access-with-tailscale",
+            },
+          ],
+        },
+        {
           label: "Reference",
           items: [
             { label: "CLI", slug: "reference/cli" },
