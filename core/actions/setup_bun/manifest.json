@@ -1,0 +1,9 @@
+{
+  "inputs": {
+    "version": {
+      "type": "string",
+      "description": "Bun release tag to install, for example bun-v1.3.3. Defaults to latest."
+    }
+  },
+  "run": "sh ./install_bun.sh"
+}

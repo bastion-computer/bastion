@@ -36,6 +36,50 @@ Example:
 The action installs the selected Node.js release with apt packages from
 NodeSource.
 
+## `setup_bun`
+
+`setup_bun` installs Bun with the official installer.
+
+| Input     | Required | Default | Description                                           |
+| --------- | -------- | ------- | ----------------------------------------------------- |
+| `version` | No       | Latest  | Bun release tag to install, for example `bun-v1.3.3`. |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup_bun",
+        "with": {
+          "version": "bun-v1.3.3"
+        }
+      }
+    ]
+  }
+}
+```
+
+Omit `version` to install the latest Bun release:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [{ "use": "setup_bun" }]
+  }
+}
+```
+
+The action installs Bun to `/usr/local/bin/bun` and verifies the installation
+with `bun --version` and `bun --revision`.
+
 ## `setup_mise`
 
 `setup_mise` installs mise to `/usr/local/bin/mise` and activates it for root

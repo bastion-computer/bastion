@@ -149,6 +149,7 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		{key: "start-preset-actions", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[],"start":[{"use":"setup_node","with":{"version":24}}]}}`)},
 		{key: "resources", config: json.RawMessage(`{"agents":{"opencode":{}},"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`)},
 		{key: "opencode-agent", config: json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/project","auth":{"anthropic":{"type":"api","key":"test-key"}},"config":{"model":"anthropic/claude-sonnet-4-5","permission":"allow"}}},"actions":{"init":[]}}`)},
+		{key: "bun-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_bun","with":{"version":"bun-v1.3.3"}}]}}`)},
 		{key: "mise-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
 		{key: "github-cli-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
 		{key: "default-ssh-directory-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"set_default_ssh_directory","with":{"path":"/workspace/bastion"}}]}}`)},
