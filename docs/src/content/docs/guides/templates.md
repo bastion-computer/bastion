@@ -208,9 +208,20 @@ Use `use` for reusable setup packages stored under `<data-dir>/actions`:
 ```
 
 The `use` value must start with a letter and can contain letters, numbers,
-underscores, and hyphens. Values under `with` can be strings, numbers, or
-booleans. Input names must start with a letter and can contain letters,
-numbers, and underscores.
+underscores, and hyphens.
+
+Use actions support these fields:
+
+| Field     | Required | Description                                                     |
+| --------- | -------- | --------------------------------------------------------------- |
+| `use`     | Yes      | Action package name.                                            |
+| `with`    | No       | Manifest-defined scalar inputs for the action package.          |
+| `context` | No       | Arbitrary JSON exposed to the action as `BASTION_CONTEXT_FILE`. |
+
+Values under `with` can be strings, numbers, or booleans. Input names must start
+with a letter and can contain letters, numbers, and underscores. `context` is not
+validated against the action manifest and is useful for structured data such as
+environment file contents.
 
 Preset actions can run in either `actions.init` or `actions.start`.
 
@@ -245,7 +256,7 @@ template creation fails.
 
 Substitution works anywhere a string appears in the template JSON, including
 `agents.opencode`, `actions.init`, `actions.start`, `run` commands,
-`working_directory`, and action package inputs.
+`working_directory`, action package inputs, and action package context.
 
 ## Create a Template
 

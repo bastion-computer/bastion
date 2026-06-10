@@ -21,6 +21,8 @@ import (
 const (
 	guestActionsDir        = "/opt/bastion/actions"
 	presetInputEnvFileName = ".bastion-inputs.env"
+	presetContextFileName  = ".bastion-context.json"
+	presetContextEnvName   = "BASTION_CONTEXT_FILE"
 	presetInputEnvPrefix   = "BASTION_INPUT_"
 	presetInputTypeString  = "string"
 	presetInputTypeNumber  = "number"
@@ -54,25 +56,28 @@ func (m Manager) runPresetAction(ctx context.Context, vm VM, phase string, index
 		return err
 	}
 
-	stagedDir, err := stagePresetAction(vm, phase, index, preset, action.With)
+	guestDir := guestPresetActionDir(phase, index, preset.name)
+
+	stagedDir, err := stagePresetAction(vm, phase, index, preset, action.With, action.Context, guestDir)
 	if err != nil {
 		return err
 	}
 
-	removeHostInputFile := func() error {
-		if err := os.Remove(filepath.Join(stagedDir, presetInputEnvFileName)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove host preset action inputs: %w", err)
+	removeHostStagedFiles := func() error {
+		for _, name := range []string{presetInputEnvFileName, presetContextFileName} {
+			if err := os.Remove(filepath.Join(stagedDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("remove host preset action staging file %s: %w", name, err)
+			}
 		}
 
 		return nil
 	}
 
-	guestDir := guestPresetActionDir(phase, index, preset.name)
 	if err := m.copyPresetActionToGuest(ctx, vm, stagedDir, path.Dir(guestDir), logs); err != nil {
-		return errors.Join(err, removeHostInputFile())
+		return errors.Join(err, removeHostStagedFiles())
 	}
 
-	removeErr := removeHostInputFile()
+	removeErr := removeHostStagedFiles()
 	runErr := m.runGuestCommand(ctx, vm, presetActionCommand(guestDir, preset.manifest.Run), logs)
 
 	return errors.Join(removeErr, runErr)
@@ -161,7 +166,7 @@ func validatePresetActionInputs(preset presetActionPackage, with map[string]any)
 	return nil
 }
 
-func stagePresetAction(vm VM, phase string, index int, preset presetActionPackage, with map[string]any) (string, error) {
+func stagePresetAction(vm VM, phase string, index int, preset presetActionPackage, with map[string]any, actionContext json.RawMessage, guestDir string) (string, error) {
 	if vm.EnvDir == "" {
 		return "", errors.New("environment directory is required")
 	}
@@ -175,7 +180,12 @@ func stagePresetAction(vm VM, phase string, index int, preset presetActionPackag
 		return "", fmt.Errorf("stage preset action %s: %w", preset.name, err)
 	}
 
-	envFile, err := presetInputEnvFile(preset, with)
+	contextFile := ""
+	if len(actionContext) > 0 {
+		contextFile = path.Join(guestDir, presetContextFileName)
+	}
+
+	envFile, err := presetInputEnvFile(preset, with, contextFile)
 	if err != nil {
 		return "", err
 	}
@@ -184,10 +194,16 @@ func stagePresetAction(vm VM, phase string, index int, preset presetActionPackag
 		return "", fmt.Errorf("write preset action inputs: %w", err)
 	}
 
+	if len(actionContext) > 0 {
+		if err := os.WriteFile(filepath.Join(stagedDir, presetContextFileName), actionContext, 0o600); err != nil {
+			return "", fmt.Errorf("write preset action context: %w", err)
+		}
+	}
+
 	return stagedDir, nil
 }
 
-func presetInputEnvFile(preset presetActionPackage, with map[string]any) ([]byte, error) {
+func presetInputEnvFile(preset presetActionPackage, with map[string]any, contextFile string) ([]byte, error) {
 	keys := make([]string, 0, len(with))
 	for key := range with {
 		keys = append(keys, key)
@@ -206,6 +222,12 @@ func presetInputEnvFile(preset presetActionPackage, with map[string]any) ([]byte
 		}
 
 		if _, err := fmt.Fprintf(&buf, "export %s=%s\n", presetInputEnvName(key), shellQuote(value)); err != nil {
+			return nil, err
+		}
+	}
+
+	if contextFile != "" {
+		if _, err := fmt.Fprintf(&buf, "export %s=%s\n", presetContextEnvName, shellQuote(contextFile)); err != nil {
 			return nil, err
 		}
 	}
@@ -292,9 +314,12 @@ func scpGuestArgs(vm VM, srcDir, guestDir string) ([]string, error) {
 }
 
 func presetActionCommand(guestDir, command string) string {
+	cleanup := "rm -f ./" + presetInputEnvFileName + " ./" + presetContextFileName
+
 	return strings.Join([]string{
 		shellStrictMode,
 		"cd " + shellQuote(guestDir),
+		"trap " + shellQuote(cleanup) + " EXIT",
 		"set -a",
 		". ./" + presetInputEnvFileName,
 		"set +a",

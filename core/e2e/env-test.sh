@@ -489,6 +489,27 @@ env_substitution_config() {
   }'
 }
 
+write_env_file_config() {
+  jq -nc --arg run_id "$RUN_ID" '{
+    agents: {opencode: {}},
+    actions: {
+      init: [
+        {
+          use: "write_env_file",
+          with: {path: "/opt/bastion-e2e-write-env"},
+          context: {
+            BASTION_E2E_STATIC: "hello world",
+            BASTION_E2E_HOME: "${{ env.HOME }}",
+            BASTION_E2E_NUMBER: 42,
+            BASTION_E2E_BOOL: true,
+            BASTION_E2E_JSON: {run_id: $run_id}
+          }
+        }
+      ]
+    }
+  }'
+}
+
 working_directory_config() {
   jq -nc --arg run_id "$RUN_ID" '{
     agents: {opencode: {}},
@@ -797,6 +818,37 @@ run_env_substitution_case() {
   log "environment substitution case passed for $env_id"
 }
 
+run_write_env_file_case() {
+  local key="$RUN_ID-write-env-file"
+  local env_id
+
+  create_template "$key" "$(write_env_file_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" "set -eu
+env_file=/opt/bastion-e2e-write-env/.env
+test -s \"\$env_file\"
+mode=\$(stat -c %a \"\$env_file\")
+if [ \"\$mode\" != 600 ]; then
+  printf 'env file mode is %s, want 600\n' \"\$mode\" >&2
+  exit 1
+fi
+. \"\$env_file\"
+test \"\$BASTION_E2E_STATIC\" = 'hello world'
+case \"\$BASTION_E2E_HOME\" in
+  /*) ;;
+  *) printf 'BASTION_E2E_HOME was %s, want absolute path\n' \"\$BASTION_E2E_HOME\" >&2; exit 1 ;;
+esac
+test \"\$BASTION_E2E_NUMBER\" = 42
+test \"\$BASTION_E2E_BOOL\" = true
+printf '%s' \"\$BASTION_E2E_JSON\" | jq -e --arg run_id '$RUN_ID' '.run_id == \$run_id' >/dev/null
+test ! -e /opt/bastion/actions/init-1-write_env_file/.bastion-context.json"
+
+  log "write_env_file case passed for $env_id"
+}
+
 run_working_directory_case() {
   local key="$RUN_ID-working-directory"
   local env_id
@@ -884,6 +936,7 @@ main() {
   run_case run_optional_template_key_case
   run_case run_basic_setup_case
   run_case run_env_substitution_case
+  run_case run_write_env_file_case
   run_case run_working_directory_case
   run_case run_start_action_case
   run_case run_preset_setup_node_case

@@ -337,6 +337,145 @@ func TestRunStartActionsRunsPresetActionWithInputs(t *testing.T) {
 	}
 }
 
+func TestRunActionsStagesPresetActionContext(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		phase    string
+		config   json.RawMessage
+		guestDir string
+	}{
+		{
+			phase:    actionPhaseInit,
+			config:   json.RawMessage(`{"actions":{"init":[{"use":"write_env_file","with":{"path":"/workspace/project"},"context":{"ALPHA":"one","COUNT":3,"NESTED":{"ok":true}}}]}}`),
+			guestDir: guestPresetActionDir(actionPhaseInit, 1, "write_env_file"),
+		},
+		{
+			phase:    actionPhaseStart,
+			config:   json.RawMessage(`{"actions":{"init":[],"start":[{"use":"write_env_file","with":{"path":"/workspace/project"},"context":{"ALPHA":"one","COUNT":3,"NESTED":{"ok":true}}}]}}`),
+			guestDir: guestPresetActionDir(actionPhaseStart, 1, "write_env_file"),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.phase, func(t *testing.T) {
+			t.Parallel()
+
+			dataDir := t.TempDir()
+			writeTestPresetAction(t, dataDir, "write_env_file", `{
+  "inputs": {
+    "path": {"type": "string", "required": true}
+  },
+  "run": "sh ./install_node.sh"
+}`)
+
+			captured := stagedPresetActionContext{}
+
+			manager := Manager{
+				DataDir: dataDir,
+				stream:  recordPresetRunCommand(&captured),
+				run:     recordPresetStagedFiles(t, &captured),
+			}
+
+			vm := testActionVM()
+			vm.EnvDir = t.TempDir()
+
+			if err := manager.runActions(context.Background(), vm, tc.config, tc.phase, nil); err != nil {
+				t.Fatalf("run %s actions: %v", tc.phase, err)
+			}
+
+			stagedDir := filepath.Join(vm.EnvDir, "actions", presetActionDirName(tc.phase, 1, "write_env_file"))
+			requirePresetActionContextStaged(t, captured, tc.guestDir)
+			requireHostPresetStagedFilesRemoved(t, stagedDir)
+		})
+	}
+}
+
+type stagedPresetActionContext struct {
+	inputEnv    []byte
+	contextJSON []byte
+	runCommand  string
+}
+
+func recordPresetRunCommand(captured *stagedPresetActionContext) func(context.Context, io.Writer, string, ...string) error {
+	return func(_ context.Context, _ io.Writer, _ string, args ...string) error {
+		captured.runCommand = args[len(args)-1]
+
+		return nil
+	}
+}
+
+func recordPresetStagedFiles(t *testing.T, captured *stagedPresetActionContext) func(context.Context, string, ...string) error {
+	t.Helper()
+
+	return func(_ context.Context, name string, args ...string) error {
+		if name != "scp" {
+			return nil
+		}
+
+		srcDir := args[len(args)-2]
+
+		inputEnv, err := os.ReadFile(filepath.Join(srcDir, presetInputEnvFileName)) //nolint:gosec // Test path is rooted in t.TempDir().
+		if err != nil {
+			t.Fatalf("read staged input env file: %v", err)
+		}
+
+		contextJSON, err := os.ReadFile(filepath.Join(srcDir, presetContextFileName)) //nolint:gosec // Test path is rooted in t.TempDir().
+		if err != nil {
+			t.Fatalf("read staged context file: %v", err)
+		}
+
+		captured.inputEnv = inputEnv
+		captured.contextJSON = contextJSON
+
+		return nil
+	}
+}
+
+func requirePresetActionContextStaged(t *testing.T, captured stagedPresetActionContext, guestDir string) {
+	t.Helper()
+
+	input := string(captured.inputEnv)
+	if !strings.Contains(input, "export BASTION_INPUT_PATH='/workspace/project'") {
+		t.Fatalf("input env file = %q, want path input", input)
+	}
+
+	if !strings.Contains(input, "export BASTION_CONTEXT_FILE='"+guestDir+"/"+presetContextFileName+"'") {
+		t.Fatalf("input env file = %q, want context file export", input)
+	}
+
+	var contextValue struct {
+		Alpha  string `json:"ALPHA"`
+		Count  int    `json:"COUNT"`
+		Nested struct {
+			OK bool `json:"ok"`
+		} `json:"NESTED"`
+	}
+	if err := json.Unmarshal(captured.contextJSON, &contextValue); err != nil {
+		t.Fatalf("unmarshal context JSON: %v", err)
+	}
+
+	if contextValue.Alpha != "one" || contextValue.Count != 3 || !contextValue.Nested.OK {
+		t.Fatalf("context JSON = %s, want original action context", captured.contextJSON)
+	}
+
+	if !strings.Contains(captured.runCommand, "trap '") || !strings.Contains(captured.runCommand, presetContextFileName) {
+		t.Fatalf("preset run command = %q, want context cleanup trap", captured.runCommand)
+	}
+}
+
+func requireHostPresetStagedFilesRemoved(t *testing.T, stagedDir string) {
+	t.Helper()
+
+	if _, err := os.Stat(filepath.Join(stagedDir, presetInputEnvFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("host input env file error = %v, want not exist", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(stagedDir, presetContextFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("host context file error = %v, want not exist", err)
+	}
+}
+
 func TestRunInitActionsRemovesHostPresetInputFileWhenCopyFails(t *testing.T) {
 	t.Parallel()
 
