@@ -13,7 +13,7 @@ import (
 // DirName is the data-directory subdirectory where preset actions are stored.
 const DirName = "actions"
 
-//go:embed set_default_ssh_directory setup_node setup_bun setup_mise setup_github_cli
+//go:embed set_default_ssh_directory setup_node setup_bun setup_mise setup_github_cli setup_docker
 var files embed.FS
 
 // Seed copies built-in preset actions into dataDir/actions.

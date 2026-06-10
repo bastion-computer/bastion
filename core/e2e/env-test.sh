@@ -407,6 +407,30 @@ preset_setup_github_cli_config() {
   }'
 }
 
+preset_setup_docker_config() {
+  local verify
+
+  verify="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-docker-preset' \
+    'docker --version > /opt/bastion-e2e-docker-preset/docker-version' \
+    'docker buildx version > /opt/bastion-e2e-docker-preset/buildx-version' \
+    'docker compose version > /opt/bastion-e2e-docker-preset/compose-version' \
+    'docker info --format "{{.ServerVersion}}" > /opt/bastion-e2e-docker-preset/server-version' \
+    'systemctl is-enabled --quiet docker' \
+    'systemctl is-active --quiet docker')"
+
+  jq -nc --arg verify "$verify" '{
+    agents: {opencode: {}},
+    actions: {
+      init: [
+        {use: "setup_docker"},
+        {run: $verify}
+      ]
+    }
+  }'
+}
+
 opencode_agent_config() {
   local api_key="opencode-e2e-${RUN_ID}"
   local verify_written
@@ -702,6 +726,23 @@ run_preset_setup_github_cli_case() {
   log "preset setup_github_cli case passed for $env_id"
 }
 
+run_preset_setup_docker_case() {
+  local key="$RUN_ID-preset-docker"
+  local env_id
+
+  create_template "$key" "$(preset_setup_docker_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" "grep -q '^Docker version' /opt/bastion-e2e-docker-preset/docker-version"
+  ssh_env "$env_id" grep -q 'buildx' /opt/bastion-e2e-docker-preset/buildx-version
+  ssh_env "$env_id" "grep -q 'Docker Compose' /opt/bastion-e2e-docker-preset/compose-version"
+  ssh_env "$env_id" test -s /opt/bastion-e2e-docker-preset/server-version
+
+  log "preset setup_docker case passed for $env_id"
+}
+
 run_opencode_agent_case() {
   local key="$RUN_ID-opencode-agent"
   local env_key="$RUN_ID-opencode-agent-env"
@@ -849,6 +890,7 @@ main() {
   run_case run_preset_setup_bun_case
   run_case run_preset_setup_mise_case
   run_case run_preset_setup_github_cli_case
+  run_case run_preset_setup_docker_case
   run_case run_opencode_agent_case
   run_case run_node_docker_case
   run_case run_failure_case

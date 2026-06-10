@@ -28,6 +28,7 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 		{action: "setup_bun", files: []string{testManifestFileName, "install_bun.sh"}},
 		{action: "setup_mise", files: []string{testManifestFileName, "install_mise.sh"}},
 		{action: "setup_github_cli", files: []string{testManifestFileName, "install_github_cli.sh"}},
+		{action: "setup_docker", files: []string{testManifestFileName, "install_docker.sh"}},
 	}
 
 	for _, preset := range expected {

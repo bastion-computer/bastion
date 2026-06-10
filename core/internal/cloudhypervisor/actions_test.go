@@ -521,6 +521,32 @@ func TestSetupGitHubCLIPresetInputs(t *testing.T) {
 	}
 }
 
+func TestSetupDockerPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_docker")
+	if err != nil {
+		t.Fatalf("load setup_docker preset: %v", err)
+	}
+
+	if len(preset.manifest.Inputs) != 0 {
+		t.Fatalf("setup_docker inputs = %#v, want none", preset.manifest.Inputs)
+	}
+
+	if preset.manifest.Run != "sh ./install_docker.sh" {
+		t.Fatalf("setup_docker run = %q, want install_docker script", preset.manifest.Run)
+	}
+
+	if err := validatePresetActionInputs(preset, nil); err != nil {
+		t.Fatalf("validate setup_docker inputs: %v", err)
+	}
+}
+
 func TestSetupTemplateAgentsInstallsOpenCodeAndWritesInputs(t *testing.T) {
 	t.Parallel()
 
