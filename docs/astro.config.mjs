@@ -2,6 +2,7 @@
 import { defineConfig, sessionDrivers } from "astro/config";
 import starlight from "@astrojs/starlight";
 import cloudflare from "@astrojs/cloudflare";
+import starlightLlmsTxt from "starlight-llms-txt";
 import starlightThemeBlack from "starlight-theme-black";
 
 // https://astro.build/config
@@ -18,6 +19,7 @@ export default defineConfig({
   integrations: [
     starlight({
       plugins: [
+        starlightLlmsTxt(),
         starlightThemeBlack({
           footerText: `© ${new Date().getFullYear()} Bastion Computer. All rights reserved.`,
         }),
@@ -38,6 +40,26 @@ export default defineConfig({
       sidebar: [
         { label: "Introduction", slug: "introduction" },
         { label: "Quick Start", slug: "quick-start" },
+        {
+          label: "Agents",
+          items: [
+            {
+              label: "llms.txt",
+              link: "/llms.txt",
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
+            },
+            {
+              label: "llms-full.txt",
+              link: "/llms-full.txt",
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
+            },
+            {
+              label: "llms-small.txt",
+              link: "/llms-small.txt",
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
+            },
+          ],
+        },
         {
           label: "Guides",
           items: [
