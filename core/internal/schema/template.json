@@ -17,6 +17,9 @@
           "additionalProperties": {
             "type": ["string", "number", "boolean"]
           }
+        },
+        "context": {
+          "description": "Arbitrary JSON context exposed to the action package."
         }
       },
       "required": ["use"],

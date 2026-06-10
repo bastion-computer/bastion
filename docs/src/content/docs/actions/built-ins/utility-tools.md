@@ -44,6 +44,52 @@ The action stores the configured path under `/etc/bastion` and updates
 `/root/.bashrc` with a guarded `cd`, so shells keep their normal start directory
 if the configured path does not exist.
 
+## `write_env_file`
+
+`write_env_file` writes a `.env` file in a target directory inside the guest VM.
+The target directory is created when needed.
+
+| Input  | Required | Default | Description                                  |
+| ------ | -------- | ------- | -------------------------------------------- |
+| `path` | Yes      | None    | Directory where `.env` should be written to. |
+
+The variables to write come from the action `context` object. Context keys must
+be valid environment variable names. String, number, boolean, and `null` values
+are converted to env values; arrays and objects are written as compact JSON
+strings. The generated `.env` file uses shell-compatible quoting and mode `600`.
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "write_env_file",
+        "with": {
+          "path": "/workspace/bastion"
+        },
+        "context": {
+          "NODE_ENV": "development",
+          "SOME_VAR_1": "${{ env.SOME_VAR_1 }}",
+          "SOME_VAR_2": "${{ env.SOME_VAR_2 }}",
+          "FEATURE_FLAGS": {
+            "localDev": true
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+This writes `/workspace/bastion/.env` during template creation. Use it in
+`actions.start` instead when the file should be regenerated for every new
+environment.
+
 ## `setup_github_cli`
 
 `setup_github_cli` installs `gh` from GitHub's apt repository and configures it

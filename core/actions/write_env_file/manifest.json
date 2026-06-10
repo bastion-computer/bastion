@@ -1,0 +1,10 @@
+{
+  "inputs": {
+    "path": {
+      "type": "string",
+      "description": "Directory where the .env file should be written.",
+      "required": true
+    }
+  },
+  "run": "sh ./write_env_file.sh"
+}

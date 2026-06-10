@@ -54,10 +54,11 @@ type templateOpenCodeAgent struct {
 }
 
 type templateAction struct {
-	Run              string         `json:"run,omitempty"`
-	WorkingDirectory string         `json:"working_directory,omitempty"`
-	Use              string         `json:"use,omitempty"`
-	With             map[string]any `json:"with,omitempty"`
+	Run              string          `json:"run,omitempty"`
+	WorkingDirectory string          `json:"working_directory,omitempty"`
+	Use              string          `json:"use,omitempty"`
+	With             map[string]any  `json:"with,omitempty"`
+	Context          json.RawMessage `json:"context,omitempty"`
 }
 
 func (m Manager) runInitActions(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {

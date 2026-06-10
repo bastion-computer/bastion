@@ -12,10 +12,10 @@ templates instead of repeated as an inline `run` command.
 
 Built-in actions are documented separately by category:
 
-| Category                                           | Actions                                                         |
-| -------------------------------------------------- | --------------------------------------------------------------- |
-| [Utility tools](/actions/built-ins/utility-tools/) | `set_default_ssh_directory`, `setup_github_cli`, `setup_docker` |
-| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_bun`, `setup_mise`                         |
+| Category                                           | Actions                                                                           |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [Utility tools](/actions/built-ins/utility-tools/) | `set_default_ssh_directory`, `setup_github_cli`, `setup_docker`, `write_env_file` |
+| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_bun`, `setup_mise`                                           |
 
 ## Package Layout
 
@@ -82,6 +82,32 @@ with the `BASTION_INPUT_` prefix.
 
 Values are stringified before they are written into the guest-side action input
 environment file.
+
+## Context JSON
+
+Use actions can also define `context`, which is arbitrary JSON passed separately
+from manifest inputs. Bastion writes the JSON into the guest action directory and
+sets `BASTION_CONTEXT_FILE` to that file path before running the action command.
+
+```json
+{
+  "use": "setup_project",
+  "with": {
+    "path": "/workspace/project"
+  },
+  "context": {
+    "env": {
+      "NODE_ENV": "development",
+      "API_TOKEN": "${{ env.API_TOKEN }}"
+    }
+  }
+}
+```
+
+`context` is not validated against the action manifest. Use it for structured or
+verbose action data that would be awkward to encode as scalar `with` inputs.
+`BASTION_CONTEXT_FILE` is only set when `context` is provided, and Bastion removes
+the staged context file after the action exits.
 
 ## Use a Custom Action
 

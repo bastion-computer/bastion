@@ -154,6 +154,8 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		{key: "github-cli-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
 		{key: "docker-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_docker"}]}}`)},
 		{key: "default-ssh-directory-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"set_default_ssh_directory","with":{"path":"/workspace/bastion"}}]}}`)},
+		{key: "write-env-file-context", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"write_env_file","with":{"path":"/workspace/bastion"},"context":{"STRING":"value","NUMBER":42,"BOOLEAN":true,"OBJECT":{"nested":"value"},"ARRAY":[1,"two"],"NULL":null}}]}}`)},
+		{key: "start-write-env-file-context", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[],"start":[{"use":"write_env_file","with":{"path":"/workspace/bastion"},"context":{"STRING":"value","OBJECT":{"nested":"value"}}}]}}`)},
 	}
 
 	for _, tc := range cases {
@@ -189,7 +191,7 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 
 	created, err := service.Create(ctx, template.CreateRequest{
 		Key:    new("substitution-template"),
-		Config: json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}","auth":{"anthropic":{"type":"api","key":"${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}},"config":{"model":"anthropic/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}}},"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"}],"start":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }} again'"}]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}","auth":{"anthropic":{"type":"api","key":"${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}},"config":{"model":"anthropic/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}}},"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"},{"use":"write_env_file","with":{"path":"/workspace/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"},"context":{"TOKEN":"${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}","NESTED":{"name":"prefix-${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}}}],"start":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }} again'"}]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
@@ -199,44 +201,7 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 		t.Fatalf("prepared templates = %d, want 1", len(orchestrator.prepared))
 	}
 
-	var prepared struct {
-		Agents struct {
-			OpenCode struct {
-				WorkingDirectory string `json:"working_directory"`
-				Auth             struct {
-					Anthropic struct {
-						Key string `json:"key"`
-					} `json:"anthropic"`
-				} `json:"auth"`
-				Config struct {
-					Model string `json:"model"`
-				} `json:"config"`
-			} `json:"opencode"`
-		} `json:"agents"`
-		Actions struct {
-			Init []struct {
-				Run string `json:"run"`
-			} `json:"init"`
-			Start []struct {
-				Run string `json:"run"`
-			} `json:"start"`
-		} `json:"actions"`
-	}
-	if err := json.Unmarshal(orchestrator.prepared[0].Config, &prepared); err != nil {
-		t.Fatalf("unmarshal prepared config: %v", err)
-	}
-
-	if len(prepared.Actions.Init) != 1 || prepared.Actions.Init[0].Run != "printf 'substituted-value'" {
-		t.Fatalf("prepared template config = %s, want substituted env values", orchestrator.prepared[0].Config)
-	}
-
-	if prepared.Agents.OpenCode.WorkingDirectory != "/workspace/substituted-value" || prepared.Agents.OpenCode.Auth.Anthropic.Key != "substituted-value" || prepared.Agents.OpenCode.Config.Model != "anthropic/substituted-value" {
-		t.Fatalf("prepared template config = %s, want substituted opencode agent values", orchestrator.prepared[0].Config)
-	}
-
-	if len(prepared.Actions.Start) != 1 || prepared.Actions.Start[0].Run != "printf 'substituted-value again'" {
-		t.Fatalf("prepared template config = %s, want substituted start env values", orchestrator.prepared[0].Config)
-	}
+	requirePreparedSubstitutionConfig(t, orchestrator.prepared[0].Config)
 
 	stored, err := service.Get(ctx, created.ID, "")
 	if err != nil {
@@ -245,6 +210,64 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 
 	if !jsonEqual(stored.Config, orchestrator.prepared[0].Config) {
 		t.Fatalf("stored config = %s, want prepared config %s", stored.Config, orchestrator.prepared[0].Config)
+	}
+}
+
+type preparedSubstitutionConfig struct {
+	Agents struct {
+		OpenCode struct {
+			WorkingDirectory string `json:"working_directory"`
+			Auth             struct {
+				Anthropic struct {
+					Key string `json:"key"`
+				} `json:"anthropic"`
+			} `json:"auth"`
+			Config struct {
+				Model string `json:"model"`
+			} `json:"config"`
+		} `json:"opencode"`
+	} `json:"agents"`
+	Actions struct {
+		Init []struct {
+			Run  string `json:"run"`
+			With struct {
+				Path string `json:"path"`
+			} `json:"with"`
+			Context struct {
+				Token  string `json:"TOKEN"`
+				Nested struct {
+					Name string `json:"name"`
+				} `json:"NESTED"`
+			} `json:"context"`
+		} `json:"init"`
+		Start []struct {
+			Run string `json:"run"`
+		} `json:"start"`
+	} `json:"actions"`
+}
+
+func requirePreparedSubstitutionConfig(t *testing.T, config json.RawMessage) {
+	t.Helper()
+
+	var prepared preparedSubstitutionConfig
+	if err := json.Unmarshal(config, &prepared); err != nil {
+		t.Fatalf("unmarshal prepared config: %v", err)
+	}
+
+	if len(prepared.Actions.Init) != 2 || prepared.Actions.Init[0].Run != "printf 'substituted-value'" {
+		t.Fatalf("prepared template config = %s, want substituted env values", config)
+	}
+
+	if prepared.Actions.Init[1].With.Path != "/workspace/substituted-value" || prepared.Actions.Init[1].Context.Token != "substituted-value" || prepared.Actions.Init[1].Context.Nested.Name != "prefix-substituted-value" {
+		t.Fatalf("prepared template config = %s, want substituted use action context", config)
+	}
+
+	if prepared.Agents.OpenCode.WorkingDirectory != "/workspace/substituted-value" || prepared.Agents.OpenCode.Auth.Anthropic.Key != "substituted-value" || prepared.Agents.OpenCode.Config.Model != "anthropic/substituted-value" {
+		t.Fatalf("prepared template config = %s, want substituted opencode agent values", config)
+	}
+
+	if len(prepared.Actions.Start) != 1 || prepared.Actions.Start[0].Run != "printf 'substituted-value again'" {
+		t.Fatalf("prepared template config = %s, want substituted start env values", config)
 	}
 }
 
@@ -317,6 +340,7 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 		{name: "invalid start action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[],"start":[{"run":"echo hi","use":"example/action"}]}}`)},
 		{name: "empty working directory", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"pwd","working_directory":""}]}}`)},
 		{name: "working directory on preset action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","working_directory":"/workspace"}]}}`)},
+		{name: "context on run action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo hi","context":{"VALUE":"test"}}]}}`)},
 		{name: "invalid with input name", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","with":{"node-version":24}}]}}`)},
 		{name: "invalid with input value", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","with":{"version":{}}}]}}`)},
 		{name: "unknown top-level property", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]},"legacy":{}}`)},
