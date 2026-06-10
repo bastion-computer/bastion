@@ -152,6 +152,7 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		{key: "bun-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_bun","with":{"version":"bun-v1.3.3"}}]}}`)},
 		{key: "mise-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
 		{key: "github-cli-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_github_cli","with":{"token":"test-token","hostname":"github.com","git_protocol":"https"}}]}}`)},
+		{key: "docker-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_docker"}]}}`)},
 		{key: "default-ssh-directory-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"set_default_ssh_directory","with":{"path":"/workspace/bastion"}}]}}`)},
 	}
 

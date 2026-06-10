@@ -91,3 +91,32 @@ and `email`.
 
 The token is stored in the guest at `/etc/bastion/github-token` with mode `600`.
 Treat environments created with this action as having access to that token.
+
+## `setup_docker`
+
+`setup_docker` installs Docker Engine from Docker's official Ubuntu apt
+repository and starts the `docker` service.
+
+This action does not accept inputs.
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup_docker"
+      }
+    ]
+  }
+}
+```
+
+The action removes conflicting distro Docker packages when present, configures
+Docker's apt repository, installs `docker-ce`, `docker-ce-cli`, `containerd.io`,
+`docker-buildx-plugin`, and `docker-compose-plugin`, then verifies that the
+daemon is reachable with `docker info`.
