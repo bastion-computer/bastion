@@ -435,6 +435,41 @@ func TestRunInitActionsRejectsPresetInputTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestSetupBunPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_bun")
+	if err != nil {
+		t.Fatalf("load setup_bun preset: %v", err)
+	}
+
+	input, ok := preset.manifest.Inputs["version"]
+	if !ok {
+		t.Fatalf("setup_bun input version is not defined: %#v", preset.manifest.Inputs)
+	}
+
+	if len(preset.manifest.Inputs) != 1 || input.Type != presetInputTypeString || input.Required {
+		t.Fatalf("setup_bun inputs = %#v, want optional string version", preset.manifest.Inputs)
+	}
+
+	if err := validatePresetActionInputs(preset, nil); err != nil {
+		t.Fatalf("validate setup_bun inputs without version: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{"version": "bun-v1.3.3"}); err != nil {
+		t.Fatalf("validate setup_bun inputs with version: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{"version": 1.3}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
+		t.Fatalf("validate setup_bun invalid version error = %v, want type mismatch", err)
+	}
+}
+
 func TestSetupGitHubCLIPresetInputs(t *testing.T) {
 	t.Parallel()
 

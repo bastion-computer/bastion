@@ -357,6 +357,18 @@ preset_setup_node_config() {
   }'
 }
 
+preset_setup_bun_config() {
+  jq -nc '{
+    agents: {opencode: {}},
+    actions: {
+      init: [
+        {use: "setup_bun"},
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-bun\nbun --version > /opt/bastion-e2e-bun/version\nbun --revision > /opt/bastion-e2e-bun/revision\nbun -e '\''console.log(\"bun-ok\")'\'' > /opt/bastion-e2e-bun/runtime"}
+      ]
+    }
+  }'
+}
+
 preset_setup_mise_config() {
   jq -nc '{
     agents: {opencode: {}},
@@ -637,6 +649,22 @@ run_preset_setup_node_case() {
   log "preset setup_node case passed for $env_id"
 }
 
+run_preset_setup_bun_case() {
+  local key="$RUN_ID-preset-bun"
+  local env_id
+
+  create_template "$key" "$(preset_setup_bun_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" "grep -Eq '^[0-9]+\.' /opt/bastion-e2e-bun/version"
+  ssh_env "$env_id" test -s /opt/bastion-e2e-bun/revision
+  ssh_env "$env_id" grep -q '^bun-ok$' /opt/bastion-e2e-bun/runtime
+
+  log "preset setup_bun case passed for $env_id"
+}
+
 run_preset_setup_mise_case() {
   local key="$RUN_ID-preset-mise"
   local env_id
@@ -818,6 +846,7 @@ main() {
   run_case run_working_directory_case
   run_case run_start_action_case
   run_case run_preset_setup_node_case
+  run_case run_preset_setup_bun_case
   run_case run_preset_setup_mise_case
   run_case run_preset_setup_github_cli_case
   run_case run_opencode_agent_case

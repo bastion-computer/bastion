@@ -15,7 +15,7 @@ Built-in actions are documented separately by category:
 | Category                                           | Actions                                         |
 | -------------------------------------------------- | ----------------------------------------------- |
 | [Utility tools](/actions/built-ins/utility-tools/) | `set_default_ssh_directory`, `setup_github_cli` |
-| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_mise`                      |
+| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_bun`, `setup_mise`         |
 
 ## Package Layout
 
