@@ -106,6 +106,10 @@ export default defineConfig({
           label: "Examples",
           items: [
             {
+              label: "Issue tracker demo",
+              slug: "examples/bastion-demo-repo",
+            },
+            {
               label: "Remote access with Tailscale",
               slug: "examples/remote-access-with-tailscale",
             },
