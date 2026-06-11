@@ -1,105 +1,89 @@
-Default to using Bun instead of Node.js for TypeScript packages. The `core` package is implemented in Go and follows Go toolchain conventions.
+This repository is a mixed Go and TypeScript monorepo. Use `mise` as the primary entrypoint for tool versions and task execution; do not assume a package is a generic Bun application.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Toolchain
 
-## APIs
+The root `mise.toml` is the source of truth for local tools:
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+| Tool | Current use |
+| ---- | ----------- |
+| `bun` | JavaScript package management and package scripts. |
+| `go` | The `core/` host API service, CLI, daemon, tests, and builds. |
+| `node` | JavaScript ecosystem compatibility for Astro/SST tooling. |
+| `air` | Live reload for the Go API and daemon in development. |
+| `golangci-lint` | Go linting. |
+| `tmux` | Root development session orchestration. |
+| `zig` | C compiler via `CC = "zig cc"` for CGO-enabled Go builds. |
 
-## Testing
+Run `mise install` from the repository root to install pinned tools and JavaScript dependencies. Root tasks should usually be run through `mise run ...` rather than invoking language-specific commands directly.
 
-Use `bun test` to run tests.
+## Packages
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+Active package roots are configured in root `mise.toml` under `[monorepo].config_roots`:
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
+- `core/`: Go module `github.com/bastion-computer/bastion/core`, included in the root `go.work` workspace.
+- `docs/`: Astro Starlight documentation site using Bun package scripts.
+- `.dev/drizzle/`: development-only Drizzle Studio package for inspecting the local SQLite database.
 
-## Frontend
+Package-specific details live in:
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+- `.agents/docs/packages/core.md`
+- `.agents/docs/packages/docs.md`
+- `.agents/docs/dev/drizzle.md`
 
-Server:
+## Root Tasks
 
-```ts#index.ts
-import index from "./index.html"
+Prefer these repository-root commands for normal verification and development:
 
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
+| Task | Purpose |
+| ---- | ------- |
+| `mise run lint` | Run Go and docs linters. |
+| `mise run format:check` | Check formatting for active packages. |
+| `mise run format:write` | Rewrite formatting for active packages. |
+| `mise run build` | Build `core` binaries and the docs site. |
+| `mise run typecheck` | Run docs typechecking. |
+| `mise run test` | Run Go tests. |
+| `mise run dev:up` | Start the tmux development session. |
+| `mise run dev:down` | Stop the tmux development session. |
+| `mise run dev:reset` | Remove the local `.bastion` development data directory. |
+| `mise run dev:bastion ...` | Run the Bastion CLI against the local API. |
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+Use package-qualified tasks such as `mise run //core:test`, `mise run //docs:dev`, or `mise run //.dev/drizzle:dev` when working on one package.
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
+## Go Runtime
 
-With the following `frontend.tsx`:
+The `core/` package owns the product runtime. It builds two binaries:
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
+- `bastion`: CLI and host API service entrypoint.
+- `bastiond`: privileged Cloud Hypervisor daemon entrypoint.
 
-// import .css files directly and it works
-import './index.css';
+Core uses standard Go tooling and libraries, including:
 
-const root = createRoot(document.body);
+- Gin for HTTP routing in both the host API and daemon.
+- Cobra for CLI commands.
+- SQLite through `github.com/mattn/go-sqlite3` with CGO enabled.
+- Embedded SQL migrations under `core/internal/migrations`.
+- Cloud Hypervisor orchestration under `core/internal/cloudhypervisor`.
 
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
+Do not apply Bun server/API conventions to `core`. For example, do not replace Gin with `Bun.serve()`, Go SQLite with `bun:sqlite`, or Go build/test flows with Bun commands.
 
-root.render(<Frontend />);
-```
+## TypeScript Runtime
 
-Then, run index.ts
+JavaScript and TypeScript code in this repo uses Bun for package installation and script execution, but the current packages are framework/tooling packages rather than standalone Bun servers.
 
-```sh
-bun --hot ./index.ts
-```
+- The root package manages workspace dependencies and SST configuration.
+- `docs/` runs Astro scripts through Bun, such as `bun run dev`, `bun run build`, and `bun run typecheck`.
+- `docs/` is an Astro Starlight site deployed through SST's Cloudflare Astro construct.
+- `.dev/drizzle/` runs Drizzle Studio through Bun for development database inspection.
 
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+Use package scripts through mise tasks where available. If a package does not define a mise task for an operation, use `bun run <script>` inside that package rather than npm, yarn, pnpm, or npx equivalents.
+
+## API Guidance
+
+Use the APIs and storage layers already established by each package:
+
+- `core/` HTTP APIs use Gin handlers and services in Go.
+- `core/` persistent state is SQLite at `<data-dir>/sqlite.db`, managed by Go migrations.
+- `.dev/drizzle/` may depend on `better-sqlite3` because Drizzle Kit uses it for local inspection; it does not own the production schema.
+- `docs/` APIs/pages use Astro conventions.
+
+Avoid blanket Bun API substitutions in this repo. Bun built-ins such as `Bun.serve`, `Bun.file`, `Bun.sql`, `Bun.redis`, and `bun:sqlite` are not the default choice unless a specific package has been designed around them.
