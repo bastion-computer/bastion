@@ -14,7 +14,7 @@ The root `mise.toml` is the source of truth for local tools:
 | `tmux` | Root development session orchestration. |
 | `zig` | C compiler via `CC = "zig cc"` for CGO-enabled Go builds. |
 
-Run `mise install` from the repository root to install pinned tools and JavaScript dependencies. Root tasks should usually be run through `mise run ...` rather than invoking language-specific commands directly.
+Run `mise install` from the repository root to install configured tools and JavaScript dependencies. Root tasks should usually be run through `mise run ...` rather than invoking language-specific commands directly.
 
 ## Packages
 
@@ -51,10 +51,12 @@ Use package-qualified tasks such as `mise run //core:test`, `mise run //docs:dev
 
 ## Go Runtime
 
-The `core/` package owns the product runtime. It builds two binaries:
+The `core/` package owns the product runtime. On Linux it builds two binaries:
 
 - `bastion`: CLI and host API service entrypoint.
 - `bastiond`: privileged Cloud Hypervisor daemon entrypoint.
+
+On Darwin, `mise run //core:build` builds only the client CLI `bastion` binary and removes any stale `tmp/bastiond`, because host runtime support is Linux-only.
 
 Core uses standard Go tooling and libraries, including:
 

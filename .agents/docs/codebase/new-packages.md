@@ -1,6 +1,6 @@
 Assume the following requirements when creating a new package in this monorepo:
 
-- New application packages MUST be created as top-level directories, alongside packages such as `core`, `docs`, and `spec`.
+- New application packages MUST be created as top-level directories, alongside packages such as `core` and `docs`.
 - Development-only tooling packages live under `.dev/`, such as `.dev/drizzle`, and their agent docs live under `.agents/docs/dev/`.
 - All active packages MUST define package-level mise tasks for the operations they support.
   - `lint` runs language-specific linting, such as `eslint ./src` for TypeScript packages or `golangci-lint run ./...` for Go packages.
@@ -12,5 +12,6 @@ Assume the following requirements when creating a new package in this monorepo:
   - TypeScript packages should keep package.json scripts as thin package-local commands used by mise tasks.
 - All TypeScript packages MUST have at least a `src` directory where the source code is stored.
   - **Exception:** Raw artifact packages that only export non-code assets, such as JSON files, do not need a `src` directory, `lint`, or `typecheck` task.
+  - **Exception:** Development tooling packages that only contain package scripts or tool configuration, such as `.dev/drizzle`, do not need a `src` directory, `lint`, or `typecheck` task unless they add source code.
   - **Exception:** Go packages follow the standard Go layout with `cmd/`, `internal/`, and colocated `_test.go` files.
 - When adding a new active package, add its config root to the root `mise.toml` `[monorepo].config_roots` list and include it in the appropriate root aggregate tasks.
