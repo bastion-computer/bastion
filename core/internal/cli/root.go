@@ -80,6 +80,7 @@ func NewRootCommand() *cobra.Command {
 		newEnvironmentCommand(opts),
 		newMuxCommand(opts),
 		newOpenCodeCommand(opts),
+		newProxyCommand(opts),
 		newSSHCommand(opts),
 		newVersionCommand(),
 	)
@@ -94,7 +95,7 @@ func shouldResolveClientConfig(cmd *cobra.Command) bool {
 	}
 
 	switch topLevel.Name() {
-	case "templates", environmentUse, "mux", "opencode", "ssh":
+	case "templates", environmentUse, "mux", "opencode", proxyUse, "ssh":
 		return true
 	case clientUse:
 		return cmd.Name() == rootOptionSourceConfig

@@ -132,6 +132,31 @@ requires a keyed template; use `--template-id ID` for unkeyed templates.
 `bastion env tunnels` uses the resolved host API URL from `--api-url`,
 `BASTION_API_URL`, or `bastion client set api-url` when printing tunnel URLs.
 
+## `bastion proxy`
+
+Starts a local localhost proxy for a named environment tunnel.
+
+```sh
+bastion proxy (--env-id ID | --env-key KEY) --name NAME [--port PORT]
+```
+
+| Flag        | Default | Description                                          |
+| ----------- | ------- | ---------------------------------------------------- |
+| `--env-id`  |         | Environment ID. Mutually exclusive with `--env-key`. |
+| `--env-key` |         | Environment key. Mutually exclusive with `--env-id`. |
+| `--name`    |         | Registered tunnel name, such as `frontend`.          |
+| `--port`    | `0`     | Local port. `0` selects a free port.                 |
+
+The command validates that the environment exposes the named tunnel, then prints
+the local URL and request logs to stderr. All local paths and HTTP methods are
+forwarded to the host API tunnel URL using the resolved `--api-url`.
+
+Use this for web apps that expect absolute routes from the origin:
+
+```sh
+bastion proxy --env-key review-123 --name frontend
+```
+
 ## `bastion ssh`
 
 Connects to an environment through the host API.

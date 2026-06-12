@@ -134,6 +134,17 @@ Open the `url` in a host browser to reach the service running on the matching
 guest localhost port. The URL uses the same host API base URL that the CLI uses,
 including values configured with `bastion client set api-url`.
 
+For web apps that require absolute routes from the origin, start a local proxy
+for the tunnel instead:
+
+```sh
+bastion proxy --env-key review-123 --name frontend
+```
+
+The command prints a local URL such as `http://127.0.0.1:49152` and logs proxied
+requests to stderr. Open that local URL in your browser; requests for absolute
+paths like `/assets/app.js` are forwarded to the named tunnel.
+
 ## Remove an Environment
 
 ```sh
