@@ -11,7 +11,10 @@ import (
 )
 
 func TestWriteVMStateConcurrentReadersNeverSeeMalformedJSON(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
+
 	vm := VM{
 		EnvironmentID: "env_atomic_state",
 		VMID:          "vm-atomic-state",
@@ -26,24 +29,23 @@ func TestWriteVMStateConcurrentReadersNeverSeeMalformedJSON(t *testing.T) {
 	defer cancel()
 
 	errCh := make(chan error, 1)
+
 	var wg sync.WaitGroup
 	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			for ctx.Err() == nil {
 				if _, err := readVMState(dir); err != nil {
 					select {
 					case errCh <- err:
 					default:
 					}
+
 					cancel()
 
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	for i := range 500 {
@@ -71,7 +73,10 @@ func TestWriteVMStateConcurrentReadersNeverSeeMalformedJSON(t *testing.T) {
 }
 
 func TestWriteVMStateRemovesTemporaryFileAfterRenameError(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
+
 	stateFile := statePath(dir)
 	if err := os.Mkdir(stateFile, 0o700); err != nil {
 		t.Fatalf("create state path directory: %v", err)
@@ -86,6 +91,7 @@ func TestWriteVMStateRemovesTemporaryFileAfterRenameError(t *testing.T) {
 	if globErr != nil {
 		t.Fatalf("glob temp files: %v", globErr)
 	}
+
 	if len(matches) != 0 {
 		t.Fatalf("temporary files left after failed write: %v", matches)
 	}

@@ -156,12 +156,14 @@ func writeVMState(vm VM) error {
 
 func atomicWriteFile(path string, contents []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
+
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
 	if err != nil {
 		return err
 	}
 
 	tmpPath := tmp.Name()
+
 	removeTemp := true
 	defer func() {
 		if removeTemp {
