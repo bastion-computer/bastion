@@ -60,6 +60,20 @@ func TestMuxTmuxConfigDoesNotLoadExternalTheme(t *testing.T) {
 	}
 }
 
+func TestMuxTmuxConfigKeepsFailedConnectionPanesVisible(t *testing.T) {
+	t.Parallel()
+
+	config := string(bastionTmuxConfig)
+	for _, want := range []string{
+		`set-window-option -q -t bastion: remain-on-exit failed`,
+		`set-window-option -q remain-on-exit failed`,
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("tmux config missing %q:\n%s", want, config)
+		}
+	}
+}
+
 func TestMuxEnvironmentLabelPrefersKey(t *testing.T) {
 	t.Parallel()
 

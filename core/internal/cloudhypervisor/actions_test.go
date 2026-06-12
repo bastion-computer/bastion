@@ -750,6 +750,24 @@ func TestStartEnvironmentAgentsRestartsOpenCodeBeforeStartActions(t *testing.T) 
 	}
 }
 
+func TestOpenCodeStartCommandWaitsForHealthyAgent(t *testing.T) {
+	t.Parallel()
+
+	command, err := openCodeStartCommand(templateOpenCodeAgent{Config: map[string]any{"server": map[string]any{"port": 4097}}})
+	if err != nil {
+		t.Fatalf("opencode start command: %v", err)
+	}
+
+	for _, want := range []string{
+		"http://127.0.0.1:4097/global/health",
+		"jq -e '.healthy == true'",
+	} {
+		if !strings.Contains(command, want) {
+			t.Fatalf("opencode start command = %q, want to contain %q", command, want)
+		}
+	}
+}
+
 func TestLoadPresetActionRejectsInvalidManifest(t *testing.T) {
 	t.Parallel()
 

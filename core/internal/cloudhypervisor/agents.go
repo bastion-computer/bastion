@@ -176,11 +176,11 @@ WantedBy=multi-user.target
 }
 
 func openCodeHealthWaitCommand(port int) string {
-	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/"
+	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/global/health"
 
 	return strings.Join([]string{
 		"for i in $(seq 1 " + strconv.Itoa(openCodeAgentWaitSeconds) + "); do",
-		"  if curl -sS --connect-timeout 1 --max-time 2 -o /dev/null " + shellQuote(url) + " 2>/dev/null; then exit 0; fi",
+		"  if curl -fsS --connect-timeout 1 --max-time 2 " + shellQuote(url) + " 2>/dev/null | jq -e '.healthy == true' >/dev/null 2>&1; then exit 0; fi",
 		"  sleep 1",
 		"done",
 		"systemctl status --no-pager " + openCodeServiceName + " >&2 || true",
