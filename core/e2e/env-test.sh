@@ -13,6 +13,7 @@ RUN_ID="e2e-env-$(date +%Y%m%d%H%M%S)-$$"
 TEMPLATE_KEYS=()
 TEMPLATE_IDS=()
 ENV_IDS=()
+PROXY_PIDS=()
 CREATED_TEMPLATE_ID=""
 CREATED_ENV_ID=""
 CREATED_ENV_OUTPUT=""
@@ -33,6 +34,8 @@ run_cli() {
 cleanup() {
   local status=$?
   set +e
+
+  cleanup_proxies
 
   if [ "$status" -ne 0 ] && [ "${BASTION_E2E_KEEP_FAILED:-}" = "1" ]; then
     log "preserving failed run resources: environments=${ENV_IDS[*]:-} templates=${TEMPLATE_IDS[*]:-} template_keys=${TEMPLATE_KEYS[*]:-}"
@@ -90,7 +93,21 @@ cleanup_templates() {
   TEMPLATE_IDS=()
 }
 
+cleanup_proxies() {
+  local proxy_pid
+
+  for proxy_pid in "${PROXY_PIDS[@]}"; do
+    if [ -n "$proxy_pid" ]; then
+      kill "$proxy_pid" >/dev/null 2>&1 || true
+      wait "$proxy_pid" >/dev/null 2>&1 || true
+    fi
+  done
+
+  PROXY_PIDS=()
+}
+
 cleanup_resources() {
+  cleanup_proxies
   collect_template_environments
   cleanup_environments
   cleanup_templates
@@ -266,6 +283,30 @@ assert_opencode_proxy_health() {
   if ! jq -e '.healthy == true' <<<"$output" >/dev/null; then
     fail "$label proxy health response is $(jq -c . <<<"$output"), want healthy true"
   fi
+}
+
+wait_for_proxy_url() {
+  local logs=$1
+  local line
+  local i=0
+
+  while [ "$i" -lt 50 ]; do
+    if [ -s "$logs" ]; then
+      while IFS= read -r line; do
+        case "$line" in
+          "proxy listening on "*)
+            printf '%s\n' "${line#proxy listening on }"
+            return 0
+            ;;
+        esac
+      done <"$logs"
+    fi
+
+    i=$((i + 1))
+    sleep 0.1
+  done
+
+  fail "proxy did not report a local URL: $(<"$logs")"
 }
 
 assert_bastion_opencode_attach() {
@@ -544,7 +585,7 @@ tunnel_config() {
     tunnel: {frontend: 3000},
     actions: {
       init: [
-        {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\nmkdir -p /opt/bastion-e2e-tunnel\nprintf \"tunnel-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/index.html\nif ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then apt-get update; apt-get install -y --no-install-recommends python3 curl ca-certificates; fi"}
+        {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\nmkdir -p /opt/bastion-e2e-tunnel/absolute\nprintf \"tunnel-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/index.html\nprintf \"proxy-path-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/absolute/path\nif ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then apt-get update; apt-get install -y --no-install-recommends python3 curl ca-certificates; fi"}
       ],
       start: [
         {run: "set -eu\ncd /opt/bastion-e2e-tunnel\nnohup python3 -m http.server 3000 --bind 127.0.0.1 > /opt/bastion-e2e-tunnel/server.log 2>&1 &\nprintf \"%s\\n\" \"$!\" > /opt/bastion-e2e-tunnel/server.pid\ni=0\nwhile [ \"$i\" -lt 50 ]; do\n  if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:3000/ > /opt/bastion-e2e-tunnel/health 2>/dev/null; then\n    exit 0\n  fi\n  i=$((i + 1))\n  sleep 1\ndone\ncat /opt/bastion-e2e-tunnel/server.log >&2 || true\nprintf \"local tunnel server did not become ready\\n\" >&2\nexit 1"}
@@ -823,6 +864,8 @@ run_tunnel_case() {
   local expected_id_url
   local expected_key_url
   local output
+  local proxy_logs
+  local proxy_url
 
   create_template "$key" "$(tunnel_config)"
   create_environment "$key" --key "$env_key"
@@ -851,6 +894,21 @@ run_tunnel_case() {
   output="$(curl -fsS --connect-timeout 5 --max-time 20 "$expected_key_url")"
   if [ "$output" != "tunnel-ok $RUN_ID" ]; then
     fail "tunnel key URL returned $output, want tunnel-ok $RUN_ID"
+  fi
+
+  proxy_logs="/tmp/bastion-env-test-proxy-$RUN_ID.log"
+  : >"$proxy_logs"
+  run_cli proxy --env-key "$env_key" --name frontend 2>"$proxy_logs" &
+  PROXY_PIDS+=("$!")
+  proxy_url="$(wait_for_proxy_url "$proxy_logs")"
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$proxy_url/absolute/path")"
+  if [ "$output" != "proxy-path-ok $RUN_ID" ]; then
+    fail "local proxy returned $output, want proxy-path-ok $RUN_ID"
+  fi
+
+  if [[ "$(<"$proxy_logs")" != *"GET /absolute/path -> 200"* ]]; then
+    fail "local proxy did not log the proxied request: $(<"$proxy_logs")"
   fi
 
   log "tunnel case passed for $env_id"

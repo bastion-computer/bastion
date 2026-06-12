@@ -7,4 +7,5 @@ const (
 	cliTestIDFlag           = "--id"
 	cliTestKeyFlag          = "--key"
 	cliTestNextCursor       = "next"
+	cliTestTunnelName       = "frontend"
 )

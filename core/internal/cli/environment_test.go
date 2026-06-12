@@ -214,7 +214,7 @@ func TestEnvironmentTunnelsCommandPrintsTunnelURLs(t *testing.T) {
 			t.Fatalf("request = %s %s, want GET /api/v1/environments/%s/tunnels", r.Method, r.URL.Path, cliTestEnvironmentID)
 		}
 
-		if err := json.NewEncoder(w).Encode(environment.Tunnels{Entries: []environment.Tunnel{{Name: "frontend", Port: 3000}}}); err != nil {
+		if err := json.NewEncoder(w).Encode(environment.Tunnels{Entries: []environment.Tunnel{{Name: cliTestTunnelName, Port: 3000}}}); err != nil {
 			t.Fatalf("encode tunnels response: %v", err)
 		}
 	}))
@@ -236,7 +236,7 @@ func TestEnvironmentTunnelsCommandPrintsTunnelURLs(t *testing.T) {
 		t.Fatalf("decode stdout: %v", err)
 	}
 
-	wantURL := server.URL + "/api/v1/environments/" + cliTestEnvironmentID + "/tunnel/frontend"
+	wantURL := server.URL + "/api/v1/environments/" + cliTestEnvironmentID + "/tunnel/" + cliTestTunnelName
 	if len(got.Entries) != 1 || got.Entries[0].URL != wantURL {
 		t.Fatalf("tunnels output = %#v, want URL %s", got, wantURL)
 	}
@@ -251,7 +251,7 @@ func TestRootEnvironmentTunnelsUsesPersistedAPIURL(t *testing.T) {
 			t.Fatalf("request = %s %s, want by-key tunnels", r.Method, r.URL.Path)
 		}
 
-		if err := json.NewEncoder(w).Encode(environment.Tunnels{Entries: []environment.Tunnel{{Name: "frontend", Port: 3000}}}); err != nil {
+		if err := json.NewEncoder(w).Encode(environment.Tunnels{Entries: []environment.Tunnel{{Name: cliTestTunnelName, Port: 3000}}}); err != nil {
 			t.Fatalf("encode tunnels response: %v", err)
 		}
 	}))
@@ -276,7 +276,7 @@ func TestRootEnvironmentTunnelsUsesPersistedAPIURL(t *testing.T) {
 		t.Fatalf("decode stdout: %v", err)
 	}
 
-	wantURL := server.URL + "/v1/environments/by-key/" + cliTestEnvironmentKey + "/tunnel/frontend"
+	wantURL := server.URL + "/v1/environments/by-key/" + cliTestEnvironmentKey + "/tunnel/" + cliTestTunnelName
 	if len(got.Entries) != 1 || got.Entries[0].URL != wantURL {
 		t.Fatalf("tunnels output = %#v, want persisted API URL %s", got, wantURL)
 	}

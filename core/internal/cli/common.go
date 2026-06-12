@@ -15,6 +15,7 @@ const (
 	clientUse      = "client"
 	environmentUse = "env"
 	listUse        = "list"
+	proxyUse       = "proxy"
 	removeUse      = "remove"
 	setUse         = "set"
 	getIDKeyUse    = "get [--id ID | --key KEY]"

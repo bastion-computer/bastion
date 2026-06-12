@@ -100,6 +100,7 @@ Supported top-level commands are intentionally limited to the current product sc
 - `bastion client set api-url URL`, `bastion client remove api-url`, and `bastion client config`
 - `bastion mux`
 - `bastion opencode (--id ID | --key KEY)`
+- `bastion proxy (--env-id ID | --env-key KEY) --name NAME [--port PORT]`
 - `bastion ssh (--id ID | --key KEY) [-- COMMAND...]`
 - `bastion version`
 
