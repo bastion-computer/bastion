@@ -151,5 +151,47 @@ func writeVMState(vm VM) error {
 
 	contents = append(contents, '\n')
 
-	return os.WriteFile(statePath(vm.EnvDir), contents, 0o600)
+	return atomicWriteFile(statePath(vm.EnvDir), contents, 0o600)
+}
+
+func atomicWriteFile(path string, contents []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
+	if err != nil {
+		return err
+	}
+
+	tmpPath := tmp.Name()
+
+	removeTemp := true
+	defer func() {
+		if removeTemp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+
+		return err
+	}
+
+	if _, err := tmp.Write(contents); err != nil {
+		_ = tmp.Close()
+
+		return err
+	}
+
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+
+	removeTemp = false
+
+	return nil
 }
