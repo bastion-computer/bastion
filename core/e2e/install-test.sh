@@ -18,6 +18,8 @@ DOCS_LOG="$CORE_DIR/tmp/install-docs-server.log"
 DOCS_PID=""
 DOCS_FIREWALL_RULE_ADDED=0
 LATEST_VERSION=""
+LOCAL_RELEASE_VERSION="${BASTION_INSTALL_E2E_VERSION:-dev}"
+LOCAL_RELEASE_DIR="$REPO_DIR/docs/public/e2e-releases/$LOCAL_RELEASE_VERSION"
 
 TEMPLATE_KEYS=()
 ENV_IDS=()
@@ -59,6 +61,8 @@ cleanup() {
   set +e
   stop_docs_server
   remove_docs_firewall_rule
+  rm -rf "$LOCAL_RELEASE_DIR"
+  rmdir "${LOCAL_RELEASE_DIR%/*}" >/dev/null 2>&1 || true
 
   if [ "$status" -ne 0 ] && [ "${BASTION_E2E_KEEP_FAILED:-}" = "1" ]; then
     log "preserving failed run resources: environments=${ENV_IDS[*]:-} templates=${TEMPLATE_KEYS[*]:-}"
@@ -125,7 +129,9 @@ precheck() {
   require_command ip
   require_command iptables
   require_command jq
+  require_command sha256sum
   require_command sudo
+  require_command tar
 
   if ! sudo -n true >/dev/null 2>&1; then
     fail "passwordless sudo is required to expose the local docs dev server to the VM"
@@ -143,8 +149,27 @@ precheck() {
     fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' add cloud-hypervisor"
   fi
 
-  LATEST_VERSION="$(latest_release_tag)"
+  LATEST_VERSION="$LOCAL_RELEASE_VERSION"
   DOCS_HOST="${BASTION_INSTALL_E2E_DOCS_HOST:-$(host_network_ip)}"
+}
+
+prepare_local_release() {
+  local archive
+  local staging
+
+  archive="bastion_${LATEST_VERSION}_linux_x86_64.tar.gz"
+  staging="$(mktemp -d)"
+
+  rm -rf "$LOCAL_RELEASE_DIR"
+  mkdir -p "$LOCAL_RELEASE_DIR"
+
+  install -m 0755 "$CORE_DIR/tmp/bastion" "$staging/bastion"
+  install -m 0755 "$CORE_DIR/tmp/bastiond" "$staging/bastiond"
+  install -m 0755 "$CORE_DIR/tmp/bastion-guest-proxy" "$staging/bastion-guest-proxy"
+
+  tar -C "$staging" -czf "$LOCAL_RELEASE_DIR/$archive" bastion bastiond bastion-guest-proxy
+  (cd "$LOCAL_RELEASE_DIR" && sha256sum "$archive" >"$archive.sha256")
+  rm -rf "$staging"
 }
 
 start_docs_server() {
@@ -367,12 +392,13 @@ fi
 
 gateway=$3
 download_installer "$gateway"
+release_base_url="${INSTALL_URL%/install.sh}/e2e-releases/$LATEST_VERSION"
 
 if ! grep -q 'bastion-computer/bastion' /tmp/bastion-install.sh; then
   fail "downloaded installer does not look like the local Bastion installer"
 fi
 
-curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | bash 2>&1 | tee /tmp/bastion-install.log
+curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | BASTION_INSTALL_VERSION="$LATEST_VERSION" BASTION_RELEASE_BASE_URL="$release_base_url" bash 2>&1 | tee /tmp/bastion-install.log
 
 grep -q 'checksum verified' /tmp/bastion-install.log || fail "installer did not verify the release checksum"
 grep -q 'services installed, enabled, and started' /tmp/bastion-install.log || fail "installer did not set up services by default"
@@ -402,7 +428,7 @@ exec "$real_bastion" "\$@"
 EOF
 chmod +x "$bastion_path"
 
-curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | bash 2>&1 | tee /tmp/bastion-reinstall.log
+curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | BASTION_INSTALL_VERSION="$LATEST_VERSION" BASTION_RELEASE_BASE_URL="$release_base_url" bash 2>&1 | tee /tmp/bastion-reinstall.log
 rm -f "$real_bastion"
 
 grep -q 'updating Bastion from v0.0.0' /tmp/bastion-reinstall.log || fail "installer did not enter the update path"
@@ -438,6 +464,7 @@ main() {
   trap cleanup EXIT
 
   log "starting install e2e run $RUN_ID against $LATEST_VERSION"
+  prepare_local_release
   start_docs_server
   allow_docs_from_guests
   create_template "$key"

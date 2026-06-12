@@ -292,6 +292,44 @@ POST /v1/environments/by-key/review-123/agents/opencode/<path>
 All HTTP methods are proxied to the environment's OpenCode server. The
 environment must be running and its template must define `agents.opencode`.
 
+### List Tunnels
+
+```http
+GET /v1/environments/env_xxxxxx/tunnels
+GET /v1/environments/by-key/review-123/tunnels
+```
+
+Response:
+
+```json
+{
+  "entries": [
+    {
+      "name": "frontend",
+      "port": 3000
+    }
+  ]
+}
+```
+
+The environment must be running and its template must define a top-level
+`tunnel` object.
+
+### Proxy Tunnel
+
+```http
+GET /v1/environments/env_xxxxxx/tunnel/frontend
+GET /v1/environments/env_xxxxxx/tunnel/frontend/<path>
+POST /v1/environments/env_xxxxxx/tunnel/frontend/<path>
+GET /v1/environments/by-key/review-123/tunnel/frontend
+GET /v1/environments/by-key/review-123/tunnel/frontend/<path>
+POST /v1/environments/by-key/review-123/tunnel/frontend/<path>
+```
+
+All HTTP methods are proxied over the environment vsock device to
+`localhost:<registered-port>` inside the guest. The host API validates that the
+tunnel name is registered on the template before connecting.
+
 ### Remove Environment
 
 ```http

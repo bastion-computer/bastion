@@ -16,6 +16,7 @@ const (
 	linuxOS             = "linux"
 	archX8664           = "x86_64"
 	kvmPath             = "/dev/kvm"
+	vhostVsockPath      = "/dev/vhost-vsock"
 	retainedUtilityNote = "system utilities installed for Cloud Hypervisor were not removed"
 )
 
@@ -179,6 +180,7 @@ func cloudHypervisorHostNode(probe cloudHypervisorProbe) Node {
 			{Name: "supported architecture: " + probe.arch, OK: probe.arch == archX8664},
 			{Name: kvmPath + " exists", OK: probe.kvmExists()},
 			{Name: kvmPath + " read/write", OK: probe.kvmReadWrite()},
+			{Name: vhostVsockPath + " exists", OK: probe.vhostVsockExists()},
 		},
 	}
 }
@@ -219,6 +221,12 @@ func (p cloudHypervisorProbe) kvmExists() bool {
 
 func (p cloudHypervisorProbe) kvmReadWrite() bool {
 	return p.withDefaults().kvmAccess() == nil
+}
+
+func (p cloudHypervisorProbe) vhostVsockExists() bool {
+	_, err := p.withDefaults().stat(vhostVsockPath)
+
+	return err == nil
 }
 
 func defaultKVMAccess() error {

@@ -107,6 +107,33 @@ bastion env get --key review-123
 `get` reconciles the stored environment record with the daemon before returning
 the response.
 
+## Preview Tunnels
+
+List registered tunnel URLs for a running environment:
+
+```sh
+bastion env tunnels --id env_xxxxxx
+bastion env tunnels --key review-123
+```
+
+Example response:
+
+```json
+{
+  "entries": [
+    {
+      "name": "frontend",
+      "port": 3000,
+      "url": "http://localhost:3148/v1/environments/env_xxxxxx/tunnel/frontend"
+    }
+  ]
+}
+```
+
+Open the `url` in a host browser to reach the service running on the matching
+guest localhost port. The URL uses the same host API base URL that the CLI uses,
+including values configured with `bastion client set api-url`.
+
 ## Remove an Environment
 
 ```sh

@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,8 +11,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -313,22 +314,23 @@ func TestSSHRouteUpgradesAndRunsSSHRunner(t *testing.T) {
 func TestAgentProxyRouteForwardsToOpenCode(t *testing.T) {
 	t.Parallel()
 
-	opencode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	const port = 4097
+
+	socketPath := newGuestProxySocket(t, func(r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/global/health" || r.URL.RawQuery != "check=1" {
 			t.Fatalf("proxied request = %s %s?%s, want GET /global/health?check=1", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+
+		if r.Header.Get("X-Bastion-Tunnel-Port") != strconv.Itoa(port) {
+			t.Fatalf("tunnel port header = %q, want %d", r.Header.Get("X-Bastion-Tunnel-Port"), port)
 		}
 
 		if r.Header.Get("X-Test-Proxy") != "yes" {
 			t.Fatalf("proxied header X-Test-Proxy = %q, want yes", r.Header.Get("X-Test-Proxy"))
 		}
+	}, map[string]string{"X-Agent": "opencode"}, `{"healthy":true}`)
 
-		w.Header().Set("X-Agent", "opencode")
-		_, _ = w.Write([]byte(`{"healthy":true}`))
-	}))
-	t.Cleanup(opencode.Close)
-
-	port := testServerPort(t, opencode.URL)
-	orchestrator := &agentProxyOrchestrator{vms: make(map[string]ch.VM)}
+	orchestrator := &agentProxyOrchestrator{vms: make(map[string]ch.VM), vsockSocketPath: socketPath}
 
 	var logs bytes.Buffer
 
@@ -360,6 +362,46 @@ func TestAgentProxyRouteForwardsToOpenCode(t *testing.T) {
 
 		if strings.TrimSpace(res.Body.String()) != `{"healthy":true}` {
 			t.Fatalf("agent proxy %s body = %q, want health JSON", path, res.Body.String())
+		}
+	}
+}
+
+func TestTunnelProxyRouteForwardsRegisteredTunnel(t *testing.T) {
+	t.Parallel()
+
+	socketPath := newGuestProxySocket(t, func(r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/preview" || r.URL.RawQuery != "mode=dev" {
+			t.Fatalf("proxied tunnel request = %s %s?%s, want POST /preview?mode=dev", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+
+		if r.Header.Get("X-Bastion-Tunnel-Port") != "3000" {
+			t.Fatalf("tunnel port header = %q, want 3000", r.Header.Get("X-Bastion-Tunnel-Port"))
+		}
+	}, map[string]string{"X-Tunnel": "frontend"}, `preview ok`)
+
+	orchestrator := &agentProxyOrchestrator{vms: make(map[string]ch.VM), vsockSocketPath: socketPath}
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(orchestrator))
+	template := createTemplateWithConfig(t, router, "tunnel-proxy-template", json.RawMessage(`{"agents":{"opencode":{}},"tunnel":{"frontend":3000},"actions":{"init":[]}}`))
+	envKey := "tunnel-proxy-environment"
+	env := createEnvironmentFromRequest(t, router, environment.CreateRequest{Key: new(envKey), TemplateKey: requireStringPtr(t, template.Key)})
+
+	paths := []string{
+		"/v1/environments/" + env.ID + "/tunnel/frontend/preview?mode=dev",
+		"/v1/environments/by-key/" + envKey + "/tunnel/frontend/preview?mode=dev",
+	}
+
+	for _, path := range paths {
+		res := request(t, router, http.MethodPost, path, strings.NewReader("body"))
+		if res.Code != http.StatusOK {
+			t.Fatalf("tunnel proxy %s status = %d, want %d; body: %s", path, res.Code, http.StatusOK, res.Body.String())
+		}
+
+		if res.Header().Get("X-Tunnel") != "frontend" {
+			t.Fatalf("tunnel proxy %s X-Tunnel header = %q, want frontend", path, res.Header().Get("X-Tunnel"))
+		}
+
+		if strings.TrimSpace(res.Body.String()) != "preview ok" {
+			t.Fatalf("tunnel proxy %s body = %q, want preview ok", path, res.Body.String())
 		}
 	}
 }
@@ -399,25 +441,77 @@ func createTemplateWithConfig(t *testing.T, handler http.Handler, key string, co
 	return created
 }
 
-func testServerPort(t *testing.T, rawURL string) int {
+func newGuestProxySocket(t *testing.T, assertRequest func(*http.Request), headers map[string]string, body string) string {
 	t.Helper()
 
-	parsed, err := url.Parse(rawURL)
+	socketPath := filepath.Join(t.TempDir(), "guest-proxy.sock")
+
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socketPath)
 	if err != nil {
-		t.Fatalf("parse test server URL: %v", err)
+		t.Fatalf("listen on guest proxy socket: %v", err)
 	}
 
-	_, portText, err := net.SplitHostPort(parsed.Host)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+
+			go handleGuestProxySocket(t, conn, assertRequest, headers, body)
+		}
+	}()
+
+	return socketPath
+}
+
+func handleGuestProxySocket(t *testing.T, conn net.Conn, assertRequest func(*http.Request), headers map[string]string, body string) {
+	t.Helper()
+
+	defer func() { _ = conn.Close() }()
+
+	reader := bufio.NewReader(conn)
+
+	line, err := reader.ReadString('\n')
 	if err != nil {
-		t.Fatalf("split test server host/port: %v", err)
+		t.Errorf("read vsock connect line: %v", err)
+		return
 	}
 
-	port, err := strconv.Atoi(portText)
-	if err != nil {
-		t.Fatalf("parse test server port: %v", err)
+	wantConnect := fmt.Sprintf("CONNECT %d\n", ch.GuestProxyVsockPort)
+	if line != wantConnect {
+		t.Errorf("vsock connect line = %q, want %q", line, wantConnect)
+		return
 	}
 
-	return port
+	if _, err := conn.Write([]byte("OK 1073741824\n")); err != nil {
+		t.Errorf("write vsock connect ack: %v", err)
+		return
+	}
+
+	req, err := http.ReadRequest(reader)
+	if err != nil {
+		t.Errorf("read proxied HTTP request: %v", err)
+		return
+	}
+	defer func() { _ = req.Body.Close() }()
+
+	assertRequest(req)
+	_, _ = io.Copy(io.Discard, req.Body)
+
+	var response strings.Builder
+	response.WriteString("HTTP/1.1 200 OK\r\n")
+
+	for name, value := range headers {
+		response.WriteString(name + ": " + value + "\r\n")
+	}
+
+	response.WriteString("Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n")
+	response.WriteString(body)
+
+	_, _ = conn.Write([]byte(response.String()))
 }
 
 func decodeTemplateCreateResult(t *testing.T, res *httptest.ResponseRecorder) template.Metadata {
@@ -597,7 +691,8 @@ type sshRouteOrchestrator struct {
 }
 
 type agentProxyOrchestrator struct {
-	vms map[string]ch.VM
+	vms             map[string]ch.VM
+	vsockSocketPath string
 }
 
 func (o *sshRouteOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
@@ -632,13 +727,14 @@ func (o *sshRouteOrchestrator) Remove(_ context.Context, environmentID string) (
 
 func (o *agentProxyOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
 	vm := ch.VM{
-		EnvironmentID: req.EnvironmentID,
-		VMID:          "vm-" + req.EnvironmentID,
-		State:         ch.StateRunning,
-		GuestIP:       "127.0.0.1",
-		SSHUser:       ch.SSHUser,
-		SSHPort:       ch.SSHPort,
-		SSHKeyPath:    "/tmp/test.id_rsa",
+		EnvironmentID:   req.EnvironmentID,
+		VMID:            "vm-" + req.EnvironmentID,
+		State:           ch.StateRunning,
+		GuestIP:         "127.0.0.1",
+		VsockSocketPath: o.vsockSocketPath,
+		SSHUser:         ch.SSHUser,
+		SSHPort:         ch.SSHPort,
+		SSHKeyPath:      "/tmp/test.id_rsa",
 	}
 	o.vms[req.EnvironmentID] = vm
 

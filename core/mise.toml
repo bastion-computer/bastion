@@ -37,6 +37,7 @@ if [ "$(go env GOOS)" = "darwin" ]; then
 else
   go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
   go build -ldflags "$ldflags" -o ./tmp/bastiond ./cmd/bastiond
+  go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy
 fi
 '''
 
@@ -58,6 +59,7 @@ fi
 
 go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
 go build -ldflags "$ldflags" -o ./tmp/bastiond ./cmd/bastiond
+go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy
 bash ./e2e/client-test.sh
 bash ./e2e/env-test.sh
 bash ./e2e/ssh-test.sh

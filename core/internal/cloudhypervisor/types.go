@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"time"
+
+	"github.com/bastion-computer/bastion/core/internal/tunnel"
 )
 
 const (
@@ -22,6 +24,9 @@ const (
 
 	// OpenCodeDefaultPort is the default OpenCode HTTP server port.
 	OpenCodeDefaultPort = 4096
+
+	// GuestProxyVsockPort is the fixed guest-side vsock port for HTTP tunnel proxying.
+	GuestProxyVsockPort = tunnel.GuestProxyVsockPort
 
 	// NetworkIndexLimit is the number of /30 VM networks available in 10.241.0.0/16.
 	NetworkIndexLimit = 16000
@@ -97,29 +102,30 @@ type PrepareTemplateStreamEvent struct {
 
 // VM describes durable VM runtime metadata.
 type VM struct {
-	EnvironmentID string `json:"environmentId"`
-	VMID          string `json:"vmId"`
-	State         string `json:"state"`
-	PID           int    `json:"pid,omitempty"`
-	DHCPPID       int    `json:"dhcpPid,omitempty"`
-	EnvDir        string `json:"envDir,omitempty"`
-	RuntimeDir    string `json:"runtimeDir,omitempty"`
-	SocketPath    string `json:"socketPath,omitempty"`
-	KernelPath    string `json:"kernelPath,omitempty"`
-	InitramfsPath string `json:"initramfsPath,omitempty"`
-	RootfsPath    string `json:"rootfsPath,omitempty"`
-	TapName       string `json:"tapName,omitempty"`
-	HostIP        string `json:"hostIp,omitempty"`
-	GuestIP       string `json:"guestIp,omitempty"`
-	GuestCIDR     string `json:"guestCidr,omitempty"`
-	GuestMAC      string `json:"guestMac,omitempty"`
-	NetworkIndex  int    `json:"networkIndex"`
-	SSHUser       string `json:"sshUser,omitempty"`
-	SSHPort       int    `json:"sshPort,omitempty"`
-	SSHKeyPath    string `json:"sshKeyPath,omitempty"`
-	CreatedAt     string `json:"createdAt,omitempty"`
-	UpdatedAt     string `json:"updatedAt,omitempty"`
-	LastError     string `json:"lastError,omitempty"`
+	EnvironmentID   string `json:"environmentId"`
+	VMID            string `json:"vmId"`
+	State           string `json:"state"`
+	PID             int    `json:"pid,omitempty"`
+	DHCPPID         int    `json:"dhcpPid,omitempty"`
+	EnvDir          string `json:"envDir,omitempty"`
+	RuntimeDir      string `json:"runtimeDir,omitempty"`
+	SocketPath      string `json:"socketPath,omitempty"`
+	VsockSocketPath string `json:"vsockSocketPath,omitempty"`
+	KernelPath      string `json:"kernelPath,omitempty"`
+	InitramfsPath   string `json:"initramfsPath,omitempty"`
+	RootfsPath      string `json:"rootfsPath,omitempty"`
+	TapName         string `json:"tapName,omitempty"`
+	HostIP          string `json:"hostIp,omitempty"`
+	GuestIP         string `json:"guestIp,omitempty"`
+	GuestCIDR       string `json:"guestCidr,omitempty"`
+	GuestMAC        string `json:"guestMac,omitempty"`
+	NetworkIndex    int    `json:"networkIndex"`
+	SSHUser         string `json:"sshUser,omitempty"`
+	SSHPort         int    `json:"sshPort,omitempty"`
+	SSHKeyPath      string `json:"sshKeyPath,omitempty"`
+	CreatedAt       string `json:"createdAt,omitempty"`
+	UpdatedAt       string `json:"updatedAt,omitempty"`
+	LastError       string `json:"lastError,omitempty"`
 }
 
 func now() string {

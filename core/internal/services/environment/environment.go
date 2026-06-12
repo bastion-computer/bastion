@@ -40,9 +40,28 @@ type SSHConnection struct {
 	KeyPath string
 }
 
+// Tunnel describes a template-registered environment tunnel.
+type Tunnel struct {
+	Name string `json:"name"`
+	Port int    `json:"port"`
+	URL  string `json:"url,omitempty"`
+}
+
+// Tunnels contains the registered tunnels for one environment.
+type Tunnels struct {
+	Entries []Tunnel `json:"entries"`
+}
+
+// TunnelConnection contains private connection metadata for API-managed tunnel proxying.
+type TunnelConnection struct {
+	VsockSocketPath string
+	Port            int
+}
+
 type environmentRecord struct {
 	Environment
 	SSHConnection
+	TunnelConnection
 	VMLastError string
 }
 
@@ -507,10 +526,10 @@ func (s *Service) saveVM(ctx context.Context, vm ch.VM) error {
 
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO environment_vms (
-  environment_id, vm_id, state, pid, env_dir, runtime_dir, socket_path, kernel_path, rootfs_path,
+  environment_id, vm_id, state, pid, env_dir, runtime_dir, socket_path, vsock_socket_path, kernel_path, rootfs_path,
   tap_name, host_ip, guest_ip, guest_cidr, guest_mac, ssh_user, ssh_port, ssh_key_path,
   created_at, updated_at, last_error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(environment_id) DO UPDATE SET
   vm_id = excluded.vm_id,
   state = excluded.state,
@@ -518,6 +537,7 @@ ON CONFLICT(environment_id) DO UPDATE SET
   env_dir = excluded.env_dir,
   runtime_dir = excluded.runtime_dir,
   socket_path = excluded.socket_path,
+  vsock_socket_path = excluded.vsock_socket_path,
   kernel_path = excluded.kernel_path,
   rootfs_path = excluded.rootfs_path,
   tap_name = excluded.tap_name,
@@ -530,7 +550,7 @@ ON CONFLICT(environment_id) DO UPDATE SET
   ssh_key_path = excluded.ssh_key_path,
   updated_at = excluded.updated_at,
   last_error = excluded.last_error
-`, vm.EnvironmentID, vm.VMID, vm.State, vm.PID, vm.EnvDir, vm.RuntimeDir, vm.SocketPath, vm.KernelPath, vm.RootfsPath, vm.TapName, vm.HostIP, vm.GuestIP, vm.GuestCIDR, vm.GuestMAC, vm.SSHUser, vm.SSHPort, vm.SSHKeyPath, fallbackTime(vm.CreatedAt), fallbackTime(vm.UpdatedAt), vm.LastError)
+`, vm.EnvironmentID, vm.VMID, vm.State, vm.PID, vm.EnvDir, vm.RuntimeDir, vm.SocketPath, vm.VsockSocketPath, vm.KernelPath, vm.RootfsPath, vm.TapName, vm.HostIP, vm.GuestIP, vm.GuestCIDR, vm.GuestMAC, vm.SSHUser, vm.SSHPort, vm.SSHKeyPath, fallbackTime(vm.CreatedAt), fallbackTime(vm.UpdatedAt), vm.LastError)
 	if err != nil {
 		return fmt.Errorf("save environment vm: %w", err)
 	}
@@ -579,7 +599,7 @@ func environmentSelectQuery() string {
 	return `
 SELECT
   e.id, e.key, e.status, e.template_id, e.created_at, e.updated_at, e.last_error,
-  v.guest_ip, v.ssh_port, v.ssh_user, v.ssh_key_path, v.last_error
+  v.guest_ip, v.ssh_port, v.ssh_user, v.ssh_key_path, v.vsock_socket_path, v.last_error
 FROM environments e
 LEFT JOIN environment_vms v ON v.environment_id = e.id`
 }
@@ -596,6 +616,7 @@ func scanEnvironmentRecord(row rowScanner) (environmentRecord, error) {
 		sshPort     sql.NullInt64
 		sshUser     sql.NullString
 		sshKeyPath  sql.NullString
+		vsockSocket sql.NullString
 		vmLastError sql.NullString
 	)
 
@@ -611,6 +632,7 @@ func scanEnvironmentRecord(row rowScanner) (environmentRecord, error) {
 		&sshPort,
 		&sshUser,
 		&sshKeyPath,
+		&vsockSocket,
 		&vmLastError,
 	); err != nil {
 		return environmentRecord{}, err
@@ -623,6 +645,7 @@ func scanEnvironmentRecord(row rowScanner) (environmentRecord, error) {
 		User:    nullString(sshUser),
 		KeyPath: nullString(sshKeyPath),
 	}
+	record.TunnelConnection = TunnelConnection{VsockSocketPath: nullString(vsockSocket)}
 	record.VMLastError = nullString(vmLastError)
 
 	if record.LastError == "" {

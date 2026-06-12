@@ -2,6 +2,8 @@ package cli
 
 import (
 	"errors"
+	"net/url"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +19,7 @@ func newEnvironmentCommand(opts *rootOptions) *cobra.Command {
 		newEnvironmentCreateCommand(opts),
 		newEnvironmentListCommand(opts),
 		newEnvironmentGetCommand(opts),
+		newEnvironmentTunnelsCommand(opts),
 		newEnvironmentRemoveCommand(opts),
 	)
 
@@ -102,6 +105,30 @@ func newEnvironmentGetCommand(opts *rootOptions) *cobra.Command {
 
 		return apiClient(opts).GetEnvironment(cmd.Context(), id)
 	})
+}
+
+func newEnvironmentTunnelsCommand(opts *rootOptions) *cobra.Command {
+	return newIDKeyCommand("tunnels [--id ID | --key KEY]", "List environment tunnel URLs", "environment ID", "environment key", func(cmd *cobra.Command, id, key string) (any, error) {
+		tunnels, err := apiClient(opts).GetEnvironmentTunnels(cmd.Context(), id, key)
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range tunnels.Entries {
+			tunnels.Entries[i].URL = environmentTunnelURL(opts.apiURL, id, key, tunnels.Entries[i].Name)
+		}
+
+		return tunnels, nil
+	})
+}
+
+func environmentTunnelURL(apiURL, id, key, name string) string {
+	baseURL := strings.TrimRight(apiURL, "/")
+	if key != "" {
+		return baseURL + "/v1/environments/by-key/" + url.PathEscape(key) + "/tunnel/" + url.PathEscape(name)
+	}
+
+	return baseURL + "/v1/environments/" + url.PathEscape(id) + "/tunnel/" + url.PathEscape(name)
 }
 
 func newEnvironmentRemoveCommand(opts *rootOptions) *cobra.Command {

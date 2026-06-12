@@ -5,6 +5,8 @@ readonly REPO="bastion-computer/bastion"
 readonly DEFAULT_INSTALL_DIR="/usr/local/bin"
 readonly SOCKET_PATH="/run/bastion/bastiond.sock"
 readonly SERVICE_ENV_FILE="${BASTION_SERVICE_ENV_FILE:-/etc/default/bastion}"
+readonly INSTALL_VERSION="${BASTION_INSTALL_VERSION:-}"
+readonly RELEASE_BASE_URL="${BASTION_RELEASE_BASE_URL:-}"
 
 TARGET=""
 INSTALL_SERVICES=0
@@ -12,6 +14,7 @@ INSTALL_DIR="${BASTION_INSTALL_DIR:-}"
 TMP_DIR=""
 BASTION_BIN=""
 BASTIOND_BIN=""
+BASTION_GUEST_PROXY_BIN=""
 
 cat <<'EOF'
 
@@ -164,6 +167,11 @@ latest_release_tag() {
   local effective_url
   local tag
 
+  if [ -n "$INSTALL_VERSION" ]; then
+    printf '%s\n' "$INSTALL_VERSION"
+    return
+  fi
+
   url="https://github.com/${REPO}/releases/latest"
   effective_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$url")"
   effective_url="${effective_url%/}"
@@ -210,7 +218,11 @@ download_and_verify() {
 
   archive="bastion_${version}_${TARGET}.tar.gz"
   checksum="${archive}.sha256"
-  release_url="https://github.com/${REPO}/releases/download/${version}"
+  if [ -n "$RELEASE_BASE_URL" ]; then
+    release_url="${RELEASE_BASE_URL%/}"
+  else
+    release_url="https://github.com/${REPO}/releases/download/${version}"
+  fi
   TMP_DIR="$(mktemp -d)"
 
   log "downloading Bastion $version for $TARGET"
@@ -231,6 +243,10 @@ download_and_verify() {
   if [ "$INSTALL_SERVICES" -eq 1 ] && [ ! -x "$TMP_DIR/extract/bastiond" ]; then
     fail "release archive did not contain an executable bastiond binary"
   fi
+
+  if [ "$INSTALL_SERVICES" -eq 1 ] && [ ! -x "$TMP_DIR/extract/bastion-guest-proxy" ]; then
+    fail "release archive did not contain an executable bastion-guest-proxy binary"
+  fi
 }
 
 install_binaries() {
@@ -242,7 +258,9 @@ install_binaries() {
   BASTION_BIN="$INSTALL_DIR/bastion"
   if [ "$INSTALL_SERVICES" -eq 1 ]; then
     run_as_root install -m 0755 "$TMP_DIR/extract/bastiond" "$INSTALL_DIR/bastiond"
+    run_as_root install -m 0755 "$TMP_DIR/extract/bastion-guest-proxy" "$INSTALL_DIR/bastion-guest-proxy"
     BASTIOND_BIN="$INSTALL_DIR/bastiond"
+    BASTION_GUEST_PROXY_BIN="$INSTALL_DIR/bastion-guest-proxy"
   fi
 
   log "installed Bastion $version to $INSTALL_DIR"
@@ -252,17 +270,20 @@ ensure_binaries() {
   local latest_version=$1
   local existing_bastion
   local existing_bastiond
+  local existing_guest_proxy
   local current_version
 
   existing_bastion="$(command -v bastion 2>/dev/null || true)"
   existing_bastiond="$(command -v bastiond 2>/dev/null || true)"
+  existing_guest_proxy="$(command -v bastion-guest-proxy 2>/dev/null || true)"
   resolve_install_dir "$existing_bastion"
 
   current_version="$(installed_version "$existing_bastion" || true)"
-  if [ -n "$current_version" ] && [ "$current_version" = "$latest_version" ] && { [ "$INSTALL_SERVICES" -eq 0 ] || [ -n "$existing_bastiond" ]; }; then
+  if [ -n "$current_version" ] && [ "$current_version" = "$latest_version" ] && { [ "$INSTALL_SERVICES" -eq 0 ] || { [ -n "$existing_bastiond" ] && [ -n "$existing_guest_proxy" ]; }; }; then
     BASTION_BIN="$existing_bastion"
     if [ "$INSTALL_SERVICES" -eq 1 ]; then
       BASTIOND_BIN="$existing_bastiond"
+      BASTION_GUEST_PROXY_BIN="$existing_guest_proxy"
     fi
     log "Bastion $latest_version is already installed"
     return

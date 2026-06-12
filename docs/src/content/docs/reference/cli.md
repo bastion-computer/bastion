@@ -114,18 +114,23 @@ Creates and manages environments.
 bastion env create (--template-id ID | --template-key KEY) [--key KEY] [--tag TAG...]
 bastion env list [--limit N] [--cursor CURSOR] [--tag TAG...]
 bastion env get (--id ID | --key KEY)
+bastion env tunnels (--id ID | --key KEY)
 bastion env remove (--id ID | --key KEY)
 ```
 
-| Command  | Description                                                            |
-| -------- | ---------------------------------------------------------------------- |
-| `create` | Restore a prepared template snapshot with an optional environment key. |
-| `list`   | Return paginated environments, optionally filtered by repeated tags.   |
-| `get`    | Return one environment after reconciling with the daemon.              |
-| `remove` | Tear down and delete an environment.                                   |
+| Command   | Description                                                            |
+| --------- | ---------------------------------------------------------------------- |
+| `create`  | Restore a prepared template snapshot with an optional environment key. |
+| `list`    | Return paginated environments, optionally filtered by repeated tags.   |
+| `get`     | Return one environment after reconciling with the daemon.              |
+| `tunnels` | Return registered tunnel ports and host API URLs.                      |
+| `remove`  | Tear down and delete an environment.                                   |
 
 Environment keys are optional. When set, they must be unique. `--template-key KEY`
 requires a keyed template; use `--template-id ID` for unkeyed templates.
+
+`bastion env tunnels` uses the resolved host API URL from `--api-url`,
+`BASTION_API_URL`, or `bastion client set api-url` when printing tunnel URLs.
 
 ## `bastion ssh`
 

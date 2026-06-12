@@ -322,7 +322,7 @@ func (fakeImageBuilder) build(
 }
 
 func statWithKVM(path string) (os.FileInfo, error) {
-	if path == kvmPath {
+	if path == kvmPath || path == vhostVsockPath {
 		return testFileInfo{name: "kvm", mode: 0o660}, nil
 	}
 

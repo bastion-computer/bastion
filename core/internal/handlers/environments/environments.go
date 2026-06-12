@@ -28,6 +28,8 @@ type Handler struct {
 	sshRunner    SSHRunner
 }
 
+const errorResponseKey = "error"
+
 // NewHandler returns an environment route handler.
 func NewHandler(service *environment.Service, opts ...Option) Handler {
 	h := Handler{environments: service, sshRunner: runSSHSession}

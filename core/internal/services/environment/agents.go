@@ -17,8 +17,8 @@ import (
 
 // AgentConnection contains private connection metadata for API-managed agent proxying.
 type AgentConnection struct {
-	Host string
-	Port int
+	VsockSocketPath string
+	Port            int
 }
 
 // AgentConnection returns private HTTP connection metadata for an environment agent.
@@ -54,7 +54,7 @@ func (s *Service) agentConnection(ctx context.Context, environmentID, key, agent
 		return AgentConnection{}, fmt.Errorf("get environment agent metadata: %w", err)
 	}
 
-	if record.Host == "" {
+	if record.VsockSocketPath == "" {
 		return AgentConnection{}, fmt.Errorf("%w: environment does not have agent connection metadata", failure.ErrFailedDependency)
 	}
 
@@ -68,7 +68,7 @@ func (s *Service) agentConnection(ctx context.Context, environmentID, key, agent
 		return AgentConnection{}, fmt.Errorf("%w: %w", failure.ErrFailedDependency, err)
 	}
 
-	return AgentConnection{Host: record.Host, Port: port}, nil
+	return AgentConnection{VsockSocketPath: record.VsockSocketPath, Port: port}, nil
 }
 
 func (s *Service) templateConfig(ctx context.Context, templateID string) (json.RawMessage, error) {

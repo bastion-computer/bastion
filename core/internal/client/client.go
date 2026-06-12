@@ -227,6 +227,18 @@ func (c *Client) RemoveEnvironmentByKey(ctx context.Context, key string) (enviro
 	return out, c.do(ctx, http.MethodDelete, "/v1/environments/by-key/"+url.PathEscape(key), nil, &out)
 }
 
+// GetEnvironmentTunnels returns registered tunnels for an environment by ID or key.
+func (c *Client) GetEnvironmentTunnels(ctx context.Context, id, key string) (environment.Tunnels, error) {
+	var out environment.Tunnels
+
+	path, err := resourcePath("/v1/environments", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path+"/tunnels", nil, &out)
+}
+
 // OpenSSH opens an upgraded API SSH tunnel for an environment.
 func (c *Client) OpenSSH(ctx context.Context, id string, tunnelReq sshtunnel.Request) (io.ReadWriteCloser, error) {
 	contents, err := json.Marshal(tunnelReq)

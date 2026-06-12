@@ -25,6 +25,18 @@ type SSHConnection struct {
 	KeyPath string
 }
 
+// Tunnel describes a template-registered environment tunnel.
+type Tunnel struct {
+	Name string `json:"name"`
+	Port int    `json:"port"`
+	URL  string `json:"url,omitempty"`
+}
+
+// Tunnels contains the registered tunnels for one environment.
+type Tunnels struct {
+	Entries []Tunnel `json:"entries"`
+}
+
 // CreateRequest contains the fields needed to create an environment.
 type CreateRequest struct {
 	Key         *string   `json:"key,omitempty"`
