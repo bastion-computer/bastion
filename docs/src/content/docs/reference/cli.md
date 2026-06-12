@@ -207,3 +207,6 @@ sudo bastiond [flags]
 | `--vm-gid`     | `BASTIOND_VM_GID`         | `0`                                | GID used for VM-owned runtime files. |
 | `--log-format` | `BASTIOND_LOG_FORMAT`     | `json`                             | `json` or `text`.                    |
 | `--log-level`  | `BASTIOND_LOG_LEVEL`      | `info`                             | `debug`, `info`, `warn`, or `error`. |
+
+The socket owner/group also owns per-VM proxy sockets used by OpenCode and
+environment tunnels, so it should match the user running `bastion start`.

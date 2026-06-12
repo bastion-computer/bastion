@@ -97,6 +97,8 @@ func newCommand() *cobra.Command {
 			)
 
 			manager := ch.NewManager(resolvedDataDir, vmUID, vmGID, logger)
+			manager.ProxyUID = socketUID
+			manager.ProxyGID = socketGID
 
 			return ch.RunServer(cmd.Context(), ch.ServerOptions{
 				SocketPath: socketPath,

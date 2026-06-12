@@ -26,6 +26,8 @@ import (
 const (
 	apiSocketName        = "api.socket"
 	vsockSocketName      = "vsock.socket"
+	proxyDirMode         = 0o750
+	proxySocketMode      = 0o660
 	runtimeDir           = "/run/bastion/vms"
 	sshWait              = 180 * time.Second
 	apiWait              = 15 * time.Second
@@ -46,6 +48,8 @@ type Manager struct {
 	DataDir        string
 	UID            int
 	GID            int
+	ProxyUID       int
+	ProxyGID       int
 	GuestProxyPath string
 	Logger         *slog.Logger
 	run            func(context.Context, string, ...string) error
@@ -56,13 +60,15 @@ type Manager struct {
 // NewManager returns a Cloud Hypervisor VM manager.
 func NewManager(dataDir string, uid, gid int, logger *slog.Logger) Manager {
 	return Manager{
-		DataDir: dataDir,
-		UID:     uid,
-		GID:     gid,
-		Logger:  logger,
-		run:     runCommand,
-		stream:  runCommandStream,
-		output:  outputCommand,
+		DataDir:  dataDir,
+		UID:      uid,
+		GID:      gid,
+		ProxyUID: uid,
+		ProxyGID: gid,
+		Logger:   logger,
+		run:      runCommand,
+		stream:   runCommandStream,
+		output:   outputCommand,
 	}
 }
 
@@ -697,8 +703,7 @@ func (m Manager) startMachine(
 	}
 
 	createdAt := now()
-
-	return VM{
+	vm := VM{
 		EnvironmentID:   environmentID,
 		VMID:            vmID,
 		State:           StateCreating,
@@ -721,7 +726,16 @@ func (m Manager) startMachine(
 		SSHKeyPath:      workspace.assets.sshKey,
 		CreatedAt:       createdAt,
 		UpdatedAt:       createdAt,
-	}, nil
+	}
+
+	if err := m.ensureVMProxyAccess(vm); err != nil {
+		_ = terminateProcess(pid, vmmStartErrorTimeout)
+		_ = os.Remove(runtimeBase)
+
+		return VM{}, err
+	}
+
+	return vm, nil
 }
 
 func (m Manager) startRestoredMachine(
@@ -807,8 +821,7 @@ func (m Manager) startRestoredMachineWithMode(
 	}
 
 	createdAt := now()
-
-	return VM{
+	vm := VM{
 		EnvironmentID:   environmentID,
 		VMID:            vmID,
 		State:           StateCreating,
@@ -831,7 +844,71 @@ func (m Manager) startRestoredMachineWithMode(
 		SSHKeyPath:      workspace.assets.sshKey,
 		CreatedAt:       createdAt,
 		UpdatedAt:       createdAt,
-	}, nil
+	}
+
+	if err := m.ensureVMProxyAccess(vm); err != nil {
+		_ = terminateProcess(pid, vmmStartErrorTimeout)
+		_ = os.Remove(runtimeBase)
+
+		return VM{}, err
+	}
+
+	return vm, nil
+}
+
+func (m Manager) ensureVMProxyAccess(vm VM) error {
+	if vm.VsockSocketPath == "" {
+		return nil
+	}
+
+	if err := m.ensureProxyDirectoryAccess(filepath.Dir(vm.VsockSocketPath)); err != nil {
+		return fmt.Errorf("prepare vsock proxy directories: %w", err)
+	}
+
+	if err := m.setProxyAccess(vm.VsockSocketPath, proxySocketMode); err != nil {
+		return fmt.Errorf("prepare vsock proxy socket: %w", err)
+	}
+
+	return nil
+}
+
+func (m Manager) ensureProxyDirectoryAccess(dir string) error {
+	if strings.TrimSpace(dir) == "" || dir == "." {
+		return nil
+	}
+
+	parent := filepath.Dir(dir)
+	if parent != dir {
+		if err := m.setProxyAccess(parent, proxyDirMode); err != nil {
+			return err
+		}
+	}
+
+	return m.setProxyAccess(dir, proxyDirMode)
+}
+
+func (m Manager) setProxyAccess(path string, mode os.FileMode) error {
+	uid, gid, configured := m.proxyOwner()
+	if configured {
+		if err := chownIfNeeded(path, uid, gid); err != nil {
+			return err
+		}
+	}
+
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("chmod %s: %w", filepath.Base(path), err)
+	}
+
+	return nil
+}
+
+func (m Manager) proxyOwner() (int, int, bool) {
+	uid, gid := m.ProxyUID, m.ProxyGID
+	if uid == 0 && gid == 0 {
+		uid, gid = m.UID, m.GID
+	}
+
+	return uid, gid, uid != 0 || gid != 0
 }
 
 func preparePatchedRestoreConfig(workspace workspace, plan networkPlan) error {
@@ -1392,6 +1469,19 @@ func copyFile(src, dst string, mode os.FileMode) error {
 
 func chownIfConfigured(path string, uid, gid int) error {
 	if uid == 0 && gid == 0 {
+		return nil
+	}
+
+	return chownIfNeeded(path, uid, gid)
+}
+
+func chownIfNeeded(path string, uid, gid int) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && int(stat.Uid) == uid && int(stat.Gid) == gid {
 		return nil
 	}
 

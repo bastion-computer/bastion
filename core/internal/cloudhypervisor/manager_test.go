@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -287,6 +288,76 @@ func TestStateKeepsLiveVMWhenInfoProbeFails(t *testing.T) {
 	}
 }
 
+func TestEnsureVMProxyAccessSetsVsockSocketAccess(t *testing.T) {
+	t.Parallel()
+
+	const environmentID = "env_vsock_access"
+
+	dataDir := t.TempDir()
+
+	dir := envDir(dataDir, environmentID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("create environment dir: %v", err)
+	}
+
+	environmentsPath := filepath.Dir(dir)
+	//nolint:gosec // Test intentionally restricts directory traversal before repair.
+	if err := os.Chmod(environmentsPath, 0o700); err != nil {
+		t.Fatalf("restrict environments dir: %v", err)
+	}
+
+	vsockPath := filepath.Join(dir, vsockSocketName)
+
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", vsockPath)
+	if err != nil {
+		t.Fatalf("listen on test vsock socket: %v", err)
+	}
+
+	t.Cleanup(func() { _ = listener.Close() })
+
+	if err := os.Chmod(vsockPath, 0o600); err != nil {
+		t.Fatalf("restrict test vsock socket: %v", err)
+	}
+
+	uid, gid := os.Getuid(), os.Getgid()
+	if os.Geteuid() == 0 {
+		uid, gid = 12345, 12345
+	}
+
+	manager := Manager{DataDir: dataDir, ProxyUID: uid, ProxyGID: gid, run: func(context.Context, string, ...string) error { return nil }}
+	if err := manager.ensureVMProxyAccess(VM{VsockSocketPath: vsockPath}); err != nil {
+		t.Fatalf("ensure vm proxy access: %v", err)
+	}
+
+	assertPathMode(t, environmentsPath, 0o750)
+	assertPathMode(t, dir, 0o750)
+	assertPathMode(t, vsockPath, 0o660)
+
+	if os.Geteuid() == 0 {
+		assertPathOwner(t, environmentsPath, uid, gid)
+		assertPathOwner(t, dir, uid, gid)
+		assertPathOwner(t, vsockPath, uid, gid)
+	}
+}
+
+func TestEnsureVMProxyAccessRequiresVsockSocket(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+
+	missingPath := filepath.Join(dataDir, environmentsDir, "env_missing", vsockSocketName)
+	if err := os.MkdirAll(filepath.Dir(missingPath), 0o750); err != nil {
+		t.Fatalf("create missing socket directory: %v", err)
+	}
+
+	manager := Manager{DataDir: dataDir}
+
+	err := manager.ensureVMProxyAccess(VM{VsockSocketPath: missingPath})
+	if err == nil || !strings.Contains(err.Error(), "prepare vsock proxy socket") {
+		t.Fatalf("ensure vm proxy access error = %v, want missing vsock socket error", err)
+	}
+}
+
 func TestCloudHypervisorCallClosesIdleConnections(t *testing.T) {
 	t.Parallel()
 
@@ -339,6 +410,37 @@ func TestCloudHypervisorCallClosesIdleConnections(t *testing.T) {
 	}
 
 	t.Fatalf("open cloud-hypervisor API connections = %d, want 0", openConnections.Load())
+}
+
+func assertPathMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("mode %s = %o, want %o", path, got, want)
+	}
+}
+
+func assertPathOwner(t *testing.T, path string, wantUID, wantGID int) {
+	t.Helper()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatalf("stat %s returned %T, want *syscall.Stat_t", path, info.Sys())
+	}
+
+	if int(stat.Uid) != wantUID || int(stat.Gid) != wantGID {
+		t.Fatalf("owner %s = %d:%d, want %d:%d", path, stat.Uid, stat.Gid, wantUID, wantGID)
+	}
 }
 
 func startTestCloudHypervisorProcess(t *testing.T) *exec.Cmd {

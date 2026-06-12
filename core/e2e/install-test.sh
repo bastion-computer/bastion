@@ -314,6 +314,47 @@ service_data_dir() {
   printf '%s\n' "$BASTION_DATA_DIR"
 }
 
+assert_bastion_opencode_attach() {
+  local env_id=$1
+  local label=$2
+  local api_url="${BASTION_API_URL:-http://localhost:3148}"
+  local fake_bin="/tmp/bastion-install-opencode-$env_id-$$"
+  local proxy_file="$fake_bin/proxy-url"
+  local expected_url="${api_url%/}/v1/environments/$env_id/agents/opencode"
+  local got_url
+
+  rm -rf "$fake_bin"
+  mkdir -p "$fake_bin"
+  cat >"$fake_bin/opencode" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ne 2 ] || [ "$1" != "attach" ]; then
+  printf 'unexpected opencode invocation: %s\n' "$*" >&2
+  exit 64
+fi
+
+curl -fsS --connect-timeout 5 --max-time 20 "$2/global/health" | jq -e '.healthy == true' >/dev/null
+printf '%s\n' "$2" >"${BASTION_E2E_OPENCODE_PROXY_FILE:?}"
+SH
+  chmod +x "$fake_bin/opencode"
+
+  if ! (export PATH="$fake_bin:$PATH" BASTION_E2E_OPENCODE_PROXY_FILE="$proxy_file"; bastion --api-url "$api_url" opencode --id "$env_id"); then
+    fail "$label bastion opencode attach failed"
+  fi
+
+  if [ ! -s "$proxy_file" ]; then
+    fail "$label fake opencode did not record a proxy URL"
+  fi
+
+  got_url="$(<"$proxy_file")"
+  if [ "$got_url" != "$expected_url" ]; then
+    fail "$label proxy URL was $got_url, want $expected_url"
+  fi
+
+  rm -rf "$fake_bin"
+}
+
 CHILD_ENV_ID=""
 CHILD_TEMPLATE_KEY=""
 
@@ -350,6 +391,7 @@ verify_bastiond_restart_preserves_environment() {
   fi
 
   bastion ssh --id "$CHILD_ENV_ID" -- grep -q restart-ok /root/restart-ok
+  assert_bastion_opencode_attach "$CHILD_ENV_ID" "before restart"
   systemctl restart bastiond.service bastion-api.service
   wait_active bastiond.service
   wait_active bastion-api.service
@@ -360,6 +402,7 @@ verify_bastiond_restart_preserves_environment() {
     fail "environment $CHILD_ENV_ID status is $status after bastiond restart, want running"
   fi
 
+  assert_bastion_opencode_attach "$CHILD_ENV_ID" "after restart"
   bastion ssh --id "$CHILD_ENV_ID" -- grep -q restart-ok /root/restart-ok
   printf '[remote-install] bastiond restart preserved environment %s\n' "$CHILD_ENV_ID"
 }
