@@ -23,7 +23,7 @@ jobs:
             runner: ubuntu-latest
             goos: linux
             goarch: amd64
-            binaries: bastion bastiond
+            binaries: bastion bastiond bastion-guest-proxy
           - name: darwin_arm64
             runner: macos-14
             goos: darwin
