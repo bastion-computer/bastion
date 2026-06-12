@@ -1,3 +1,17 @@
+# Testing
+
+## Required TDD Workflow
+
+Use red/green TDD for behavior changes:
+
+- Red: before changing implementation, add or run the smallest automated test, regression test, E2E script, or reproducible user-level command that fails for the current behavior.
+- Green: implement the smallest correct change, then rerun the exact red check and confirm it now passes.
+- Refactor: after the targeted check is green, clean up only as needed and rerun the relevant package/root verification.
+
+Documentation-only or agent-instruction-only changes do not need artificial product tests, but they still need a concrete verification loop such as checking changed links, confirming referenced tasks exist, or building affected docs when the public docs site changes.
+
+## Root Verification
+
 ALWAYS verify the code has been linted, format-checked, built, typechecked where supported, and tested from the repository root via the following commands:
 
 - `mise run lint`
@@ -8,17 +22,35 @@ ALWAYS verify the code has been linted, format-checked, built, typechecked where
 
 Use `mise run format:write` to rewrite formatting locally. CI uses `mise run format:check`.
 
-If making significant changes to `core`, run the E2E tests to completion. Do not assume a dev server is already running; start it yourself unless the user explicitly says one is running and should be reused.
+If an environment limitation prevents running one of these commands, report the exact blocker and run the closest narrower check that is safe.
+
+## End-to-End Verification
+
+Every task must identify and run the closest user-facing verification path before finishing. Prefer the narrowest E2E path that proves the changed behavior, then run broader checks when the change crosses package/runtime boundaries.
+
+Use these common paths:
+
+- Core CLI/API/storage behavior: targeted Go tests, then the relevant `core/e2e/*.sh` script against a local API/daemon.
+- Core client configuration behavior: `cd core && bash ./e2e/client-test.sh`.
+- Core template/environment lifecycle behavior: `cd core && bash ./e2e/env-test.sh`.
+- Core SSH behavior or SSH tunnel protocol changes: `cd core && bash ./e2e/ssh-test.sh`.
+- Installer, systemd service, or install documentation behavior: `cd core && bash ./e2e/install-test.sh`.
+- VM runtime, networking, system setup, Cloud Hypervisor, or E2E script behavior: `cd core && bash ./e2e/nested-test.sh` when the host supports nested virtualization.
+- Public docs changes under `docs/`: run `mise run //docs:build` and, for navigation/content behavior, inspect the page through `mise run //docs:dev` or `mise run //docs:preview` when feasible.
+- Agent docs changes under `AGENTS.md` or `.agents/docs/`: reread the changed docs, verify linked files exist, and confirm referenced commands still exist with `mise tasks --all` or package manifests.
+
+If making significant changes to `core`, run the full core E2E set to completion. Do not assume a dev server is already running; start it yourself unless the user explicitly says one is running and should be reused.
 
 Core E2E workflow:
 
-- Build current binaries first: `cd core && GOMODCACHE=/tmp/opencode/gomodcache go build -o ./tmp/bastion ./cmd/bastion && GOMODCACHE=/tmp/opencode/gomodcache go build -o ./tmp/bastiond ./cmd/bastiond`
+- Build current binaries first: `cd core && mkdir -p tmp /tmp/opencode/gomodcache && GOMODCACHE=/tmp/opencode/gomodcache go build -o ./tmp/bastion ./cmd/bastion && GOMODCACHE=/tmp/opencode/gomodcache go build -o ./tmp/bastiond ./cmd/bastiond`
 - Ensure Cloud Hypervisor host dependencies are installed: `./core/tmp/bastion system --data-dir ./.bastion check`
 - If system check fails because assets/utilities are missing, run: `./core/tmp/bastion system --data-dir ./.bastion add cloud-hypervisor --with-utilities`
+- Create the log directory before starting services: `mkdir -p /tmp/opencode/bastion-logs`
 - Start `bastiond` and the API with captured logs so failures are diagnosable: `cd core && setsid -f sudo -n ./tmp/bastiond --data-dir ../.bastion --log-format text --log-level debug > /tmp/opencode/bastion-logs/bastiond.log 2>&1` and `cd core && setsid -f ./tmp/bastion start --addr localhost:3148 --data-dir ../.bastion --log-format text --log-level debug > /tmp/opencode/bastion-logs/api.log 2>&1`
 - Verify the API is reachable before running E2E: `cd core && ./tmp/bastion --api-url http://localhost:3148 templates list`
-- Run the standard E2E tests: `cd core && bash ./e2e/env-test.sh` and `cd core && bash ./e2e/ssh-test.sh`
-- Run nested virtualization E2E when touching the VM runtime, networking, system setup, or E2E scripts: `cd core && bash ./e2e/nested-test.sh`
+- Run the standard E2E tests: `cd core && bash ./e2e/client-test.sh`, `cd core && bash ./e2e/env-test.sh`, `cd core && bash ./e2e/ssh-test.sh`, and `cd core && bash ./e2e/install-test.sh`.
+- Run nested virtualization E2E when touching the VM runtime, networking, system setup, or E2E scripts: `cd core && bash ./e2e/nested-test.sh`.
 
 E2E notes:
 
