@@ -54,7 +54,11 @@ run = [{ tasks = ["//docs:typecheck"] }]
 
 [tasks.test]
 description = "Run tests across all active packages"
-run = [{ tasks = ["//core:test"] }]
+run = [{ tasks = ["check:release-workflow", "//core:test"] }]
+
+[tasks."check:release-workflow"]
+description = "Check release workflow package contents"
+run = "bash ./scripts/check-release-workflow.sh"
 
 [tasks."install:js"]
 description = "Install JavaScript dependencies"
