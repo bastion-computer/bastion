@@ -51,10 +51,11 @@ Use package-qualified tasks such as `mise run //core:test`, `mise run //docs:dev
 
 ## Go Runtime
 
-The `core/` package owns the product runtime. On Linux it builds two binaries:
+The `core/` package owns the product runtime. On Linux it builds three binaries:
 
 - `bastion`: CLI and host API service entrypoint.
 - `bastiond`: privileged Cloud Hypervisor daemon entrypoint.
+- `bastion-guest-proxy`: guest-side vsock HTTP proxy installed into templates.
 
 On Darwin, `mise run //core:build` builds only the client CLI `bastion` binary and removes any stale `tmp/bastiond`, because host runtime support is Linux-only.
 

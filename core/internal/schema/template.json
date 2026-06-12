@@ -154,6 +154,17 @@
       },
       "required": ["opencode"],
       "additionalProperties": false
+    },
+    "tunnel": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
+      }
     }
   },
   "type": "object",
@@ -178,6 +189,9 @@
           "minimum": 1
         }
       }
+    },
+    "tunnel": {
+      "$ref": "#/$defs/tunnel"
     },
     "actions": {
       "type": "object",

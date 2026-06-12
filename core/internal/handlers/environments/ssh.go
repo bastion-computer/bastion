@@ -34,7 +34,7 @@ func (h Handler) SSH(c *gin.Context) {
 	connection, err := h.environments.SSHConnection(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		_ = c.Error(err)
-		c.JSON(handlers.ErrorStatus(err), gin.H{"error": err.Error()})
+		c.JSON(handlers.ErrorStatus(err), gin.H{errorResponseKey: err.Error()})
 
 		return
 	}

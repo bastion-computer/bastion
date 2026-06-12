@@ -537,6 +537,22 @@ start_action_config() {
   }'
 }
 
+tunnel_config() {
+  jq -nc --arg run_id "$RUN_ID" '{
+    agents: {opencode: {}},
+    resources: {vcpu: 1, memory: 1, volume: 5},
+    tunnel: {frontend: 3000},
+    actions: {
+      init: [
+        {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\nmkdir -p /opt/bastion-e2e-tunnel\nprintf \"tunnel-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/index.html\nif ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then apt-get update; apt-get install -y --no-install-recommends python3 curl ca-certificates; fi"}
+      ],
+      start: [
+        {run: "set -eu\ncd /opt/bastion-e2e-tunnel\nnohup python3 -m http.server 3000 --bind 127.0.0.1 > /opt/bastion-e2e-tunnel/server.log 2>&1 &\nprintf \"%s\\n\" \"$!\" > /opt/bastion-e2e-tunnel/server.pid\ni=0\nwhile [ \"$i\" -lt 50 ]; do\n  if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:3000/ > /opt/bastion-e2e-tunnel/health 2>/dev/null; then\n    exit 0\n  fi\n  i=$((i + 1))\n  sleep 1\ndone\ncat /opt/bastion-e2e-tunnel/server.log >&2 || true\nprintf \"local tunnel server did not become ready\\n\" >&2\nexit 1"}
+      ]
+    }
+  }'
+}
+
 failing_action_config() {
   jq -nc '{
     agents: {opencode: {}},
@@ -800,6 +816,46 @@ fi"
   log "OpenCode agent case passed for $env_id"
 }
 
+run_tunnel_case() {
+  local key="$RUN_ID-tunnel"
+  local env_key="$RUN_ID-tunnel-env"
+  local env_id
+  local expected_id_url
+  local expected_key_url
+  local output
+
+  create_template "$key" "$(tunnel_config)"
+  create_environment "$key" --key "$env_key"
+  env_id="$CREATED_ENV_ID"
+  assert_json_key "env create $env_id" "$CREATED_ENV_OUTPUT" "$env_key"
+  assert_environment_running "$env_id"
+
+  expected_id_url="${API_URL%/}/v1/environments/$env_id/tunnel/frontend"
+  expected_key_url="${API_URL%/}/v1/environments/by-key/$env_key/tunnel/frontend"
+
+  output="$(run_cli env tunnels --id "$env_id")"
+  if ! jq -e --arg url "$expected_id_url" '.entries | length == 1 and .[0].name == "frontend" and .[0].port == 3000 and .[0].url == $url' <<<"$output" >/dev/null; then
+    fail "env tunnels --id response is $(jq -c . <<<"$output"), want frontend tunnel URL $expected_id_url"
+  fi
+
+  output="$(run_cli env tunnels --key "$env_key")"
+  if ! jq -e --arg url "$expected_key_url" '.entries | length == 1 and .[0].name == "frontend" and .[0].port == 3000 and .[0].url == $url' <<<"$output" >/dev/null; then
+    fail "env tunnels --key response is $(jq -c . <<<"$output"), want frontend tunnel URL $expected_key_url"
+  fi
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$expected_id_url")"
+  if [ "$output" != "tunnel-ok $RUN_ID" ]; then
+    fail "tunnel id URL returned $output, want tunnel-ok $RUN_ID"
+  fi
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$expected_key_url")"
+  if [ "$output" != "tunnel-ok $RUN_ID" ]; then
+    fail "tunnel key URL returned $output, want tunnel-ok $RUN_ID"
+  fi
+
+  log "tunnel case passed for $env_id"
+}
+
 run_env_substitution_case() {
   local key="$RUN_ID-env-substitution"
   local env_id
@@ -945,6 +1001,7 @@ main() {
   run_case run_preset_setup_github_cli_case
   run_case run_preset_setup_docker_case
   run_case run_opencode_agent_case
+  run_case run_tunnel_case
   run_case run_node_docker_case
   run_case run_failure_case
   run_case run_start_failure_case

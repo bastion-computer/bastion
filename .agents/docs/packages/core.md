@@ -2,7 +2,7 @@ This package contains the Go implementation of Bastion's host API service and CL
 
 ## Overview
 
-The core package lives in `core/`. On Linux it builds the `bastion` and `bastiond` binaries; on Darwin it builds the client-only `bastion` binary. The `bastion` binary is responsible for two kinds of entrypoints:
+The core package lives in `core/`. On Linux it builds the `bastion`, `bastiond`, and `bastion-guest-proxy` binaries; on Darwin it builds the client-only `bastion` binary. The `bastion` binary is responsible for two kinds of entrypoints:
 
 - `bastion start` runs the local host API service on `localhost:3148` by default.
 - CLI commands operate locally when managing host/client configuration, or call the host API service and print JSON responses for product resources.
@@ -16,6 +16,7 @@ The `bastiond` binary runs privileged Cloud Hypervisor runtime operations behind
 | `actions` | Embedded built-in preset actions seeded into `<data-dir>/actions`. |
 | `cmd/bastion` | Minimal CLI/API binary entrypoint. |
 | `cmd/bastiond` | Privileged Cloud Hypervisor daemon entrypoint. |
+| `cmd/bastion-guest-proxy` | Minimal Linux guest-side vsock HTTP proxy installed into templates. |
 | `pkg/sshtunnel` | Public SSH tunnel framing protocol shared by CLI/API SSH streams. |
 | `internal/cli` | Cobra command tree and CLI output handling. |
 | `internal/api` | Gin router assembly and HTTP server setup. Route definitions live here. |
@@ -29,6 +30,7 @@ The `bastiond` binary runs privileged Cloud Hypervisor runtime operations behind
 | `internal/services` | Shared service-layer helpers and response types. |
 | `internal/services/template` | Template request/response types and persistence service. |
 | `internal/services/environment` | Environment request/response types and persistence service. |
+| `internal/tunnel` | Shared guest-proxy tunnel constants and Cloud Hypervisor vsock dial helpers. |
 | `internal/schema` | Embedded JSON Schema documents and validation helpers. |
 | `internal/system` | Host setup/check commands for Cloud Hypervisor assets and utilities. |
 | `internal/migrations` | Embedded SQL migrations applied by core. |
@@ -46,7 +48,7 @@ Run package tasks from the repo root with mise:
 | `mise run //core:lint` | `golangci-lint run ./...` | Run Go linters. |
 | `mise run //core:format:check` | `gofmt -l .` check | Check Go formatting without writing files. |
 | `mise run //core:format:write` | `gofmt -w .` | Rewrite Go formatting. |
-| `mise run //core:build` | `go build -o ./tmp/bastion ./cmd/bastion` and, on Linux, `go build -o ./tmp/bastiond ./cmd/bastiond` with optional version ldflags | Build the CLI and supported daemon binaries. |
+| `mise run //core:build` | `go build -o ./tmp/bastion ./cmd/bastion` and, on Linux, `go build -o ./tmp/bastiond ./cmd/bastiond` plus `go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy` | Build the CLI and supported runtime binaries. |
 | `mise run //core:test` | `go test ./...` | Run Go tests. |
 | `mise run //core:test:e2e` | Build binaries and run `core/e2e/*.sh` scripts | Run core E2E tests against a reachable local API/daemon. |
 
@@ -66,7 +68,9 @@ Local builds report `dev` from `internal/config.Version`. Release builds can inj
 
 The service uses Gin and wraps it in `http.Server` so timeouts and graceful shutdown remain explicit. `internal/api/server.go` owns route registration. Domain-specific handler packages under `internal/handlers` expose `NewHandler(service)` constructors and handler methods used by those routes.
 
-`bastiond` accepts `--data-dir`, `--socket`, `--socket-uid`, `--socket-gid`, `--vm-uid`, `--vm-gid`, `--log-format`, and `--log-level`. It also uses Gin, but listens on a Unix socket instead of TCP. Root-only Cloud Hypervisor operations, TAP device setup, VMM launch, and VM cleanup belong in `internal/cloudhypervisor`; do not add runtime orchestration to `internal/system`, which is limited to `bastion system ...` host setup commands.
+`bastiond` accepts `--data-dir`, `--socket`, `--socket-uid`, `--socket-gid`, `--vm-uid`, `--vm-gid`, `--log-format`, and `--log-level`. It also uses Gin, but listens on a Unix socket instead of TCP. Root-only Cloud Hypervisor operations, TAP device setup, VMM launch, guest proxy installation, and VM cleanup belong in `internal/cloudhypervisor`; do not add runtime orchestration to `internal/system`, which is limited to `bastion system ...` host setup commands.
+
+Host-initiated guest proxy traffic must use `internal/tunnel.DialGuestProxy`; Cloud Hypervisor requires sending `CONNECT <port>\n` and consuming the `OK <host-port>\n` acknowledgement before speaking HTTP.
 
 ## Database
 

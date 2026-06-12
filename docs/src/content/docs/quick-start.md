@@ -9,10 +9,12 @@ This guide takes you from a fresh Linux host to a running Bastion environment.
 
 Bastion currently targets Linux hosts with x86_64 KVM support.
 
-Check that `/dev/kvm` exists and that your user can read and write it:
+Check that `/dev/kvm` exists and that your user can read and write it, and that
+the host exposes `/dev/vhost-vsock` for VM tunnel traffic:
 
 ```sh
 ls -l /dev/kvm
+ls -l /dev/vhost-vsock
 ```
 
 If your host is a cloud VM, make sure nested virtualization is enabled for the
@@ -20,7 +22,7 @@ instance type.
 
 ## Install Bastion
 
-Install `bastion`, `bastiond`, and the systemd services:
+Install `bastion`, `bastiond`, `bastion-guest-proxy`, and the systemd services:
 
 ```sh
 curl -fsSL https://bastion.computer/install.sh | bash

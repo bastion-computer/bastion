@@ -2,7 +2,7 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/bastiond ./cmd/bastiond"
+cmd = "go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy && go build -o ./tmp/bastiond ./cmd/bastiond"
 entrypoint = ["./tmp/bastiond", "--data-dir", "../.bastion", "--log-format", "text", "--log-level", "debug"]
 include_dir = ["cmd", "internal"]
 include_ext = ["go"]

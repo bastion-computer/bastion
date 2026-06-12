@@ -137,13 +137,14 @@ func TestPatchSnapshotConfigUsesEnvironmentDiskAndNetwork(t *testing.T) {
 	t.Parallel()
 
 	workspace := workspace{dir: t.TempDir(), rootfsPath: "/env/rootfs.img"}
-	plan := networkPlan{tapName: "bt123", guestIP: "10.241.0.6", guestMAC: "06:00:0A:F1:00:06"}
+	plan := networkPlan{networkIndex: 3, tapName: "bt123", guestIP: "10.241.0.6", guestMAC: "06:00:0A:F1:00:06"}
 	input := []byte(`{
   "disks": [
     {"path":"/template/rootfs.img","image_type":"Qcow2"},
     {"path":"/template/cidata.img","readonly":true,"image_type":"Raw"}
   ],
   "net": [{"tap":"btold","ip":"10.241.0.2","mask":"255.255.255.252","mac":"06:00:0A:F1:00:02"}],
+  "vsock": {"cid": 3, "socket":"/template/vsock.socket"},
   "serial": {"mode":"File","file":"/template/serial.log"}
 }`)
 
@@ -174,6 +175,11 @@ func TestPatchSnapshotConfigUsesEnvironmentDiskAndNetwork(t *testing.T) {
 	serial := requireJSONObject(t, got["serial"], "serial config")
 	if serial["file"] != filepath.Join(workspace.dir, "serial.log") {
 		t.Fatalf("serial config = %#v, want env serial log", serial)
+	}
+
+	vsock := requireJSONObject(t, got["vsock"], "vsock config")
+	if vsock["cid"] != float64(vsockCID(plan.networkIndex)) || vsock["socket"] != filepath.Join(workspace.dir, vsockSocketName) {
+		t.Fatalf("vsock config = %#v, want env vsock socket", vsock)
 	}
 }
 
@@ -209,11 +215,29 @@ func TestBuildVMConfigUsesResolvedCPUAndMemory(t *testing.T) {
 		kernelPath:    "vmlinux",
 		initramfsPath: "initramfs.img",
 	}
-	plan := networkPlan{tapName: "bt123", guestIP: "10.241.0.2", guestMAC: "06:00:0A:F1:00:02"}
+	plan := networkPlan{tapName: "bt123", guestIP: "10.241.0.9", guestMAC: "06:00:0A:F1:00:09"}
 
 	config := buildVMConfig(workspace, plan, 3, 4*gibBytes)
 	if config.CPUs.BootVCPUs != 3 || config.CPUs.MaxVCPUs != 3 || config.Memory.Size != 4*gibBytes {
 		t.Fatalf("vm config resources = cpu %#v memory %#v, want template resources", config.CPUs, config.Memory)
+	}
+}
+
+func TestBuildVMConfigIncludesVsockDevice(t *testing.T) {
+	t.Parallel()
+
+	workspace := workspace{
+		dir:           t.TempDir(),
+		rootfsPath:    "rootfs.img",
+		seedPath:      "cidata.img",
+		kernelPath:    "vmlinux",
+		initramfsPath: "initramfs.img",
+	}
+	plan := networkPlan{networkIndex: 7, tapName: "bt123", guestIP: "10.241.0.2", guestMAC: "06:00:0A:F1:00:02"}
+
+	config := buildVMConfig(workspace, plan, 2, 2*gibBytes)
+	if config.Vsock.CID != vsockCID(plan.networkIndex) || config.Vsock.Socket != filepath.Join(workspace.dir, vsockSocketName) {
+		t.Fatalf("vsock config = %#v, want CID/socket for environment", config.Vsock)
 	}
 }
 

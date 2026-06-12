@@ -225,6 +225,48 @@ func TestServiceCreatesEnvironmentsWithoutKeys(t *testing.T) {
 	}
 }
 
+func TestServiceListsAndResolvesTunnels(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	templates := template.NewService(db)
+	orchestrator := newFakeOrchestrator()
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
+		Key:    new("tunnel-template"),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"tunnel":{"backend":3001,"frontend":3000},"actions":{"init":[]}}`),
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	created, err := service.Create(ctx, environment.CreateRequest{TemplateID: createdTemplate.ID})
+	if err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+
+	tunnels, err := service.Tunnels(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("list tunnels: %v", err)
+	}
+
+	wantNames := []string{"backend", "frontend"}
+	if len(tunnels.Entries) != 2 || tunnels.Entries[0].Name != wantNames[0] || tunnels.Entries[0].Port != 3001 || tunnels.Entries[1].Name != wantNames[1] || tunnels.Entries[1].Port != 3000 {
+		t.Fatalf("tunnels = %#v, want backend/frontend entries", tunnels)
+	}
+
+	connection, err := service.TunnelConnection(ctx, created.ID, "frontend")
+	if err != nil {
+		t.Fatalf("resolve tunnel: %v", err)
+	}
+
+	if connection.Port != 3000 || connection.VsockSocketPath != "/tmp/test.vsock" {
+		t.Fatalf("tunnel connection = %#v, want frontend on test vsock", connection)
+	}
+}
+
 func TestServiceRejectsDuplicateAndBlankEnvironmentKeys(t *testing.T) {
 	t.Parallel()
 
@@ -445,15 +487,16 @@ func (o *fakeOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.V
 	o.templates = append(o.templates, ch.Template{ID: req.Template.ID, Key: req.Template.Key, Config: append(json.RawMessage(nil), req.Template.Config...)})
 
 	vm := ch.VM{
-		EnvironmentID: req.EnvironmentID,
-		VMID:          "vm-" + req.EnvironmentID,
-		State:         ch.StateRunning,
-		GuestIP:       testGuestIP,
-		SSHUser:       ch.SSHUser,
-		SSHPort:       ch.SSHPort,
-		SSHKeyPath:    "/tmp/test.id_rsa",
-		CreatedAt:     testVMTime,
-		UpdatedAt:     testVMTime,
+		EnvironmentID:   req.EnvironmentID,
+		VMID:            "vm-" + req.EnvironmentID,
+		State:           ch.StateRunning,
+		GuestIP:         testGuestIP,
+		VsockSocketPath: "/tmp/test.vsock",
+		SSHUser:         ch.SSHUser,
+		SSHPort:         ch.SSHPort,
+		SSHKeyPath:      "/tmp/test.id_rsa",
+		CreatedAt:       testVMTime,
+		UpdatedAt:       testVMTime,
 	}
 	o.vms[req.EnvironmentID] = vm
 

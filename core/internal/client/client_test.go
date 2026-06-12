@@ -12,6 +12,11 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 )
 
+const (
+	clientTestBaseURL  = "http://bastion.test"
+	clientTestOKStatus = "200 OK"
+)
+
 func TestCreateEnvironmentStreamsLogsAndResult(t *testing.T) {
 	t.Parallel()
 
@@ -27,7 +32,7 @@ func TestCreateEnvironmentStreamsLogsAndResult(t *testing.T) {
 	}
 
 	client := &Client{
-		baseURL: "http://bastion.test",
+		baseURL: clientTestBaseURL,
 		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.Method != http.MethodPost || req.URL.Path != "/v1/environments" {
 				t.Fatalf("request = %s %s, want POST /v1/environments", req.Method, req.URL.Path)
@@ -35,7 +40,7 @@ func TestCreateEnvironmentStreamsLogsAndResult(t *testing.T) {
 
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     clientTestOKStatus,
 				Body:       io.NopCloser(bytes.NewReader(body.Bytes())),
 			}, nil
 		})},
@@ -61,7 +66,7 @@ func TestListEnvironmentsIncludesTagFilters(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{
-		baseURL: "http://bastion.test",
+		baseURL: clientTestBaseURL,
 		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.Method != http.MethodGet || req.URL.Path != "/v1/environments" {
 				t.Fatalf("request = %s %s, want GET /v1/environments", req.Method, req.URL.Path)
@@ -74,7 +79,7 @@ func TestListEnvironmentsIncludesTagFilters(t *testing.T) {
 
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     clientTestOKStatus,
 				Body:       io.NopCloser(bytes.NewBufferString(`{"cursor":null,"entries":[]}`)),
 			}, nil
 		})},
@@ -90,13 +95,13 @@ func TestEnvironmentByKeyPaths(t *testing.T) {
 
 	paths := make([]string, 0, 2)
 	client := &Client{
-		baseURL: "http://bastion.test",
+		baseURL: clientTestBaseURL,
 		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			paths = append(paths, req.Method+" "+req.URL.Path)
 
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     clientTestOKStatus,
 				Body:       io.NopCloser(bytes.NewBufferString(`{"id":"env_keyed","status":"running","templateId":"tpl_test","tags":[],"createdAt":"","updatedAt":""}`)),
 			}, nil
 		})},
@@ -111,6 +116,37 @@ func TestEnvironmentByKeyPaths(t *testing.T) {
 	}
 
 	want := []string{"GET /v1/environments/by-key/dev-env", "DELETE /v1/environments/by-key/dev-env"}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("paths = %#v, want %#v", paths, want)
+	}
+}
+
+func TestEnvironmentTunnelsPaths(t *testing.T) {
+	t.Parallel()
+
+	paths := make([]string, 0, 2)
+	client := &Client{
+		baseURL: clientTestBaseURL,
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			paths = append(paths, req.Method+" "+req.URL.Path)
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     clientTestOKStatus,
+				Body:       io.NopCloser(bytes.NewBufferString(`{"entries":[{"name":"frontend","port":3000}]}`)),
+			}, nil
+		})},
+	}
+
+	if _, err := client.GetEnvironmentTunnels(context.Background(), "env_123", ""); err != nil {
+		t.Fatalf("get environment tunnels: %v", err)
+	}
+
+	if _, err := client.GetEnvironmentTunnels(context.Background(), "", "dev-env"); err != nil {
+		t.Fatalf("get environment tunnels by key: %v", err)
+	}
+
+	want := []string{"GET /v1/environments/env_123/tunnels", "GET /v1/environments/by-key/dev-env/tunnels"}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("paths = %#v, want %#v", paths, want)
 	}

@@ -25,6 +25,7 @@ import (
 
 const (
 	apiSocketName        = "api.socket"
+	vsockSocketName      = "vsock.socket"
 	runtimeDir           = "/run/bastion/vms"
 	sshWait              = 180 * time.Second
 	apiWait              = 15 * time.Second
@@ -42,13 +43,14 @@ const (
 
 // Manager performs privileged Cloud Hypervisor operations for bastiond.
 type Manager struct {
-	DataDir string
-	UID     int
-	GID     int
-	Logger  *slog.Logger
-	run     func(context.Context, string, ...string) error
-	stream  func(context.Context, io.Writer, string, ...string) error
-	output  func(context.Context, string, ...string) (string, error)
+	DataDir        string
+	UID            int
+	GID            int
+	GuestProxyPath string
+	Logger         *slog.Logger
+	run            func(context.Context, string, ...string) error
+	stream         func(context.Context, io.Writer, string, ...string) error
+	output         func(context.Context, string, ...string) (string, error)
 }
 
 // NewManager returns a Cloud Hypervisor VM manager.
@@ -132,14 +134,7 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	if err := m.startEnvironmentAgents(ctx, vm, req.Template.Config, req.Logs); err != nil {
-		failed, failErr := failVM(vm, err)
-		m.cleanupVM(context.Background(), failed, false)
-
-		return failed, failErr
-	}
-
-	if err := m.runStartActions(ctx, vm, req.Template.Config, req.Logs); err != nil {
+	if err := m.startEnvironmentServices(ctx, vm, req); err != nil {
 		failed, failErr := failVM(vm, err)
 		m.cleanupVM(context.Background(), failed, false)
 
@@ -162,6 +157,18 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 	)
 
 	return vm, nil
+}
+
+func (m Manager) startEnvironmentServices(ctx context.Context, vm VM, req LaunchRequest) error {
+	if err := m.startEnvironmentGuestProxy(ctx, vm, req.Logs); err != nil {
+		return err
+	}
+
+	if err := m.startEnvironmentAgents(ctx, vm, req.Template.Config, req.Logs); err != nil {
+		return err
+	}
+
+	return m.runStartActions(ctx, vm, req.Template.Config, req.Logs)
 }
 
 // PrepareTemplate boots a template VM, runs init actions, snapshots it, and stores reusable artifacts.
@@ -261,6 +268,10 @@ func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest
 }
 
 func (m Manager) prepareTemplateSnapshot(ctx context.Context, req PrepareTemplateRequest, vm VM, workspace workspace) (PreparedTemplate, error) {
+	if err := m.setupTemplateGuestProxy(ctx, vm, req.Logs); err != nil {
+		return m.failTemplatePreparation(vm, workspace, err)
+	}
+
 	if err := m.setupTemplateAgents(ctx, vm, req.Template.Config, req.Logs); err != nil {
 		return m.failTemplatePreparation(vm, workspace, err)
 	}
@@ -527,6 +538,14 @@ func patchSnapshotConfig(contents []byte, workspace workspace, plan networkPlan)
 		serial["file"] = filepath.Join(workspace.dir, "serial.log")
 	}
 
+	vsock, ok := config["vsock"].(map[string]any)
+	if !ok {
+		return nil, errors.New("snapshot config missing vsock device")
+	}
+
+	vsock["cid"] = vsockCID(plan.networkIndex)
+	vsock["socket"] = vsockSocketPath(workspace)
+
 	patched, err := json.Marshal(config)
 	if err != nil {
 		return nil, fmt.Errorf("encode snapshot config: %w", err)
@@ -680,27 +699,28 @@ func (m Manager) startMachine(
 	createdAt := now()
 
 	return VM{
-		EnvironmentID: environmentID,
-		VMID:          vmID,
-		State:         StateCreating,
-		PID:           pid,
-		EnvDir:        workspace.dir,
-		RuntimeDir:    runtimeBase,
-		SocketPath:    socketPath,
-		KernelPath:    workspace.kernelPath,
-		InitramfsPath: workspace.initramfsPath,
-		RootfsPath:    workspace.rootfsPath,
-		TapName:       plan.tapName,
-		HostIP:        plan.hostIP,
-		GuestIP:       plan.guestIP,
-		GuestCIDR:     plan.guestCIDR,
-		GuestMAC:      plan.guestMAC,
-		NetworkIndex:  plan.networkIndex,
-		SSHUser:       SSHUser,
-		SSHPort:       SSHPort,
-		SSHKeyPath:    workspace.assets.sshKey,
-		CreatedAt:     createdAt,
-		UpdatedAt:     createdAt,
+		EnvironmentID:   environmentID,
+		VMID:            vmID,
+		State:           StateCreating,
+		PID:             pid,
+		EnvDir:          workspace.dir,
+		RuntimeDir:      runtimeBase,
+		SocketPath:      socketPath,
+		VsockSocketPath: vsockSocketPath(workspace),
+		KernelPath:      workspace.kernelPath,
+		InitramfsPath:   workspace.initramfsPath,
+		RootfsPath:      workspace.rootfsPath,
+		TapName:         plan.tapName,
+		HostIP:          plan.hostIP,
+		GuestIP:         plan.guestIP,
+		GuestCIDR:       plan.guestCIDR,
+		GuestMAC:        plan.guestMAC,
+		NetworkIndex:    plan.networkIndex,
+		SSHUser:         SSHUser,
+		SSHPort:         SSHPort,
+		SSHKeyPath:      workspace.assets.sshKey,
+		CreatedAt:       createdAt,
+		UpdatedAt:       createdAt,
 	}, nil
 }
 
@@ -789,27 +809,28 @@ func (m Manager) startRestoredMachineWithMode(
 	createdAt := now()
 
 	return VM{
-		EnvironmentID: environmentID,
-		VMID:          vmID,
-		State:         StateCreating,
-		PID:           pid,
-		EnvDir:        workspace.dir,
-		RuntimeDir:    runtimeBase,
-		SocketPath:    socketPath,
-		KernelPath:    workspace.kernelPath,
-		InitramfsPath: workspace.initramfsPath,
-		RootfsPath:    workspace.rootfsPath,
-		TapName:       plan.tapName,
-		HostIP:        plan.hostIP,
-		GuestIP:       plan.guestIP,
-		GuestCIDR:     plan.guestCIDR,
-		GuestMAC:      plan.guestMAC,
-		NetworkIndex:  plan.networkIndex,
-		SSHUser:       SSHUser,
-		SSHPort:       SSHPort,
-		SSHKeyPath:    workspace.assets.sshKey,
-		CreatedAt:     createdAt,
-		UpdatedAt:     createdAt,
+		EnvironmentID:   environmentID,
+		VMID:            vmID,
+		State:           StateCreating,
+		PID:             pid,
+		EnvDir:          workspace.dir,
+		RuntimeDir:      runtimeBase,
+		SocketPath:      socketPath,
+		VsockSocketPath: vsockSocketPath(workspace),
+		KernelPath:      workspace.kernelPath,
+		InitramfsPath:   workspace.initramfsPath,
+		RootfsPath:      workspace.rootfsPath,
+		TapName:         plan.tapName,
+		HostIP:          plan.hostIP,
+		GuestIP:         plan.guestIP,
+		GuestCIDR:       plan.guestCIDR,
+		GuestMAC:        plan.guestMAC,
+		NetworkIndex:    plan.networkIndex,
+		SSHUser:         SSHUser,
+		SSHPort:         SSHPort,
+		SSHKeyPath:      workspace.assets.sshKey,
+		CreatedAt:       createdAt,
+		UpdatedAt:       createdAt,
 	}, nil
 }
 
@@ -850,6 +871,7 @@ type cloudHypervisorVMConfig struct {
 	Payload cloudHypervisorPayload `json:"payload"`
 	Disks   []cloudHypervisorDisk  `json:"disks"`
 	Net     []cloudHypervisorNet   `json:"net"`
+	Vsock   cloudHypervisorVsock   `json:"vsock"`
 	RNG     cloudHypervisorRNG     `json:"rng"`
 	Serial  cloudHypervisorConsole `json:"serial"`
 	Console cloudHypervisorConsole `json:"console"`
@@ -883,6 +905,11 @@ type cloudHypervisorNet struct {
 	IP   string `json:"ip"`
 	Mask string `json:"mask"`
 	MAC  string `json:"mac"`
+}
+
+type cloudHypervisorVsock struct {
+	CID    int64  `json:"cid"`
+	Socket string `json:"socket"`
 }
 
 type cloudHypervisorRNG struct {
@@ -931,10 +958,19 @@ func buildVMConfig(workspace workspace, plan networkPlan, cpus int, memoryBytes 
 			Mask: "255.255.255.252",
 			MAC:  strings.ToLower(plan.guestMAC),
 		}},
+		Vsock:   cloudHypervisorVsock{CID: vsockCID(plan.networkIndex), Socket: vsockSocketPath(workspace)},
 		RNG:     cloudHypervisorRNG{Src: "/dev/urandom"},
 		Serial:  cloudHypervisorConsole{Mode: "File", File: filepath.Join(workspace.dir, "serial.log")},
 		Console: cloudHypervisorConsole{Mode: "Off"},
 	}
+}
+
+func vsockSocketPath(workspace workspace) string {
+	return filepath.Join(workspace.dir, vsockSocketName)
+}
+
+func vsockCID(networkIndex int) int64 {
+	return int64(3 + networkIndex)
 }
 
 func vmCPUs() int {
