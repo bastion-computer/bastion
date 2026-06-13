@@ -31,9 +31,13 @@ import {
 import { ContainerSection } from "starlight-theme-black/components";
 import HeroAsciiArt from "../../components/HeroAsciiArt.astro";
 import envCreateClip from "../../assets/env-create.mp4?url";
+import envCreatePoster from "../../assets/env-create-poster.webp?url";
 import muxClip from "../../assets/mux.mp4?url";
+import muxPoster from "../../assets/mux-poster.webp?url";
 import proxyClip from "../../assets/proxy.mp4?url";
+import proxyPoster from "../../assets/proxy-poster.webp?url";
 import templatesCreateClip from "../../assets/templates-create.mp4?url";
+import templatesCreatePoster from "../../assets/templates-create-poster.webp?url";
 
 <HeroAsciiArt />
 
@@ -182,6 +186,7 @@ curl -fsSL https://bastion.computer/install.sh | bash
     <video
       controls
       preload="metadata"
+      poster={templatesCreatePoster}
       src={templatesCreateClip}
       style={{ width: "100%", display: "block", borderRadius: "0.75rem" }}
       aria-label="Creating a Bastion template"
@@ -193,6 +198,7 @@ curl -fsSL https://bastion.computer/install.sh | bash
     <video
       controls
       preload="metadata"
+      poster={envCreatePoster}
       src={envCreateClip}
       style={{ width: "100%", display: "block", borderRadius: "0.75rem" }}
       aria-label="Creating a Bastion environment"
@@ -205,6 +211,7 @@ curl -fsSL https://bastion.computer/install.sh | bash
     <video
       controls
       preload="metadata"
+      poster={muxPoster}
       src={muxClip}
       style={{ width: "100%", display: "block", borderRadius: "0.75rem" }}
       aria-label="Using Bastion mux"
@@ -217,6 +224,7 @@ curl -fsSL https://bastion.computer/install.sh | bash
     <video
       controls
       preload="metadata"
+      poster={proxyPoster}
       src={proxyClip}
       style={{ width: "100%", display: "block", borderRadius: "0.75rem" }}
       aria-label="Proxying a Bastion environment service"
