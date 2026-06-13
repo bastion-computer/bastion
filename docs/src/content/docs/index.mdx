@@ -21,9 +21,23 @@ hero:
         rel: noopener noreferrer
 ---
 
-import { Card, CardGrid, Steps } from "@astrojs/starlight/components";
+import {
+  Card,
+  CardGrid,
+  Steps,
+  TabItem,
+  Tabs,
+} from "@astrojs/starlight/components";
 import { ContainerSection } from "starlight-theme-black/components";
 import HeroAsciiArt from "../../components/HeroAsciiArt.astro";
+import envCreateClip from "../../assets/env-create.mp4?url";
+import envCreatePoster from "../../assets/env-create-poster.webp?url";
+import muxClip from "../../assets/mux.mp4?url";
+import muxPoster from "../../assets/mux-poster.webp?url";
+import proxyClip from "../../assets/proxy.mp4?url";
+import proxyPoster from "../../assets/proxy-poster.webp?url";
+import templatesCreateClip from "../../assets/templates-create.mp4?url";
+import templatesCreatePoster from "../../assets/templates-create-poster.webp?url";
 
 <HeroAsciiArt />
 
@@ -67,38 +81,96 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
 <Steps>
 
-1. Create a reusable template for configuring your agent's environment.
+1.  Define your agent's environment with JSON configuration.
 
-   ```sh
-   bastion templates create --key acme-app --file ./template.json
-   # {
-   #   "id": "tpl_123",
-   #   "key": "acme-app",
-   #   "createdAt": "..."
-   # }
-   ```
+    ```json title="template.json"
+    {
+      "agents": {
+        "opencode": {
+          "working_directory": "/workspace/acme-app",
+          "auth": {
+            "openai": {
+              "type": "api",
+              "key": "${{ env.OPENAI_API_KEY }}"
+            }
+          },
+          "config": {
+            "model": "openai/gpt-5.5",
+            "permission": "allow"
+          }
+        }
+      },
+      "actions": {
+        "init": [
+          {
+            "use": "setup_bun"
+          },
+          {
+            "run": "git clone https://github.com/.../acme-app.git",
+            "working_directory": "/workspace"
+          },
+          {
+            "run": "bun install",
+            "working_directory": "/workspace/acme-app"
+          }
+        ],
+        "start": [
+          {
+            "run": "nohup bun run dev &",
+            "working_directory": "/workspace/acme-app"
+          }
+        ]
+      }
+    }
+    ```
 
-2. Deploy your agent.
+2.  Initialize the template.
 
-   ```sh
-   bastion env create --template-key acme-app --key agent-1 --tag issue-32
-   # {
-   #   "id": "env_abc",
-   #   "key": "agent-1",
-   #   "status": "running",
-   #   "templateId": "tpl_123",
-   #   "tags": ["issue-32"],
-   #   "createdAt": "...",
-   #   "updatedAt": "..."
-   # }
-   ```
+    ```sh
+    bastion templates create --key acme-app --file ./template.json
+    # {
+    #   "id": "tpl_123",
+    #   "key": "acme-app",
+    #   "createdAt": "..."
+    # }
+    ```
 
-3. Let your agent operate from their own isolated virtual computer.
+3.  Deploy your agent.
 
-   ```sh
-   bastion ssh --key agent-1
-   # > root@vm-xyz: $
-   ```
+    ```sh
+    bastion env create --template-key acme-app --key agent-1 --tag issue-32
+    # {
+    #   "id": "env_abc",
+    #   "key": "agent-1",
+    #   "status": "running",
+    #   "templateId": "tpl_123",
+    #   "tags": ["issue-32"],
+    #   "createdAt": "...",
+    #   "updatedAt": "..."
+    # }
+    ```
+
+4.  Interface directly via OpenCode or SSH.
+
+        <Tabs>
+
+      <TabItem label="OpenCode">
+
+            ```sh
+            bastion opencode --key agent-1
+            ```
+
+          </TabItem>
+
+      <TabItem label="SSH">
+
+            ```sh
+            bastion ssh --key agent-1
+            ```
+
+          </TabItem>
+
+    </Tabs>
 
 </Steps>
 
@@ -106,41 +178,62 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
 <ContainerSection>
 
-## FAQ
+<div style={{ maxWidth: "1270px", margin: "0 auto" }}>
 
-<details open>
-  <summary>
-    What is the difference between bastion and a coding agent like Opencode?
-  </summary>
-  <p>
-    Opencode is one of many primitives for running an AI coding agent in your
-    local machine. Bastion is an orchestration tool to replicate your AI coding
-    agent and dev environment into many isolated instances that can operate in
-    parallel.
-  </p>
-</details>
+<Tabs>
+  <TabItem label="1. Initialize a template">
 
-<details open>
-  <summary>Why VMs and not just use git worktrees?</summary>
-  <p>
-    Git worktrees isolate source code. They do not isolate everything an agent
-    touches while working: ports, background processes, package installs,
-    databases, temporary files, credentials, and local services. Bastion gives
-    each coding agent its own runtime so agents can build, test, and modify code
-    without colliding with one another.
-  </p>
-</details>
+    <video
+      controls
+      preload="metadata"
+      poster={templatesCreatePoster}
+      src={templatesCreateClip}
+      style={{ width: "100%", display: "block", borderRadius: "0.75rem" }}
+      aria-label="Creating a Bastion template"
+    />
 
-<details open>
-  <summary>
-    Is this compatible with my coding agent and dev environment?
-  </summary>
-  <p>
-    At its core, a Bastion environment is backed by a Cloud Hypervisor VM. They
-    are capable of supporting any dev environment that runs on Linux. You can
-    configure these environments through built-in setup actions, creating your
-    own reusable actions, or running any arbitrary shell commands.
-  </p>
-</details>
+  </TabItem>
+  <TabItem label="2. Deploy an environment">
+
+    <video
+      controls
+      preload="metadata"
+      poster={envCreatePoster}
+      src={envCreateClip}
+      style={{ width: "100%", display: "block", borderRadius: "0.75rem" }}
+      aria-label="Creating a Bastion environment"
+    />
+
+  </TabItem>
+
+  <TabItem label="3. Use the multiplexer">
+
+    <video
+      controls
+      preload="metadata"
+      poster={muxPoster}
+      src={muxClip}
+      style={{ width: "100%", display: "block", borderRadius: "0.75rem" }}
+      aria-label="Using Bastion mux"
+    />
+
+  </TabItem>
+
+  <TabItem label="4. Proxy to environment services">
+
+    <video
+      controls
+      preload="metadata"
+      poster={proxyPoster}
+      src={proxyClip}
+      style={{ width: "100%", display: "block", borderRadius: "0.75rem" }}
+      aria-label="Proxying a Bastion environment service"
+    />
+
+  </TabItem>
+
+</Tabs>
+
+</div>
 
 </ContainerSection>
