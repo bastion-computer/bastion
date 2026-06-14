@@ -1,0 +1,13 @@
+{
+  "inputs": {
+    "toolchain": {
+      "type": "string",
+      "description": "Rust toolchain to install, for example stable, beta, nightly, or 1.85.0. Defaults to stable."
+    },
+    "profile": {
+      "type": "string",
+      "description": "rustup profile: minimal, default, or complete. Defaults to default."
+    }
+  },
+  "run": "sh ./install_rust.sh"
+}

@@ -121,3 +121,51 @@ Omit `version` to install the latest mise release:
   }
 }
 ```
+
+## `setup_rust`
+
+`setup_rust` installs Rust with rustup under `/usr/local/rustup` and
+`/usr/local/cargo`.
+
+| Input       | Required | Default   | Description                                                              |
+| ----------- | -------- | --------- | ------------------------------------------------------------------------ |
+| `toolchain` | No       | `stable`  | Rust toolchain to install, for example `stable`, `nightly`, or `1.85.0`. |
+| `profile`   | No       | `default` | rustup profile: `minimal`, `default`, or `complete`.                     |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup_rust",
+        "with": {
+          "toolchain": "stable",
+          "profile": "minimal"
+        }
+      }
+    ]
+  }
+}
+```
+
+Omit inputs to install the stable toolchain with rustup's default profile:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [{ "use": "setup_rust" }]
+  }
+}
+```
+
+The action installs apt build prerequisites, adds `/usr/local/cargo/bin` to root
+shells, symlinks Rust binaries into `/usr/local/bin`, and verifies Rust by
+compiling and running a small program.

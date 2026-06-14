@@ -609,6 +609,47 @@ func TestSetupBunPresetInputs(t *testing.T) {
 	}
 }
 
+func TestSetupRustPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_rust")
+	if err != nil {
+		t.Fatalf("load setup_rust preset: %v", err)
+	}
+
+	for _, name := range []string{"toolchain", "profile"} {
+		input, ok := preset.manifest.Inputs[name]
+		if !ok {
+			t.Fatalf("setup_rust input %s is not defined: %#v", name, preset.manifest.Inputs)
+		}
+
+		if input.Type != presetInputTypeString || input.Required {
+			t.Fatalf("setup_rust input %s = %#v, want optional string", name, input)
+		}
+	}
+
+	if len(preset.manifest.Inputs) != 2 {
+		t.Fatalf("setup_rust inputs = %#v, want toolchain and profile", preset.manifest.Inputs)
+	}
+
+	if preset.manifest.Run != "sh ./install_rust.sh" {
+		t.Fatalf("setup_rust run = %q, want install_rust script", preset.manifest.Run)
+	}
+
+	if err := validatePresetActionInputs(preset, nil); err != nil {
+		t.Fatalf("validate setup_rust inputs without values: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{"toolchain": "stable", "profile": "minimal"}); err != nil {
+		t.Fatalf("validate setup_rust inputs with values: %v", err)
+	}
+}
+
 func TestSetupGitHubCLIPresetInputs(t *testing.T) {
 	t.Parallel()
 

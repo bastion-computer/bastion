@@ -421,6 +421,32 @@ preset_setup_mise_config() {
   }'
 }
 
+preset_setup_rust_config() {
+  local verify
+
+  verify="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-rust' \
+    'rustc --version > /opt/bastion-e2e-rust/rustc-version' \
+    'cargo --version > /opt/bastion-e2e-rust/cargo-version' \
+    'rustup show active-toolchain > /opt/bastion-e2e-rust/active-toolchain' \
+    "cat > /opt/bastion-e2e-rust/main.rs <<'EOF'" \
+    'fn main() { println!("rust-e2e-ok"); }' \
+    'EOF' \
+    'rustc /opt/bastion-e2e-rust/main.rs -o /opt/bastion-e2e-rust/main' \
+    '/opt/bastion-e2e-rust/main > /opt/bastion-e2e-rust/program-output')"
+
+  jq -nc --arg verify "$verify" '{
+    agents: {opencode: {}},
+    actions: {
+      init: [
+        {use: "setup_rust", with: {toolchain: "stable", profile: "minimal"}},
+        {run: $verify}
+      ]
+    }
+  }'
+}
+
 preset_setup_github_cli_config() {
   local token="github-cli-e2e-${RUN_ID}"
   local verify
@@ -785,6 +811,23 @@ run_preset_setup_mise_case() {
   log "preset setup_mise case passed for $env_id"
 }
 
+run_preset_setup_rust_case() {
+  local key="$RUN_ID-preset-rust"
+  local env_id
+
+  create_template "$key" "$(preset_setup_rust_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" "grep -q '^rustc ' /opt/bastion-e2e-rust/rustc-version"
+  ssh_env "$env_id" "grep -q '^cargo ' /opt/bastion-e2e-rust/cargo-version"
+  ssh_env "$env_id" "grep -q '^stable' /opt/bastion-e2e-rust/active-toolchain"
+  ssh_env "$env_id" grep -q '^rust-e2e-ok$' /opt/bastion-e2e-rust/program-output
+
+  log "preset setup_rust case passed for $env_id"
+}
+
 run_preset_setup_github_cli_case() {
   local key="$RUN_ID-preset-github-cli"
   local env_id
@@ -1056,6 +1099,7 @@ main() {
   run_case run_preset_setup_node_case
   run_case run_preset_setup_bun_case
   run_case run_preset_setup_mise_case
+  run_case run_preset_setup_rust_case
   run_case run_preset_setup_github_cli_case
   run_case run_preset_setup_docker_case
   run_case run_opencode_agent_case
