@@ -47,6 +47,12 @@ export default defineConfig({
           navLinks: [{ label: "Blog", link: "/blog/" }],
         }),
         starlightBlog({
+          authors: {
+            hazim: {
+              name: "Hazim",
+              title: "Primary Maintainer",
+            },
+          },
           navigation: "none",
           prefix: "blog",
           title: "Blog",
