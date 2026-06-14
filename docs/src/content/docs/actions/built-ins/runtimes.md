@@ -36,6 +36,52 @@ Example:
 The action installs the selected Node.js release with apt packages from
 NodeSource.
 
+## `setup_go`
+
+`setup_go` installs the Go toolchain from official Go tarballs.
+
+| Input     | Required | Default                                 | Description                                  |
+| --------- | -------- | --------------------------------------- | -------------------------------------------- |
+| `version` | No       | Latest stable from Go download metadata | Go version to install, for example `1.25.4`. |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup_go",
+        "with": {
+          "version": "1.25.4"
+        }
+      }
+    ]
+  }
+}
+```
+
+Omit `version` to install the latest stable Go release reported by
+`https://go.dev/dl/?mode=json`:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [{ "use": "setup_go" }]
+  }
+}
+```
+
+The action installs Go to `/usr/local/go`, adds `/usr/local/bin/go` and
+`/usr/local/bin/gofmt` symlinks, and configures root shells with
+`GOPATH=/root/go` and `/usr/local/go/bin:/root/go/bin` on `PATH`.
+
 ## `setup_bun`
 
 `setup_bun` installs Bun with the official installer.

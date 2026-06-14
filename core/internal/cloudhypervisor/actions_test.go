@@ -577,35 +577,49 @@ func TestRunInitActionsRejectsPresetInputTypeMismatch(t *testing.T) {
 func TestSetupBunPresetInputs(t *testing.T) {
 	t.Parallel()
 
+	assertOptionalStringVersionPresetInputs(t, "setup_bun", "bun-v1.3.3", 1.3)
+}
+
+func TestSetupGoPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	assertOptionalStringVersionPresetInputs(t, "setup_go", "1.25.4", 1.25)
+}
+
+func assertOptionalStringVersionPresetInputs(t *testing.T, action, validVersion string, invalidVersion any) {
+	t.Helper()
+
+	const versionInput = "version"
+
 	dataDir := t.TempDir()
 	if err := builtinActions.Seed(dataDir); err != nil {
 		t.Fatalf("seed actions: %v", err)
 	}
 
-	preset, err := loadPresetAction(dataDir, "setup_bun")
+	preset, err := loadPresetAction(dataDir, action)
 	if err != nil {
-		t.Fatalf("load setup_bun preset: %v", err)
+		t.Fatalf("load %s preset: %v", action, err)
 	}
 
-	input, ok := preset.manifest.Inputs["version"]
+	input, ok := preset.manifest.Inputs[versionInput]
 	if !ok {
-		t.Fatalf("setup_bun input version is not defined: %#v", preset.manifest.Inputs)
+		t.Fatalf("%s input version is not defined: %#v", action, preset.manifest.Inputs)
 	}
 
 	if len(preset.manifest.Inputs) != 1 || input.Type != presetInputTypeString || input.Required {
-		t.Fatalf("setup_bun inputs = %#v, want optional string version", preset.manifest.Inputs)
+		t.Fatalf("%s inputs = %#v, want optional string version", action, preset.manifest.Inputs)
 	}
 
 	if err := validatePresetActionInputs(preset, nil); err != nil {
-		t.Fatalf("validate setup_bun inputs without version: %v", err)
+		t.Fatalf("validate %s inputs without version: %v", action, err)
 	}
 
-	if err := validatePresetActionInputs(preset, map[string]any{"version": "bun-v1.3.3"}); err != nil {
-		t.Fatalf("validate setup_bun inputs with version: %v", err)
+	if err := validatePresetActionInputs(preset, map[string]any{versionInput: validVersion}); err != nil {
+		t.Fatalf("validate %s inputs with version: %v", action, err)
 	}
 
-	if err := validatePresetActionInputs(preset, map[string]any{"version": 1.3}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
-		t.Fatalf("validate setup_bun invalid version error = %v, want type mismatch", err)
+	if err := validatePresetActionInputs(preset, map[string]any{versionInput: invalidVersion}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
+		t.Fatalf("validate %s invalid version error = %v, want type mismatch", action, err)
 	}
 }
 

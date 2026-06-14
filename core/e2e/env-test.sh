@@ -398,6 +398,37 @@ preset_setup_node_config() {
   }'
 }
 
+preset_setup_go_config() {
+  local verify
+
+  verify="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-go' \
+    'go version > /opt/bastion-e2e-go/version' \
+    'cat > /opt/bastion-e2e-go/hello.go <<'\''EOF'\''' \
+    'package main' \
+    '' \
+    'import "fmt"' \
+    '' \
+    'func main() {' \
+    '  fmt.Println("go-ok")' \
+    '}' \
+    'EOF' \
+    'go build -o /opt/bastion-e2e-go/hello /opt/bastion-e2e-go/hello.go' \
+    '/opt/bastion-e2e-go/hello > /opt/bastion-e2e-go/output' \
+    'go env GOPATH > /opt/bastion-e2e-go/gopath')"
+
+  jq -nc --arg verify "$verify" '{
+    agents: {opencode: {}},
+    actions: {
+      init: [
+        {use: "setup_go", with: {version: "1.25.4"}},
+        {run: $verify}
+      ]
+    }
+  }'
+}
+
 preset_setup_bun_config() {
   jq -nc '{
     agents: {opencode: {}},
@@ -751,6 +782,23 @@ run_preset_setup_node_case() {
   log "preset setup_node case passed for $env_id"
 }
 
+run_preset_setup_go_case() {
+  local key="$RUN_ID-preset-go"
+  local env_id
+
+  create_template "$key" "$(preset_setup_go_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" "grep -q '^go version go1\.25\.4 ' /opt/bastion-e2e-go/version"
+  ssh_env "$env_id" test -x /opt/bastion-e2e-go/hello
+  ssh_env "$env_id" grep -q '^go-ok$' /opt/bastion-e2e-go/output
+  ssh_env "$env_id" grep -q '^/root/go$' /opt/bastion-e2e-go/gopath
+
+  log "preset setup_go case passed for $env_id"
+}
+
 run_preset_setup_bun_case() {
   local key="$RUN_ID-preset-bun"
   local env_id
@@ -1054,6 +1102,7 @@ main() {
   run_case run_working_directory_case
   run_case run_start_action_case
   run_case run_preset_setup_node_case
+  run_case run_preset_setup_go_case
   run_case run_preset_setup_bun_case
   run_case run_preset_setup_mise_case
   run_case run_preset_setup_github_cli_case
