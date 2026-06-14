@@ -36,6 +36,8 @@ The public blog is powered by `starlight-blog` and is available at `/blog/`. Blo
 
 The docs content collection extends Starlight's schema with `blogSchema()` in `src/content.config.ts`. Blog navigation is configured manually through the sidebar and `starlight-theme-black` `navLinks`; the plugin's built-in header navigation is disabled so it does not compete with theme-owned header overrides.
 
+`astro.config.mjs` excludes `starlight-blog` from Vite dependency optimization. This keeps the dev server from prebundling plugin internals that import Starlight virtual modules.
+
 ## Configuration
 
 ### astro.config.mjs

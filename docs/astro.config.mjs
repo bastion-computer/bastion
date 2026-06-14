@@ -25,6 +25,11 @@ const markdownContentBridge = {
 // https://astro.build/config
 export default defineConfig({
   site: "https://bastion.computer",
+  vite: {
+    optimizeDeps: {
+      exclude: ["starlight-blog"],
+    },
+  },
   session: {
     driver: sessionDrivers.lruCache(),
   },
