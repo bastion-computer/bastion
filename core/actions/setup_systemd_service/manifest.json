@@ -1,0 +1,43 @@
+{
+  "inputs": {
+    "name": {
+      "type": "string",
+      "description": "Service name without .service.",
+      "required": true
+    },
+    "command": {
+      "type": "string",
+      "description": "Command to run.",
+      "required": true
+    },
+    "working_directory": {
+      "type": "string",
+      "description": "Service working directory. Defaults to /root."
+    },
+    "description": {
+      "type": "string",
+      "description": "Unit description. Defaults to Bastion managed service <name>."
+    },
+    "restart": {
+      "type": "string",
+      "description": "systemd restart policy: no, on-failure, or always. Defaults to always."
+    },
+    "user": {
+      "type": "string",
+      "description": "Service user. Defaults to root."
+    },
+    "health_url": {
+      "type": "string",
+      "description": "URL to poll after service start."
+    },
+    "timeout_seconds": {
+      "type": "number",
+      "description": "Health wait timeout in seconds. Defaults to 60."
+    },
+    "start": {
+      "type": "boolean",
+      "description": "Whether to start or restart immediately. Defaults to true."
+    }
+  },
+  "run": "sh ./setup_systemd_service.sh"
+}

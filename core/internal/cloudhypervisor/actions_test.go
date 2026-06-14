@@ -686,6 +686,74 @@ func TestSetupDockerPresetInputs(t *testing.T) {
 	}
 }
 
+func TestSetupSystemdServicePresetInputs(t *testing.T) {
+	t.Parallel()
+
+	const nameInput = "name"
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_systemd_service")
+	if err != nil {
+		t.Fatalf("load setup_systemd_service preset: %v", err)
+	}
+
+	expected := map[string]struct {
+		inputType string
+		required  bool
+	}{
+		nameInput:           {inputType: presetInputTypeString, required: true},
+		"command":           {inputType: presetInputTypeString, required: true},
+		"working_directory": {inputType: presetInputTypeString},
+		"description":       {inputType: presetInputTypeString},
+		"restart":           {inputType: presetInputTypeString},
+		"user":              {inputType: presetInputTypeString},
+		"health_url":        {inputType: presetInputTypeString},
+		"timeout_seconds":   {inputType: presetInputTypeNumber},
+		"start":             {inputType: presetInputTypeBoolean},
+	}
+
+	if len(preset.manifest.Inputs) != len(expected) {
+		t.Fatalf("setup_systemd_service input count = %d, want %d: %#v", len(preset.manifest.Inputs), len(expected), preset.manifest.Inputs)
+	}
+
+	for name, want := range expected {
+		input, ok := preset.manifest.Inputs[name]
+		if !ok {
+			t.Fatalf("setup_systemd_service input %s is not defined: %#v", name, preset.manifest.Inputs)
+		}
+
+		if input.Type != want.inputType || input.Required != want.required {
+			t.Fatalf("setup_systemd_service input %s = %#v, want required=%t %s", name, input, want.required, want.inputType)
+		}
+	}
+
+	if preset.manifest.Run != "sh ./setup_systemd_service.sh" {
+		t.Fatalf("setup_systemd_service run = %q, want setup script", preset.manifest.Run)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{
+		nameInput:           "bastion-e2e-web",
+		"command":           "python3 -m http.server 3000 --bind 127.0.0.1",
+		"working_directory": "/opt/bastion-e2e-web",
+		"description":       "Bastion E2E web service",
+		"restart":           "on-failure",
+		"user":              "root",
+		"health_url":        "http://127.0.0.1:3000/",
+		"timeout_seconds":   30.0,
+		"start":             true,
+	}); err != nil {
+		t.Fatalf("validate setup_systemd_service inputs: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{nameInput: "bastion-e2e-web"}); err == nil || !strings.Contains(err.Error(), "input command is required") {
+		t.Fatalf("validate missing command error = %v, want required command", err)
+	}
+}
+
 func TestSetupTemplateAgentsInstallsOpenCodeAndWritesInputs(t *testing.T) {
 	t.Parallel()
 
@@ -717,6 +785,20 @@ func TestSetupTemplateAgentsInstallsOpenCodeAndWritesInputs(t *testing.T) {
 		if !strings.Contains(commands[0], want) {
 			t.Fatalf("opencode setup command = %q, want to contain %q", commands[0], want)
 		}
+	}
+}
+
+func TestOpenCodeInstallCommandSupportsOptionalVersion(t *testing.T) {
+	t.Parallel()
+
+	defaultCommand := openCodeInstallCommand("")
+	if !strings.Contains(defaultCommand, "https://opencode.ai/install") || strings.Contains(defaultCommand, "--version") {
+		t.Fatalf("default opencode install command = %q, want latest installer without version", defaultCommand)
+	}
+
+	versionedCommand := openCodeInstallCommand("1.17.6")
+	if !strings.Contains(versionedCommand, "https://opencode.ai/install") || !strings.Contains(versionedCommand, "--version '1.17.6'") {
+		t.Fatalf("versioned opencode install command = %q, want explicit version", versionedCommand)
 	}
 }
 

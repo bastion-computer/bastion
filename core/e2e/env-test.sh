@@ -588,7 +588,7 @@ tunnel_config() {
         {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\nmkdir -p /opt/bastion-e2e-tunnel/absolute\nprintf \"tunnel-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/index.html\nprintf \"proxy-path-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/absolute/path\nif ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then apt-get update; apt-get install -y --no-install-recommends python3 curl ca-certificates; fi"}
       ],
       start: [
-        {run: "set -eu\ncd /opt/bastion-e2e-tunnel\nnohup python3 -m http.server 3000 --bind 127.0.0.1 > /opt/bastion-e2e-tunnel/server.log 2>&1 &\nprintf \"%s\\n\" \"$!\" > /opt/bastion-e2e-tunnel/server.pid\ni=0\nwhile [ \"$i\" -lt 50 ]; do\n  if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:3000/ > /opt/bastion-e2e-tunnel/health 2>/dev/null; then\n    exit 0\n  fi\n  i=$((i + 1))\n  sleep 1\ndone\ncat /opt/bastion-e2e-tunnel/server.log >&2 || true\nprintf \"local tunnel server did not become ready\\n\" >&2\nexit 1"}
+        {use: "setup_systemd_service", with: {name: "bastion-e2e-tunnel", command: "python3 -m http.server 3000 --bind 127.0.0.1", working_directory: "/opt/bastion-e2e-tunnel", description: "Bastion E2E tunnel service", health_url: "http://127.0.0.1:3000/", timeout_seconds: 60}}
       ]
     }
   }'
@@ -872,6 +872,8 @@ run_tunnel_case() {
   env_id="$CREATED_ENV_ID"
   assert_json_key "env create $env_id" "$CREATED_ENV_OUTPUT" "$env_key"
   assert_environment_running "$env_id"
+  ssh_env "$env_id" systemctl is-enabled --quiet bastion-e2e-tunnel.service
+  ssh_env "$env_id" systemctl is-active --quiet bastion-e2e-tunnel.service
 
   expected_id_url="${API_URL%/}/v1/environments/$env_id/tunnel/frontend"
   expected_key_url="${API_URL%/}/v1/environments/by-key/$env_key/tunnel/frontend"

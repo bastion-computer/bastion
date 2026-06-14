@@ -90,6 +90,67 @@ This writes `/workspace/bastion/.env` during template creation. Use it in
 `actions.start` instead when the file should be regenerated for every new
 environment.
 
+## `setup_systemd_service`
+
+`setup_systemd_service` creates, enables, and optionally starts a systemd service
+for a long-running command.
+
+Use it in `actions.start` when a service should run for each environment instead
+of starting a background process with `nohup ... &`.
+
+| Input               | Required | Default                          | Description                                          |
+| ------------------- | -------- | -------------------------------- | ---------------------------------------------------- |
+| `name`              | Yes      | None                             | Service name without `.service`.                     |
+| `command`           | Yes      | None                             | Command to run.                                      |
+| `working_directory` | No       | `/root`                          | Service working directory.                           |
+| `description`       | No       | `Bastion managed service <name>` | Unit description.                                    |
+| `restart`           | No       | `always`                         | Restart policy: `no`, `on-failure`, or `always`.     |
+| `user`              | No       | `root`                           | Service user.                                        |
+| `health_url`        | No       | None                             | URL to poll after the service starts.                |
+| `timeout_seconds`   | No       | `60`                             | Health wait timeout in seconds.                      |
+| `start`             | No       | `true`                           | Whether to start or restart the service immediately. |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "tunnel": {
+    "frontend": 3000
+  },
+  "actions": {
+    "init": [
+      {
+        "run": "set -eu\nmkdir -p /srv/site\nprintf 'hello\n' > /srv/site/index.html"
+      }
+    ],
+    "start": [
+      {
+        "use": "setup_systemd_service",
+        "with": {
+          "name": "site-server",
+          "command": "python3 -m http.server 3000 --bind 127.0.0.1",
+          "working_directory": "/srv/site",
+          "health_url": "http://127.0.0.1:3000/"
+        }
+      }
+    ]
+  }
+}
+```
+
+The action writes `/etc/systemd/system/<name>.service`, runs
+`systemctl daemon-reload`, and enables `<name>.service`. When `start` is `true`,
+it restarts the service. When `health_url` is provided, it polls that URL until
+success or `timeout_seconds` elapses. On health-check failure, it prints
+`systemctl status --no-pager <name>.service` and recent
+`journalctl -u <name>.service --no-pager -n 50` output before exiting non-zero.
+
+The service runs through `/bin/sh -lc`, so normal shell commands are supported.
+For root services, the unit also sets `Environment=HOME=/root`.
+
 ## `setup_github_cli`
 
 `setup_github_cli` installs `gh` from GitHub's apt repository and configures it

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -14,6 +15,7 @@ import (
 const (
 	openCodeServiceName      = "bastion-opencode.service"
 	openCodeAgentWaitSeconds = 60
+	openCodeVersionEnv       = "BASTION_OPENCODE_VERSION"
 )
 
 func (m Manager) setupTemplateAgents(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {
@@ -91,7 +93,7 @@ func openCodeSetupCommand(agent templateOpenCodeAgent) (string, error) {
 		"export DEBIAN_FRONTEND=noninteractive",
 		"apt-get update",
 		"apt-get install -y --no-install-recommends bash ca-certificates curl jq tar gzip",
-		"curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path",
+		openCodeInstallCommand(os.Getenv(openCodeVersionEnv)),
 		"if [ ! -x /root/.opencode/bin/opencode ]; then printf '%s\\n' 'OpenCode installer did not create /root/.opencode/bin/opencode' >&2; exit 1; fi",
 		"ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode",
 		"umask 077",
@@ -114,6 +116,17 @@ func openCodeSetupCommand(agent templateOpenCodeAgent) (string, error) {
 	)
 
 	return strings.Join(lines, "\n"), nil
+}
+
+func openCodeInstallCommand(version string) string {
+	const command = "curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path"
+
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return command
+	}
+
+	return command + " --version " + shellQuote(version)
 }
 
 func openCodeStartCommand(agent templateOpenCodeAgent) (string, error) {

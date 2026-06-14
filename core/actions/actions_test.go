@@ -29,6 +29,7 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 		{action: "setup_mise", files: []string{testManifestFileName, "install_mise.sh"}},
 		{action: "setup_github_cli", files: []string{testManifestFileName, "install_github_cli.sh"}},
 		{action: "setup_docker", files: []string{testManifestFileName, "install_docker.sh"}},
+		{action: "setup_systemd_service", files: []string{testManifestFileName, "setup_systemd_service.sh"}},
 		{action: "write_env_file", files: []string{testManifestFileName, "write_env_file.sh"}},
 	}
 

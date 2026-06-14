@@ -255,7 +255,7 @@ run_remote_install() {
   local env_id=$1
 
   log "running installer inside $env_id from local docs server"
-  run_cli ssh --id "$env_id" -- env DOCS_HOST="$DOCS_HOST" DOCS_PORT="$DOCS_PORT" LATEST_VERSION="$LATEST_VERSION" bash -s <<'INNER'
+  run_cli ssh --id "$env_id" -- env DOCS_HOST="$DOCS_HOST" DOCS_PORT="$DOCS_PORT" LATEST_VERSION="$LATEST_VERSION" BASTION_OPENCODE_VERSION="${BASTION_OPENCODE_VERSION:-}" bash -s <<'INNER'
 set -euo pipefail
 
 fail() {
@@ -455,6 +455,9 @@ grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastion-api
 
 inner_network_prefix="$(choose_inner_network_prefix)"
 printf '\nBASTION_E2E_SENTINEL=preserve\nBASTION_VM_CPUS=1\nBASTION_VM_MEMORY_BYTES=805306368\nBASTION_VM_NETWORK_PREFIX=%s\n' "$inner_network_prefix" >>/etc/default/bastion
+if [ -n "${BASTION_OPENCODE_VERSION:-}" ]; then
+  printf 'BASTION_OPENCODE_VERSION=%s\n' "$BASTION_OPENCODE_VERSION" >>/etc/default/bastion
+fi
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastiond.service
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastion-api.service
 

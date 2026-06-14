@@ -134,7 +134,7 @@ run_inner_bastion() {
   local env_id=$1
 
   log "running Bastion inside $env_id"
-  run_cli ssh --id "$env_id" -- bash -s <<'INNER'
+  run_cli ssh --id "$env_id" -- env BASTION_OPENCODE_VERSION="${BASTION_OPENCODE_VERSION:-}" bash -s <<'INNER'
 set -euo pipefail
 
 cd /root/bastion
@@ -191,12 +191,14 @@ BASTIOND_SOCKET="$INNER_SOCKET" \
 BASTION_VM_CPUS=1 \
 BASTION_VM_MEMORY_BYTES=805306368 \
 BASTION_VM_NETWORK_PREFIX="$INNER_NETWORK_PREFIX" \
+BASTION_OPENCODE_VERSION="${BASTION_OPENCODE_VERSION:-}" \
 ./core/tmp/bastiond --data-dir "$INNER_DATA_DIR" --socket "$INNER_SOCKET" >/tmp/bastion-nested-daemon.log 2>&1 &
 DAEMON_PID=$!
 printf 'inner-daemon-started\n'
 
 BASTION_DATA_DIR="$INNER_DATA_DIR" \
 BASTIOND_SOCKET="$INNER_SOCKET" \
+BASTION_OPENCODE_VERSION="${BASTION_OPENCODE_VERSION:-}" \
 ./core/tmp/bastion start --addr 127.0.0.1:4148 --data-dir "$INNER_DATA_DIR" --bastiond-socket "$INNER_SOCKET" >/tmp/bastion-nested-api.log 2>&1 &
 API_PID=$!
 printf 'inner-api-started\n'
