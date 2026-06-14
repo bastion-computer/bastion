@@ -25,28 +25,49 @@ const markdownContentBridge = {
 const blogContentFilePattern =
   /[/\\]src[/\\]content[/\\]docs[/\\]blog[/\\].+\.(?:md|mdx)$/;
 
+let restartingForBlogContentChange = false;
+
 const restartOnBlogContentChange = {
   name: "bastion-restart-on-blog-content-change",
   apply: /** @type {"serve"} */ ("serve"),
-  /**
-   * @param {{ watcher: { on(event: "all", listener: (event: string, file: string) => void | Promise<void>): void }, restart(): Promise<void> }} server
-   */
-  configureServer(server) {
-    let restarting = false;
+  hotUpdate: {
+    order: /** @type {"post"} */ ("post"),
+    /**
+     * @param {{ file: string, server: { config: { logger: { error(message: string): void } }, environments: { client?: { hot: { send(payload: { type: "full-reload", path: string }): void } } }, restart(): Promise<void>, ws: { send(payload: { type: "full-reload", path: string }): void } } }} context
+     */
+    handler({ file, server }) {
+      if (
+        restartingForBlogContentChange ||
+        !blogContentFilePattern.test(file)
+      ) {
+        return;
+      }
 
-    server.watcher.on(
-      "all",
-      async (/** @type {string} */ _event, /** @type {string} */ file) => {
-        if (restarting || !blogContentFilePattern.test(file)) return;
+      restartingForBlogContentChange = true;
+      /** @type {{ type: "full-reload", path: string }} */
+      const reloadPayload = { type: "full-reload", path: "*" };
 
-        restarting = true;
-        try {
-          await server.restart();
-        } finally {
-          restarting = false;
-        }
-      },
-    );
+      server.ws.send(reloadPayload);
+      server.environments.client?.hot.send(reloadPayload);
+
+      // Restart after the HMR hook returns; awaiting here breaks Vite's HMR pass.
+      setTimeout(() => {
+        void server
+          .restart()
+          .catch((/** @type {unknown} */ error) => {
+            server.config.logger.error(
+              `Failed to restart Vite after blog content change: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          })
+          .finally(() => {
+            restartingForBlogContentChange = false;
+          });
+      }, 0);
+
+      return [];
+    },
   },
 };
 
