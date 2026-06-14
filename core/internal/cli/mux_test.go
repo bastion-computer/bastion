@@ -74,6 +74,21 @@ func TestMuxTmuxConfigKeepsFailedConnectionPanesVisible(t *testing.T) {
 	}
 }
 
+func TestMuxTmuxConfigCapturesStatusTabMouseClicks(t *testing.T) {
+	t.Parallel()
+
+	config := string(bastionTmuxConfig)
+	for _, want := range []string{
+		`bind-key -T root MouseDown1Status select-window -t =`,
+		`bind-key -T root WheelUpStatus previous-window`,
+		`bind-key -T root WheelDownStatus next-window`,
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("tmux config missing %q:\n%s", want, config)
+		}
+	}
+}
+
 func TestMuxEnvironmentLabelPrefersKey(t *testing.T) {
 	t.Parallel()
 
