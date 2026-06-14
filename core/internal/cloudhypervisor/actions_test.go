@@ -17,7 +17,11 @@ import (
 	builtinActions "github.com/bastion-computer/bastion/core/actions"
 )
 
-const testSSHCommand = "ssh"
+const (
+	testSSHCommand           = "ssh"
+	testPresetInputVersion   = "version"
+	testPresetInputInstallUV = "install_uv"
+)
 
 func TestRunActionsRunsCommandsInOrder(t *testing.T) {
 	t.Parallel()
@@ -587,7 +591,7 @@ func TestSetupBunPresetInputs(t *testing.T) {
 		t.Fatalf("load setup_bun preset: %v", err)
 	}
 
-	input, ok := preset.manifest.Inputs["version"]
+	input, ok := preset.manifest.Inputs[testPresetInputVersion]
 	if !ok {
 		t.Fatalf("setup_bun input version is not defined: %#v", preset.manifest.Inputs)
 	}
@@ -600,12 +604,86 @@ func TestSetupBunPresetInputs(t *testing.T) {
 		t.Fatalf("validate setup_bun inputs without version: %v", err)
 	}
 
-	if err := validatePresetActionInputs(preset, map[string]any{"version": "bun-v1.3.3"}); err != nil {
+	if err := validatePresetActionInputs(preset, map[string]any{testPresetInputVersion: "bun-v1.3.3"}); err != nil {
 		t.Fatalf("validate setup_bun inputs with version: %v", err)
 	}
 
-	if err := validatePresetActionInputs(preset, map[string]any{"version": 1.3}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
+	if err := validatePresetActionInputs(preset, map[string]any{testPresetInputVersion: 1.3}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
 		t.Fatalf("validate setup_bun invalid version error = %v, want type mismatch", err)
+	}
+}
+
+func TestSetupPythonPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_python")
+	if err != nil {
+		t.Fatalf("load setup_python preset: %v", err)
+	}
+
+	if len(preset.manifest.Inputs) != 2 {
+		t.Fatalf("setup_python input count = %d, want 2: %#v", len(preset.manifest.Inputs), preset.manifest.Inputs)
+	}
+
+	versionInput, ok := preset.manifest.Inputs[testPresetInputVersion]
+	if !ok {
+		t.Fatalf("setup_python input version is not defined: %#v", preset.manifest.Inputs)
+	}
+
+	if versionInput.Type != presetInputTypeString || versionInput.Required {
+		t.Fatalf("setup_python input version = %#v, want optional string", versionInput)
+	}
+
+	installUVInput, ok := preset.manifest.Inputs[testPresetInputInstallUV]
+	if !ok {
+		t.Fatalf("setup_python input install_uv is not defined: %#v", preset.manifest.Inputs)
+	}
+
+	if installUVInput.Type != presetInputTypeBoolean || installUVInput.Required {
+		t.Fatalf("setup_python input install_uv = %#v, want optional boolean", installUVInput)
+	}
+
+	if preset.manifest.Run != "sh ./install_python.sh" {
+		t.Fatalf("setup_python run = %q, want install_python script", preset.manifest.Run)
+	}
+}
+
+func TestSetupPythonPresetInputValidation(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_python")
+	if err != nil {
+		t.Fatalf("load setup_python preset: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, nil); err != nil {
+		t.Fatalf("validate setup_python inputs without values: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{testPresetInputVersion: "3.12", testPresetInputInstallUV: true}); err != nil {
+		t.Fatalf("validate setup_python inputs with uv enabled: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{testPresetInputInstallUV: false}); err != nil {
+		t.Fatalf("validate setup_python inputs with uv disabled: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{testPresetInputVersion: 3.12}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
+		t.Fatalf("validate setup_python invalid version error = %v, want type mismatch", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{testPresetInputInstallUV: "true"}); err == nil || !strings.Contains(err.Error(), "input install_uv: must be a boolean") {
+		t.Fatalf("validate setup_python invalid install_uv error = %v, want type mismatch", err)
 	}
 }
 

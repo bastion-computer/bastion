@@ -421,6 +421,27 @@ preset_setup_mise_config() {
   }'
 }
 
+preset_setup_python_config() {
+  local verify
+
+  verify="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-python' \
+    'python3 --version > /opt/bastion-e2e-python/python3-version' \
+    'pip3 --version > /opt/bastion-e2e-python/pip3-version' \
+    'uv --version > /opt/bastion-e2e-python/uv-version')"
+
+  jq -nc --arg verify "$verify" '{
+    agents: {opencode: {}},
+    actions: {
+      init: [
+        {use: "setup_python"},
+        {run: $verify}
+      ]
+    }
+  }'
+}
+
 preset_setup_github_cli_config() {
   local token="github-cli-e2e-${RUN_ID}"
   local verify
@@ -785,6 +806,22 @@ run_preset_setup_mise_case() {
   log "preset setup_mise case passed for $env_id"
 }
 
+run_preset_setup_python_case() {
+  local key="$RUN_ID-preset-python"
+  local env_id
+
+  create_template "$key" "$(preset_setup_python_config)"
+  create_environment "$key"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running "$env_id"
+
+  ssh_env "$env_id" "grep -q '^Python 3\.' /opt/bastion-e2e-python/python3-version"
+  ssh_env "$env_id" "grep -q '^pip ' /opt/bastion-e2e-python/pip3-version"
+  ssh_env "$env_id" "grep -Eq '^uv [0-9]' /opt/bastion-e2e-python/uv-version"
+
+  log "preset setup_python case passed for $env_id"
+}
+
 run_preset_setup_github_cli_case() {
   local key="$RUN_ID-preset-github-cli"
   local env_id
@@ -1056,6 +1093,7 @@ main() {
   run_case run_preset_setup_node_case
   run_case run_preset_setup_bun_case
   run_case run_preset_setup_mise_case
+  run_case run_preset_setup_python_case
   run_case run_preset_setup_github_cli_case
   run_case run_preset_setup_docker_case
   run_case run_opencode_agent_case

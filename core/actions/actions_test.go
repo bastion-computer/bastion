@@ -27,6 +27,7 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 		{action: "setup_node", files: []string{testManifestFileName, "install_node.sh"}},
 		{action: "setup_bun", files: []string{testManifestFileName, "install_bun.sh"}},
 		{action: "setup_mise", files: []string{testManifestFileName, "install_mise.sh"}},
+		{action: "setup_python", files: []string{testManifestFileName, "install_python.sh"}},
 		{action: "setup_github_cli", files: []string{testManifestFileName, "install_github_cli.sh"}},
 		{action: "setup_docker", files: []string{testManifestFileName, "install_docker.sh"}},
 		{action: "write_env_file", files: []string{testManifestFileName, "write_env_file.sh"}},
@@ -67,7 +68,7 @@ func TestSeedOverwritesExistingBuiltInPresetActionAndPreservesCustomActions(t *t
 		t.Fatalf("write stale built-in file: %v", err)
 	}
 
-	customManifestPath := filepath.Join(dataDir, actions.DirName, "setup_python", testManifestFileName)
+	customManifestPath := filepath.Join(dataDir, actions.DirName, "setup_custom_python", testManifestFileName)
 	if err := os.MkdirAll(filepath.Dir(customManifestPath), 0o750); err != nil {
 		t.Fatalf("create custom action dir: %v", err)
 	}

@@ -36,6 +36,61 @@ Example:
 The action installs the selected Node.js release with apt packages from
 NodeSource.
 
+## `setup_python`
+
+`setup_python` installs Python 3 tooling from configured Ubuntu apt
+repositories and can also install `uv` globally.
+
+| Input        | Required | Default             | Description                                                       |
+| ------------ | -------- | ------------------- | ----------------------------------------------------------------- |
+| `version`    | No       | OS default Python 3 | Python version to install, as a string such as `"3"` or `"3.12"`. |
+| `install_uv` | No       | `true`              | Whether to install `uv` to `/usr/local/bin/uv`.                   |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup_python",
+        "with": {
+          "version": "3.12"
+        }
+      }
+    ]
+  }
+}
+```
+
+Use a JSON string for `version`, not a number, so values such as `"3.12"` are
+preserved exactly. Omit `version` to install the distro default Python 3
+packages:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [{ "use": "setup_python" }]
+  }
+}
+```
+
+The action always installs `python3`, `python3-pip`, `python3-venv`,
+`python3-dev`, `ca-certificates`, and `curl`. When `version` is set, it also
+installs matching apt packages such as `python3.12`, `python3.12-venv`, and
+`python3.12-dev` when available. It updates `/usr/local/bin/python` and
+`/usr/local/bin/python3` only when those paths can safely point to the requested
+Python binary.
+
+Omit `install_uv` or set it to `true` to install `uv`. Set it to `false` to skip
+`uv` installation.
+
 ## `setup_bun`
 
 `setup_bun` installs Bun with the official installer.

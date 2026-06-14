@@ -1,0 +1,13 @@
+{
+  "inputs": {
+    "version": {
+      "type": "string",
+      "description": "Python version to install, for example 3.12. Defaults to the OS default Python 3."
+    },
+    "install_uv": {
+      "type": "boolean",
+      "description": "Whether to install uv. Defaults to true."
+    }
+  },
+  "run": "sh ./install_python.sh"
+}
