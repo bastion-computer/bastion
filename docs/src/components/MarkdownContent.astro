@@ -1,0 +1,23 @@
+---
+import BlogMarkdownContent from "starlight-blog/components/MarkdownContent.astro";
+import ThemeMarkdownContent from "starlight-theme-black/overrides/MarkdownContent.astro";
+
+const { id } = Astro.locals.starlightRoute;
+
+// Keep in sync with the starlightBlog({ prefix: "blog" }) config.
+const isBlogPostPage = /^blog\/(?!(?:\d+\/?|tags\/.+|authors\/.+)$).+/.test(id);
+---
+
+{
+  isBlogPostPage ? (
+    <div class="markdown-wrapper">
+      <BlogMarkdownContent>
+        <slot />
+      </BlogMarkdownContent>
+    </div>
+  ) : (
+    <ThemeMarkdownContent>
+      <slot />
+    </ThemeMarkdownContent>
+  )
+}

@@ -4,6 +4,23 @@ import starlight from "@astrojs/starlight";
 import cloudflare from "@astrojs/cloudflare";
 import starlightLlmsTxt from "starlight-llms-txt";
 import starlightThemeBlack from "starlight-theme-black";
+import starlightBlog from "starlight-blog";
+
+// Both the theme and blog plugin replace MarkdownContent, so install a final bridge.
+/** @type {import("@astrojs/starlight/types").StarlightPlugin} */
+const markdownContentBridge = {
+  name: "bastion-markdown-content-bridge",
+  hooks: {
+    "config:setup"({ config, updateConfig }) {
+      updateConfig({
+        components: {
+          ...config.components,
+          MarkdownContent: "./src/components/MarkdownContent.astro",
+        },
+      });
+    },
+  },
+};
 
 // https://astro.build/config
 export default defineConfig({
@@ -22,7 +39,14 @@ export default defineConfig({
         starlightLlmsTxt(),
         starlightThemeBlack({
           footerText: `© ${new Date().getFullYear()} Bastion Computer. All rights reserved.`,
+          navLinks: [{ label: "Blog", link: "/blog/" }],
         }),
+        starlightBlog({
+          navigation: "none",
+          prefix: "blog",
+          title: "Blog",
+        }),
+        markdownContentBridge,
       ],
       favicon: "/favicon.ico",
       title: "bastion.computer",
@@ -40,6 +64,7 @@ export default defineConfig({
       sidebar: [
         { label: "Introduction", slug: "introduction" },
         { label: "Quick Start", slug: "quick-start" },
+        { label: "Blog", link: "/blog/" },
         {
           label: "Agents",
           items: [

@@ -24,11 +24,17 @@ Documentation pages are authored as Markdown (`.md`) or MDX (`.mdx`) files under
 
 ### Content collection
 
-The content collection is configured in `src/content.config.ts` using Starlight's `docsLoader()` and `docsSchema()`.
+The content collection is configured in `src/content.config.ts` using Starlight's `docsLoader()` and `docsSchema()`, extended with `starlight-blog`'s `blogSchema()`.
 
 ### Sidebar
 
 The sidebar navigation is configured in `astro.config.mjs` under the `starlight()` integration options. Pages can be organized into groups and auto-generated from directories.
+
+### Blog
+
+The public blog is powered by `starlight-blog` and is available at `/blog/`. Blog posts live under `src/content/docs/blog/` and require blog frontmatter such as `date` in addition to normal Starlight fields.
+
+The docs content collection extends Starlight's schema with `blogSchema()` in `src/content.config.ts`. Blog navigation is configured manually through the sidebar and `starlight-theme-black` `navLinks`; the plugin's built-in header navigation is disabled so it does not compete with theme-owned header overrides.
 
 ## Configuration
 
