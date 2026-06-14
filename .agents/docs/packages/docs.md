@@ -34,9 +34,9 @@ The sidebar navigation is configured in `astro.config.mjs` under the `starlight(
 
 The public blog is powered by `starlight-blog` and is available at `/blog/`. Blog posts live under `src/content/docs/blog/` and require blog frontmatter such as `date` in addition to normal Starlight fields.
 
-The docs content collection extends Starlight's schema with `blogSchema()` in `src/content.config.ts`. Blog navigation is configured manually through the sidebar and `starlight-theme-black` `navLinks`; the plugin's built-in header navigation is disabled so it does not compete with theme-owned header overrides.
+The docs content collection extends Starlight's schema with `blogSchema()` in `src/content.config.ts`. Blog navigation is configured manually through `starlight-theme-black` `navLinks`; the plugin's built-in header navigation is disabled so it does not compete with theme-owned header overrides.
 
-`astro.config.mjs` excludes `starlight-blog` from Vite dependency optimization. This keeps the dev server from prebundling plugin internals that import Starlight virtual modules.
+`astro.config.mjs` excludes `starlight-blog` from Vite dependency optimization. This keeps the dev server from prebundling plugin internals that import Starlight virtual modules. It also restarts the dev server when blog content files change so newly added blog post routes are picked up without manually restarting `mise run //docs:dev`.
 
 ## Configuration
 

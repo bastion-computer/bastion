@@ -22,6 +22,34 @@ const markdownContentBridge = {
   },
 };
 
+const blogContentFilePattern =
+  /[/\\]src[/\\]content[/\\]docs[/\\]blog[/\\].+\.(?:md|mdx)$/;
+
+const restartOnBlogContentChange = {
+  name: "bastion-restart-on-blog-content-change",
+  apply: /** @type {"serve"} */ ("serve"),
+  /**
+   * @param {{ watcher: { on(event: "all", listener: (event: string, file: string) => void | Promise<void>): void }, restart(): Promise<void> }} server
+   */
+  configureServer(server) {
+    let restarting = false;
+
+    server.watcher.on(
+      "all",
+      async (/** @type {string} */ _event, /** @type {string} */ file) => {
+        if (restarting || !blogContentFilePattern.test(file)) return;
+
+        restarting = true;
+        try {
+          await server.restart();
+        } finally {
+          restarting = false;
+        }
+      },
+    );
+  },
+};
+
 // https://astro.build/config
 export default defineConfig({
   site: "https://bastion.computer",
@@ -29,6 +57,7 @@ export default defineConfig({
     optimizeDeps: {
       exclude: ["starlight-blog"],
     },
+    plugins: [restartOnBlogContentChange],
   },
   session: {
     driver: sessionDrivers.lruCache(),
@@ -75,7 +104,6 @@ export default defineConfig({
       sidebar: [
         { label: "Introduction", slug: "introduction" },
         { label: "Quick Start", slug: "quick-start" },
-        { label: "Blog", link: "/blog/" },
         {
           label: "Agents",
           items: [
