@@ -203,6 +203,27 @@ create_environment() {
   ENV_IDS+=("$CREATED_ENV_ID")
 }
 
+create_environment_with_logs() {
+  local key=$1
+  local logs=$2
+  shift 2
+  local output
+
+  log "creating environment from $key"
+  if ! output="$(run_cli env create --template-key "$key" "$@" 2>"$logs")"; then
+    fail "environment from $key failed: $output $(<"$logs")"
+  fi
+
+  CREATED_ENV_ID="$(json_get '.id' <<<"$output")"
+  CREATED_ENV_OUTPUT="$output"
+
+  if [ -z "$CREATED_ENV_ID" ] || [ "$CREATED_ENV_ID" = "null" ]; then
+    fail "environment from $key did not return an id"
+  fi
+
+  ENV_IDS+=("$CREATED_ENV_ID")
+}
+
 assert_json_tags() {
   local label=$1
   local json=$2
@@ -371,61 +392,92 @@ basic_setup_config() {
   }'
 }
 
-node_docker_config() {
-  jq -nc '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update"},
-        {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get install -y --no-install-recommends nodejs docker.io ca-certificates"},
-        {run: "set -eu\nmkdir -p /opt/bastion-e2e-node\nnode --version > /opt/bastion-e2e-node/node-version\nnode -e '\''require(\"fs\").writeFileSync(\"/opt/bastion-e2e-node/app.txt\", \"node-ok\\n\")'\''"},
-        {run: "set -eu\nmkdir -p /etc/docker /opt/bastion-e2e-docker\ndocker --version > /opt/bastion-e2e-docker/docker-version\nprintf '\''%s\\n'\'' '\''{\"log-driver\":\"json-file\",\"storage-driver\":\"overlay2\"}'\'' > /etc/docker/daemon.json"},
-        {run: "set -eu\ntest -s /opt/bastion-e2e-node/node-version\ntest -s /opt/bastion-e2e-node/app.txt\ntest -s /opt/bastion-e2e-docker/docker-version\ntest -s /etc/docker/daemon.json"}
-      ]
-    }
-  }'
+lifecycle_config() {
+  local api_key="opencode-e2e-${RUN_ID}"
+  local verify_opencode_written
+  local verify_opencode_started
+
+  verify_opencode_written="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-opencode' \
+    'opencode --version > /opt/bastion-e2e-opencode/version' \
+    'jq -e '\''.model == "anthropic/claude-sonnet-4-5" and .small_model == "anthropic/claude-haiku-4-5" and .share == "disabled" and .permission == "allow" and .autoupdate == false and .server.port == 4097'\'' /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-ok' \
+    "jq -e --arg api_key '$api_key' '.anthropic.type == \"api\" and .anthropic.key == \$api_key' /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-ok" \
+    'stat -c %a /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-mode' \
+    'stat -c %a /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-mode' \
+    'systemctl is-enabled --quiet bastion-opencode.service' \
+    'grep -q "WorkingDirectory=/opt/bastion-e2e-opencode/workspace" /etc/systemd/system/bastion-opencode.service')"
+  verify_opencode_started="$(printf '%s\n' \
+    'set -eu' \
+    'systemctl is-active --quiet bastion-opencode.service' \
+    'curl -sS --connect-timeout 1 --max-time 2 http://127.0.0.1:4097/ > /opt/bastion-e2e-opencode/health' \
+    'printf true > /opt/bastion-e2e-opencode/started-ok')"
+
+  jq -nc \
+    --arg run_id "$RUN_ID" \
+    --arg api_key "$api_key" \
+    --arg verify_opencode_written "$verify_opencode_written" \
+    --arg verify_opencode_started "$verify_opencode_started" \
+    '{
+      agents: {
+        opencode: {
+          working_directory: "/opt/bastion-e2e-opencode/workspace",
+          auth: {anthropic: {type: "api", key: $api_key}},
+          config: {
+            model: "anthropic/claude-sonnet-4-5",
+            small_model: "anthropic/claude-haiku-4-5",
+            share: "disabled",
+            permission: "allow",
+            autoupdate: false,
+            server: {port: 4097}
+          }
+        }
+      },
+      resources: {vcpu: 1, memory: 1, volume: 8},
+      tunnel: {frontend: 3000},
+      actions: {
+        init: [
+          {run: "set -eu\nmkdir -p /opt/bastion-e2e /var/log/bastion-e2e /opt/bastion-e2e-start\nprintf init-complete > /opt/bastion-e2e-start/init-status"},
+          {run: "set -eu\nprintf \"run_id=\($run_id)\\n\" > /opt/bastion-e2e/run-id\nprintf \"hostname=%s\\n\" \"$(hostname)\" > /opt/bastion-e2e/hostname"},
+          {run: "set -eu\nuseradd -m bastione2e\nid bastione2e > /opt/bastion-e2e/user"},
+          {run: "set -eu\nchmod 600 /opt/bastion-e2e/run-id\nprintf basic-complete > /opt/bastion-e2e/status"},
+          {run: "set -eu\nmkdir -p /opt/bastion-e2e-env\nprintf \"%s\\n\" \"${{ env.HOME }}\" > /opt/bastion-e2e-env/home"},
+          {
+            use: "write_env_file",
+            with: {path: "/opt/bastion-e2e-write-env"},
+            context: {
+              BASTION_E2E_STATIC: "hello world",
+              BASTION_E2E_HOME: "${{ env.HOME }}",
+              BASTION_E2E_NUMBER: 42,
+              BASTION_E2E_BOOL: true,
+              BASTION_E2E_JSON: {run_id: $run_id}
+            }
+          },
+          {run: "set -eu\nprintf \"run_id=\($run_id)\\n\" > run-id\npwd > pwd\nmkdir -p nested\nprintf working-directory-ready > nested/status", working_directory: "/opt/bastion-e2e-working/new-dir"},
+          {run: "set -eu\ntest -s run-id\ntest \"$(pwd)\" = \"/opt/bastion-e2e-working/new-dir\"\nprintf verified > verified", working_directory: "/opt/bastion-e2e-working/new-dir"},
+          {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\nmkdir -p /opt/bastion-e2e-tunnel/absolute\nprintf \"tunnel-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/index.html\nprintf \"proxy-path-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/absolute/path\nif ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then apt-get update; apt-get install -y --no-install-recommends python3 curl ca-certificates; fi"},
+          {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y --no-install-recommends nodejs docker.io ca-certificates"},
+          {run: "set -eu\nmkdir -p /opt/bastion-e2e-node\nnode --version > /opt/bastion-e2e-node/node-version\nnode -e '\''require(\"fs\").writeFileSync(\"/opt/bastion-e2e-node/app.txt\", \"node-ok\\n\")'\''"},
+          {run: "set -eu\nmkdir -p /etc/docker /opt/bastion-e2e-docker\ndocker --version > /opt/bastion-e2e-docker/docker-version\nprintf '\''%s\\n'\'' '\''{\"log-driver\":\"json-file\",\"storage-driver\":\"overlay2\"}'\'' > /etc/docker/daemon.json"},
+          {run: "set -eu\ntest -s /opt/bastion-e2e-node/node-version\ntest -s /opt/bastion-e2e-node/app.txt\ntest -s /opt/bastion-e2e-docker/docker-version\ntest -s /etc/docker/daemon.json"},
+          {run: $verify_opencode_written}
+        ],
+        start: [
+          {run: "set -eu\nmkdir -p /opt/bastion-e2e-start\nprintf \"run_id=\($run_id)\\n\" > /opt/bastion-e2e-start/run-id\nprintf \"start-stream-\($run_id)\\n\""},
+          {run: "set -eu\nprintf \"$(pwd)\\n\" > pwd\nprintf working-directory-start > status", working_directory: "/opt/bastion-e2e-start/workdir"},
+          {run: "set -eu\ncd /opt/bastion-e2e-tunnel\nnohup python3 -m http.server 3000 --bind 127.0.0.1 > /opt/bastion-e2e-tunnel/server.log 2>&1 &\nprintf \"%s\\n\" \"$!\" > /opt/bastion-e2e-tunnel/server.pid\ni=0\nwhile [ \"$i\" -lt 50 ]; do\n  if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:3000/ > /opt/bastion-e2e-tunnel/health 2>/dev/null; then\n    exit 0\n  fi\n  i=$((i + 1))\n  sleep 1\ndone\ncat /opt/bastion-e2e-tunnel/server.log >&2 || true\nprintf \"local tunnel server did not become ready\\n\" >&2\nexit 1"},
+          {run: $verify_opencode_started}
+        ]
+      }
+    }'
 }
 
-preset_setup_node_config() {
-  jq -nc '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {use: "setup_node", with: {version: 24}},
-        {run: "set -eu\nmkdir -p /opt/bastion-e2e-preset\nnode --version > /opt/bastion-e2e-preset/node-version\nnpm --version > /opt/bastion-e2e-preset/npm-version"}
-      ]
-    }
-  }'
-}
-
-preset_setup_bun_config() {
-  jq -nc '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {use: "setup_bun"},
-        {run: "set -eu\nmkdir -p /opt/bastion-e2e-bun\nbun --version > /opt/bastion-e2e-bun/version\nbun --revision > /opt/bastion-e2e-bun/revision\nbun -e '\''console.log(\"bun-ok\")'\'' > /opt/bastion-e2e-bun/runtime"}
-      ]
-    }
-  }'
-}
-
-preset_setup_mise_config() {
-  jq -nc '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {use: "setup_mise"}
-      ]
-    }
-  }'
-}
-
-preset_setup_github_cli_config() {
+toolchain_config() {
   local token="github-cli-e2e-${RUN_ID}"
-  local verify
+  local verify_github
+  local verify_docker
 
-  verify="$(printf '%s\n' \
+  verify_github="$(printf '%s\n' \
     'set -eu' \
     'mkdir -p /opt/bastion-e2e-github-cli' \
     'gh --version > /opt/bastion-e2e-github-cli/version' \
@@ -436,22 +488,7 @@ preset_setup_github_cli_config() {
     'test -n "$(gh auth token --hostname github.com)"' \
     "printf 'protocol=https\nhost=github.com\n\n' | git credential fill | grep -q 'password=$token'" \
     'printf github-cli-ready > /opt/bastion-e2e-github-cli/auth')"
-
-  jq -nc --arg token "$token" --arg verify "$verify" '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
-        {run: $verify}
-      ]
-    }
-  }'
-}
-
-preset_setup_docker_config() {
-  local verify
-
-  verify="$(printf '%s\n' \
+  verify_docker="$(printf '%s\n' \
     'set -eu' \
     'mkdir -p /opt/bastion-e2e-docker-preset' \
     'docker --version > /opt/bastion-e2e-docker-preset/docker-version' \
@@ -461,134 +498,19 @@ preset_setup_docker_config() {
     'systemctl is-enabled --quiet docker' \
     'systemctl is-active --quiet docker')"
 
-  jq -nc --arg verify "$verify" '{
+  jq -nc --arg token "$token" --arg verify_github "$verify_github" --arg verify_docker "$verify_docker" '{
     agents: {opencode: {}},
     actions: {
       init: [
+        {use: "setup_node", with: {version: 24}},
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-preset\nnode --version > /opt/bastion-e2e-preset/node-version\nnpm --version > /opt/bastion-e2e-preset/npm-version"},
+        {use: "setup_bun"},
+        {run: "set -eu\nmkdir -p /opt/bastion-e2e-bun\nbun --version > /opt/bastion-e2e-bun/version\nbun --revision > /opt/bastion-e2e-bun/revision\nbun -e '\''console.log(\"bun-ok\")'\'' > /opt/bastion-e2e-bun/runtime"},
+        {use: "setup_mise"},
+        {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
+        {run: $verify_github},
         {use: "setup_docker"},
-        {run: $verify}
-      ]
-    }
-  }'
-}
-
-opencode_agent_config() {
-  local api_key="opencode-e2e-${RUN_ID}"
-  local verify_written
-  local verify_started
-
-  verify_written="$(printf '%s\n' \
-    'set -eu' \
-    'mkdir -p /opt/bastion-e2e-opencode' \
-    'opencode --version > /opt/bastion-e2e-opencode/version' \
-    'jq -e '\''.model == "anthropic/claude-sonnet-4-5" and .small_model == "anthropic/claude-haiku-4-5" and .share == "disabled" and .permission == "allow" and .autoupdate == false and .server.port == 4097'\'' /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-ok' \
-    "jq -e --arg api_key '$api_key' '.anthropic.type == \"api\" and .anthropic.key == \$api_key' /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-ok" \
-    'stat -c %a /root/.config/opencode/opencode.json > /opt/bastion-e2e-opencode/config-mode' \
-    'stat -c %a /root/.local/share/opencode/auth.json > /opt/bastion-e2e-opencode/auth-mode' \
-    'systemctl is-enabled --quiet bastion-opencode.service' \
-    'grep -q "WorkingDirectory=/opt/bastion-e2e-opencode/workspace" /etc/systemd/system/bastion-opencode.service')"
-  verify_started="$(printf '%s\n' \
-    'set -eu' \
-    'systemctl is-active --quiet bastion-opencode.service' \
-    'curl -sS --connect-timeout 1 --max-time 2 http://127.0.0.1:4097/ > /opt/bastion-e2e-opencode/health' \
-    'printf true > /opt/bastion-e2e-opencode/started-ok')"
-
-  jq -nc --arg api_key "$api_key" --arg verify_written "$verify_written" --arg verify_started "$verify_started" '{
-    agents: {
-      opencode: {
-        working_directory: "/opt/bastion-e2e-opencode/workspace",
-        auth: {anthropic: {type: "api", key: $api_key}},
-        config: {
-          model: "anthropic/claude-sonnet-4-5",
-          small_model: "anthropic/claude-haiku-4-5",
-          share: "disabled",
-          permission: "allow",
-          autoupdate: false,
-          server: {port: 4097}
-        }
-      }
-    },
-    actions: {
-      init: [
-        {run: $verify_written}
-      ],
-      start: [
-        {run: $verify_started}
-      ]
-    }
-  }'
-}
-
-env_substitution_config() {
-  jq -nc '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {run: "set -eu\nmkdir -p /opt/bastion-e2e-env\nprintf \"%s\\n\" \"${{ env.HOME }}\" > /opt/bastion-e2e-env/home"}
-      ]
-    }
-  }'
-}
-
-write_env_file_config() {
-  jq -nc --arg run_id "$RUN_ID" '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {
-          use: "write_env_file",
-          with: {path: "/opt/bastion-e2e-write-env"},
-          context: {
-            BASTION_E2E_STATIC: "hello world",
-            BASTION_E2E_HOME: "${{ env.HOME }}",
-            BASTION_E2E_NUMBER: 42,
-            BASTION_E2E_BOOL: true,
-            BASTION_E2E_JSON: {run_id: $run_id}
-          }
-        }
-      ]
-    }
-  }'
-}
-
-working_directory_config() {
-  jq -nc --arg run_id "$RUN_ID" '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {run: "set -eu\nprintf \"run_id=\($run_id)\\n\" > run-id\npwd > pwd\nmkdir -p nested\nprintf working-directory-ready > nested/status", working_directory: "/opt/bastion-e2e-working/new-dir"},
-        {run: "set -eu\ntest -s run-id\ntest \"$(pwd)\" = \"/opt/bastion-e2e-working/new-dir\"\nprintf verified > verified", working_directory: "/opt/bastion-e2e-working/new-dir"}
-      ]
-    }
-  }'
-}
-
-start_action_config() {
-  jq -nc --arg run_id "$RUN_ID" '{
-    agents: {opencode: {}},
-    actions: {
-      init: [
-        {run: "set -eu\nmkdir -p /opt/bastion-e2e-start\nprintf init-complete > /opt/bastion-e2e-start/init-status"}
-      ],
-      start: [
-        {run: "set -eu\nmkdir -p /opt/bastion-e2e-start\nprintf \"run_id=\($run_id)\\n\" > /opt/bastion-e2e-start/run-id\nprintf \"start-stream-\($run_id)\\n\""},
-        {run: "set -eu\nprintf \"$(pwd)\\n\" > pwd\nprintf working-directory-start > status", working_directory: "/opt/bastion-e2e-start/workdir"}
-      ]
-    }
-  }'
-}
-
-tunnel_config() {
-  jq -nc --arg run_id "$RUN_ID" '{
-    agents: {opencode: {}},
-    resources: {vcpu: 1, memory: 1, volume: 5},
-    tunnel: {frontend: 3000},
-    actions: {
-      init: [
-        {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\nmkdir -p /opt/bastion-e2e-tunnel/absolute\nprintf \"tunnel-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/index.html\nprintf \"proxy-path-ok \($run_id)\\n\" > /opt/bastion-e2e-tunnel/absolute/path\nif ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then apt-get update; apt-get install -y --no-install-recommends python3 curl ca-certificates; fi"}
-      ],
-      start: [
-        {run: "set -eu\ncd /opt/bastion-e2e-tunnel\nnohup python3 -m http.server 3000 --bind 127.0.0.1 > /opt/bastion-e2e-tunnel/server.log 2>&1 &\nprintf \"%s\\n\" \"$!\" > /opt/bastion-e2e-tunnel/server.pid\ni=0\nwhile [ \"$i\" -lt 50 ]; do\n  if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:3000/ > /opt/bastion-e2e-tunnel/health 2>/dev/null; then\n    exit 0\n  fi\n  i=$((i + 1))\n  sleep 1\ndone\ncat /opt/bastion-e2e-tunnel/server.log >&2 || true\nprintf \"local tunnel server did not become ready\\n\" >&2\nexit 1"}
+        {run: $verify_docker}
       ]
     }
   }'
@@ -621,44 +543,6 @@ failing_start_action_config() {
   }'
 }
 
-run_start_action_case() {
-  local key="$RUN_ID-start"
-  local env_id
-  local output
-  local logs
-  local log_contents
-
-  create_template "$key" "$(start_action_config)"
-
-  logs="/tmp/bastion-env-test-start-$RUN_ID.log"
-  log "creating environment from $key with start actions"
-  if ! output="$(run_cli env create --template-key "$key" 2>"$logs")"; then
-    fail "environment from $key failed: $output $(<"$logs")"
-  fi
-
-  CREATED_ENV_ID="$(json_get '.id' <<<"$output")"
-  CREATED_ENV_OUTPUT="$output"
-  if [ -z "$CREATED_ENV_ID" ] || [ "$CREATED_ENV_ID" = "null" ]; then
-    fail "environment from $key did not return an id"
-  fi
-
-  ENV_IDS+=("$CREATED_ENV_ID")
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  log_contents="$(<"$logs")"
-  if [[ "$log_contents" != *"start-stream-$RUN_ID"* ]]; then
-    fail "env create did not stream start action output: $log_contents"
-  fi
-
-  ssh_env "$env_id" grep -q "$RUN_ID" /opt/bastion-e2e-start/run-id
-  ssh_env "$env_id" grep -q init-complete /opt/bastion-e2e-start/init-status
-  ssh_env "$env_id" grep -q '^/opt/bastion-e2e-start/workdir$' /opt/bastion-e2e-start/workdir/pwd
-  ssh_env "$env_id" grep -q working-directory-start /opt/bastion-e2e-start/workdir/status
-
-  log "start action case passed for $env_id"
-}
-
 run_optional_template_key_case() {
   local template_id
   local output
@@ -678,13 +562,22 @@ run_basic_setup_case() {
   local second_env
   local first_env_key="$RUN_ID-basic-env"
   local output
+  local logs
+  local log_contents
   local run_id_mode
   local first_env_tag="$RUN_ID-basic-first"
   local shared_tag="$RUN_ID-basic"
+  local first_ip
+  local second_ip
+  local expected_id_url
+  local expected_key_url
+  local proxy_logs
+  local proxy_url
 
-  create_template "$key" "$(basic_setup_config)"
+  create_template "$key" "$(lifecycle_config)"
 
-  create_environment "$key" --key "$first_env_key" -t "$shared_tag" --tag "$first_env_tag"
+  logs="/tmp/bastion-env-test-start-$RUN_ID.log"
+  create_environment_with_logs "$key" "$logs" --key "$first_env_key" -t "$shared_tag" --tag "$first_env_tag"
   first_env="$CREATED_ENV_ID"
   assert_json_key "env create $first_env" "$CREATED_ENV_OUTPUT" "$first_env_key"
   assert_json_tags "env create $first_env" "$CREATED_ENV_OUTPUT" "$shared_tag" "$first_env_tag"
@@ -696,6 +589,11 @@ run_basic_setup_case() {
     fail "environment key lookup returned $(json_get '.id' <<<"$output"), want $first_env"
   fi
   assert_json_key "env get --key $first_env_key" "$output" "$first_env_key"
+
+  log_contents="$(<"$logs")"
+  if [[ "$log_contents" != *"start-stream-$RUN_ID"* ]]; then
+    fail "env create did not stream start action output: $log_contents"
+  fi
 
   create_environment "$key"
   second_env="$CREATED_ENV_ID"
@@ -716,232 +614,13 @@ run_basic_setup_case() {
     fail "concurrent environments have non-unique DHCP addresses: first=$first_ip second=$second_ip"
   fi
 
-  log "basic setup case passed for $first_env and $second_env"
-}
-
-run_node_docker_case() {
-  local key="$RUN_ID-node-docker"
-  local env_id
-
-  create_template "$key" "$(node_docker_config)"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  ssh_env "$env_id" grep -q '^v' /opt/bastion-e2e-node/node-version
-  ssh_env "$env_id" grep -q node-ok /opt/bastion-e2e-node/app.txt
-  ssh_env "$env_id" grep -q Docker /opt/bastion-e2e-docker/docker-version
-  ssh_env "$env_id" grep -q overlay2 /etc/docker/daemon.json
-
-  log "node/docker setup case passed for $env_id"
-}
-
-run_preset_setup_node_case() {
-  local key="$RUN_ID-preset-node"
-  local env_id
-
-  create_template "$key" "$(preset_setup_node_config)"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  ssh_env "$env_id" grep -q '^v24\.' /opt/bastion-e2e-preset/node-version
-  ssh_env "$env_id" test -s /opt/bastion-e2e-preset/npm-version
-
-  log "preset setup_node case passed for $env_id"
-}
-
-run_preset_setup_bun_case() {
-  local key="$RUN_ID-preset-bun"
-  local env_id
-
-  create_template "$key" "$(preset_setup_bun_config)"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  ssh_env "$env_id" "grep -Eq '^[0-9]+\.' /opt/bastion-e2e-bun/version"
-  ssh_env "$env_id" test -s /opt/bastion-e2e-bun/revision
-  ssh_env "$env_id" grep -q '^bun-ok$' /opt/bastion-e2e-bun/runtime
-
-  log "preset setup_bun case passed for $env_id"
-}
-
-run_preset_setup_mise_case() {
-  local key="$RUN_ID-preset-mise"
-  local env_id
-  local version
-
-  create_template "$key" "$(preset_setup_mise_config)"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  version="$(ssh_env "$env_id" mise --version)"
-  if [[ ! "$version" =~ ^(mise[[:space:]])?[0-9] ]]; then
-    fail "mise --version returned unexpected output: $version"
+  ssh_env "$second_env" test -s /opt/bastion-e2e-env/home
+  ssh_env "$second_env" grep -q '^/' /opt/bastion-e2e-env/home
+  if ssh_env "$second_env" "grep -F -q '\${{ env.HOME }}' /opt/bastion-e2e-env/home" 2>/dev/null; then
+    fail "environment variable placeholder was not substituted in $second_env"
   fi
 
-  log "preset setup_mise case passed for $env_id"
-}
-
-run_preset_setup_github_cli_case() {
-  local key="$RUN_ID-preset-github-cli"
-  local env_id
-
-  create_template "$key" "$(preset_setup_github_cli_config)"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  ssh_env "$env_id" "grep -q '^gh version' /opt/bastion-e2e-github-cli/version"
-  ssh_env "$env_id" grep -q '^https$' /opt/bastion-e2e-github-cli/git-protocol
-  ssh_env "$env_id" grep -q '^bastion-agent$' /opt/bastion-e2e-github-cli/git-name
-  ssh_env "$env_id" grep -q '^agent@bastion.computer$' /opt/bastion-e2e-github-cli/git-email
-  ssh_env "$env_id" "grep -q '/usr/local/bin/gh auth git-credential' /opt/bastion-e2e-github-cli/git-helper"
-  ssh_env "$env_id" grep -q github-cli-ready /opt/bastion-e2e-github-cli/auth
-
-  log "preset setup_github_cli case passed for $env_id"
-}
-
-run_preset_setup_docker_case() {
-  local key="$RUN_ID-preset-docker"
-  local env_id
-
-  create_template "$key" "$(preset_setup_docker_config)"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  ssh_env "$env_id" "grep -q '^Docker version' /opt/bastion-e2e-docker-preset/docker-version"
-  ssh_env "$env_id" grep -q 'buildx' /opt/bastion-e2e-docker-preset/buildx-version
-  ssh_env "$env_id" "grep -q 'Docker Compose' /opt/bastion-e2e-docker-preset/compose-version"
-  ssh_env "$env_id" test -s /opt/bastion-e2e-docker-preset/server-version
-
-  log "preset setup_docker case passed for $env_id"
-}
-
-run_opencode_agent_case() {
-  local key="$RUN_ID-opencode-agent"
-  local env_key="$RUN_ID-opencode-agent-env"
-  local env_id
-
-  create_template "$key" "$(opencode_agent_config)"
-  create_environment "$key" --key "$env_key"
-  env_id="$CREATED_ENV_ID"
-  assert_json_key "env create $env_id" "$CREATED_ENV_OUTPUT" "$env_key"
-  assert_environment_running "$env_id"
-
-  ssh_env "$env_id" "set -eu
-test -s /opt/bastion-e2e-opencode/version
-test -s /opt/bastion-e2e-opencode/health
-grep -q true /opt/bastion-e2e-opencode/config-ok
-grep -q true /opt/bastion-e2e-opencode/auth-ok
-grep -q true /opt/bastion-e2e-opencode/started-ok
-config_mode=\$(cat /opt/bastion-e2e-opencode/config-mode)
-if [ \"\$config_mode\" != \"600\" ]; then
-  printf 'config mode is %s, want 600\n' \"\$config_mode\" >&2
-  exit 1
-fi
-auth_mode=\$(cat /opt/bastion-e2e-opencode/auth-mode)
-if [ \"\$auth_mode\" != \"600\" ]; then
-  printf 'auth mode is %s, want 600\n' \"\$auth_mode\" >&2
-  exit 1
-fi"
-
-  assert_opencode_proxy_health "OpenCode id route" "${API_URL%/}/v1/environments/$env_id/agents/opencode/global/health"
-  assert_opencode_proxy_health "OpenCode key route" "${API_URL%/}/v1/environments/by-key/$env_key/agents/opencode/global/health"
-  assert_bastion_opencode_attach "OpenCode CLI id route" --id "$env_id" "${API_URL%/}/v1/environments/$env_id/agents/opencode"
-  assert_bastion_opencode_attach "OpenCode CLI key route" --key "$env_key" "${API_URL%/}/v1/environments/by-key/$env_key/agents/opencode"
-
-  log "OpenCode agent case passed for $env_id"
-}
-
-run_tunnel_case() {
-  local key="$RUN_ID-tunnel"
-  local env_key="$RUN_ID-tunnel-env"
-  local env_id
-  local expected_id_url
-  local expected_key_url
-  local output
-  local proxy_logs
-  local proxy_url
-
-  create_template "$key" "$(tunnel_config)"
-  create_environment "$key" --key "$env_key"
-  env_id="$CREATED_ENV_ID"
-  assert_json_key "env create $env_id" "$CREATED_ENV_OUTPUT" "$env_key"
-  assert_environment_running "$env_id"
-
-  expected_id_url="${API_URL%/}/v1/environments/$env_id/tunnel/frontend"
-  expected_key_url="${API_URL%/}/v1/environments/by-key/$env_key/tunnel/frontend"
-
-  output="$(run_cli env tunnels --id "$env_id")"
-  if ! jq -e --arg url "$expected_id_url" '.entries | length == 1 and .[0].name == "frontend" and .[0].port == 3000 and .[0].url == $url' <<<"$output" >/dev/null; then
-    fail "env tunnels --id response is $(jq -c . <<<"$output"), want frontend tunnel URL $expected_id_url"
-  fi
-
-  output="$(run_cli env tunnels --key "$env_key")"
-  if ! jq -e --arg url "$expected_key_url" '.entries | length == 1 and .[0].name == "frontend" and .[0].port == 3000 and .[0].url == $url' <<<"$output" >/dev/null; then
-    fail "env tunnels --key response is $(jq -c . <<<"$output"), want frontend tunnel URL $expected_key_url"
-  fi
-
-  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$expected_id_url")"
-  if [ "$output" != "tunnel-ok $RUN_ID" ]; then
-    fail "tunnel id URL returned $output, want tunnel-ok $RUN_ID"
-  fi
-
-  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$expected_key_url")"
-  if [ "$output" != "tunnel-ok $RUN_ID" ]; then
-    fail "tunnel key URL returned $output, want tunnel-ok $RUN_ID"
-  fi
-
-  proxy_logs="/tmp/bastion-env-test-proxy-$RUN_ID.log"
-  : >"$proxy_logs"
-  run_cli proxy --env-key "$env_key" --name frontend 2>"$proxy_logs" &
-  PROXY_PIDS+=("$!")
-  proxy_url="$(wait_for_proxy_url "$proxy_logs")"
-
-  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$proxy_url/absolute/path")"
-  if [ "$output" != "proxy-path-ok $RUN_ID" ]; then
-    fail "local proxy returned $output, want proxy-path-ok $RUN_ID"
-  fi
-
-  if [[ "$(<"$proxy_logs")" != *"GET /absolute/path -> 200"* ]]; then
-    fail "local proxy did not log the proxied request: $(<"$proxy_logs")"
-  fi
-
-  log "tunnel case passed for $env_id"
-}
-
-run_env_substitution_case() {
-  local key="$RUN_ID-env-substitution"
-  local env_id
-
-  create_template "$key" "$(env_substitution_config)"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  ssh_env "$env_id" test -s /opt/bastion-e2e-env/home
-  ssh_env "$env_id" grep -q '^/' /opt/bastion-e2e-env/home
-  if ssh_env "$env_id" "grep -F -q '\${{ env.HOME }}' /opt/bastion-e2e-env/home" 2>/dev/null; then
-    fail "environment variable placeholder was not substituted in $env_id"
-  fi
-
-  log "environment substitution case passed for $env_id"
-}
-
-run_write_env_file_case() {
-  local key="$RUN_ID-write-env-file"
-  local env_id
-
-  create_template "$key" "$(write_env_file_config)"
-  create_environment "$key"
-  env_id="$CREATED_ENV_ID"
-  assert_environment_running "$env_id"
-
-  ssh_env "$env_id" "set -eu
+  ssh_env "$second_env" "set -eu
 env_file=/opt/bastion-e2e-write-env/.env
 test -s \"\$env_file\"
 mode=\$(stat -c %a \"\$env_file\")
@@ -958,26 +637,126 @@ esac
 test \"\$BASTION_E2E_NUMBER\" = 42
 test \"\$BASTION_E2E_BOOL\" = true
 printf '%s' \"\$BASTION_E2E_JSON\" | jq -e --arg run_id '$RUN_ID' '.run_id == \$run_id' >/dev/null
-test ! -e /opt/bastion/actions/init-1-write_env_file/.bastion-context.json"
+for context_file in /opt/bastion/actions/*-write_env_file/.bastion-context.json; do
+  if [ -e \"\$context_file\" ]; then
+    printf 'write_env_file context file was not removed: %s\n' \"\$context_file\" >&2
+    exit 1
+  fi
+done"
 
-  log "write_env_file case passed for $env_id"
+  ssh_env "$second_env" grep -q "$RUN_ID" /opt/bastion-e2e-working/new-dir/run-id
+  ssh_env "$second_env" grep -q '^/opt/bastion-e2e-working/new-dir$' /opt/bastion-e2e-working/new-dir/pwd
+  ssh_env "$second_env" grep -q working-directory-ready /opt/bastion-e2e-working/new-dir/nested/status
+  ssh_env "$second_env" grep -q verified /opt/bastion-e2e-working/new-dir/verified
+
+  ssh_env "$second_env" grep -q "$RUN_ID" /opt/bastion-e2e-start/run-id
+  ssh_env "$second_env" grep -q init-complete /opt/bastion-e2e-start/init-status
+  ssh_env "$second_env" grep -q '^/opt/bastion-e2e-start/workdir$' /opt/bastion-e2e-start/workdir/pwd
+  ssh_env "$second_env" grep -q working-directory-start /opt/bastion-e2e-start/workdir/status
+
+  ssh_env "$second_env" grep -q '^v' /opt/bastion-e2e-node/node-version
+  ssh_env "$second_env" grep -q node-ok /opt/bastion-e2e-node/app.txt
+  ssh_env "$second_env" grep -q Docker /opt/bastion-e2e-docker/docker-version
+  ssh_env "$second_env" grep -q overlay2 /etc/docker/daemon.json
+
+  ssh_env "$first_env" "set -eu
+test -s /opt/bastion-e2e-opencode/version
+test -s /opt/bastion-e2e-opencode/health
+grep -q true /opt/bastion-e2e-opencode/config-ok
+grep -q true /opt/bastion-e2e-opencode/auth-ok
+grep -q true /opt/bastion-e2e-opencode/started-ok
+config_mode=\$(cat /opt/bastion-e2e-opencode/config-mode)
+if [ \"\$config_mode\" != \"600\" ]; then
+  printf 'config mode is %s, want 600\n' \"\$config_mode\" >&2
+  exit 1
+fi
+auth_mode=\$(cat /opt/bastion-e2e-opencode/auth-mode)
+if [ \"\$auth_mode\" != \"600\" ]; then
+  printf 'auth mode is %s, want 600\n' \"\$auth_mode\" >&2
+  exit 1
+fi"
+
+  assert_opencode_proxy_health "OpenCode id route" "${API_URL%/}/v1/environments/$first_env/agents/opencode/global/health"
+  assert_opencode_proxy_health "OpenCode key route" "${API_URL%/}/v1/environments/by-key/$first_env_key/agents/opencode/global/health"
+  assert_bastion_opencode_attach "OpenCode CLI id route" --id "$first_env" "${API_URL%/}/v1/environments/$first_env/agents/opencode"
+  assert_bastion_opencode_attach "OpenCode CLI key route" --key "$first_env_key" "${API_URL%/}/v1/environments/by-key/$first_env_key/agents/opencode"
+
+  expected_id_url="${API_URL%/}/v1/environments/$first_env/tunnel/frontend"
+  expected_key_url="${API_URL%/}/v1/environments/by-key/$first_env_key/tunnel/frontend"
+
+  output="$(run_cli env tunnels --id "$first_env")"
+  if ! jq -e --arg url "$expected_id_url" '.entries | length == 1 and .[0].name == "frontend" and .[0].port == 3000 and .[0].url == $url' <<<"$output" >/dev/null; then
+    fail "env tunnels --id response is $(jq -c . <<<"$output"), want frontend tunnel URL $expected_id_url"
+  fi
+
+  output="$(run_cli env tunnels --key "$first_env_key")"
+  if ! jq -e --arg url "$expected_key_url" '.entries | length == 1 and .[0].name == "frontend" and .[0].port == 3000 and .[0].url == $url' <<<"$output" >/dev/null; then
+    fail "env tunnels --key response is $(jq -c . <<<"$output"), want frontend tunnel URL $expected_key_url"
+  fi
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$expected_id_url")"
+  if [ "$output" != "tunnel-ok $RUN_ID" ]; then
+    fail "tunnel id URL returned $output, want tunnel-ok $RUN_ID"
+  fi
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$expected_key_url")"
+  if [ "$output" != "tunnel-ok $RUN_ID" ]; then
+    fail "tunnel key URL returned $output, want tunnel-ok $RUN_ID"
+  fi
+
+  proxy_logs="/tmp/bastion-env-test-proxy-$RUN_ID.log"
+  : >"$proxy_logs"
+  run_cli proxy --env-key "$first_env_key" --name frontend >/dev/null 2>"$proxy_logs" &
+  PROXY_PIDS+=("$!")
+  proxy_url="$(wait_for_proxy_url "$proxy_logs")"
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$proxy_url/absolute/path")"
+  if [ "$output" != "proxy-path-ok $RUN_ID" ]; then
+    fail "local proxy returned $output, want proxy-path-ok $RUN_ID"
+  fi
+
+  if [[ "$(<"$proxy_logs")" != *"GET /absolute/path -> 200"* ]]; then
+    fail "local proxy did not log the proxied request: $(<"$proxy_logs")"
+  fi
+
+  log "lifecycle case passed for $first_env and $second_env"
 }
 
-run_working_directory_case() {
-  local key="$RUN_ID-working-directory"
+run_node_docker_case() {
+  local key="$RUN_ID-toolchain"
   local env_id
+  local version
 
-  create_template "$key" "$(working_directory_config)"
+  create_template "$key" "$(toolchain_config)"
   create_environment "$key"
   env_id="$CREATED_ENV_ID"
   assert_environment_running "$env_id"
 
-  ssh_env "$env_id" grep -q "$RUN_ID" /opt/bastion-e2e-working/new-dir/run-id
-  ssh_env "$env_id" grep -q '^/opt/bastion-e2e-working/new-dir$' /opt/bastion-e2e-working/new-dir/pwd
-  ssh_env "$env_id" grep -q working-directory-ready /opt/bastion-e2e-working/new-dir/nested/status
-  ssh_env "$env_id" grep -q verified /opt/bastion-e2e-working/new-dir/verified
+  ssh_env "$env_id" grep -q '^v24\.' /opt/bastion-e2e-preset/node-version
+  ssh_env "$env_id" test -s /opt/bastion-e2e-preset/npm-version
 
-  log "working_directory case passed for $env_id"
+  ssh_env "$env_id" "grep -Eq '^[0-9]+\.' /opt/bastion-e2e-bun/version"
+  ssh_env "$env_id" test -s /opt/bastion-e2e-bun/revision
+  ssh_env "$env_id" grep -q '^bun-ok$' /opt/bastion-e2e-bun/runtime
+
+  version="$(ssh_env "$env_id" mise --version)"
+  if [[ ! "$version" =~ ^(mise[[:space:]])?[0-9] ]]; then
+    fail "mise --version returned unexpected output: $version"
+  fi
+
+  ssh_env "$env_id" "grep -q '^gh version' /opt/bastion-e2e-github-cli/version"
+  ssh_env "$env_id" grep -q '^https$' /opt/bastion-e2e-github-cli/git-protocol
+  ssh_env "$env_id" grep -q '^bastion-agent$' /opt/bastion-e2e-github-cli/git-name
+  ssh_env "$env_id" grep -q '^agent@bastion.computer$' /opt/bastion-e2e-github-cli/git-email
+  ssh_env "$env_id" "grep -q '/usr/local/bin/gh auth git-credential' /opt/bastion-e2e-github-cli/git-helper"
+  ssh_env "$env_id" grep -q github-cli-ready /opt/bastion-e2e-github-cli/auth
+
+  ssh_env "$env_id" "grep -q '^Docker version' /opt/bastion-e2e-docker-preset/docker-version"
+  ssh_env "$env_id" grep -q 'buildx' /opt/bastion-e2e-docker-preset/buildx-version
+  ssh_env "$env_id" "grep -q 'Docker Compose' /opt/bastion-e2e-docker-preset/compose-version"
+  ssh_env "$env_id" test -s /opt/bastion-e2e-docker-preset/server-version
+
+  log "toolchain setup case passed for $env_id"
 }
 
 run_failure_case() {
@@ -1049,17 +828,6 @@ main() {
   log "starting environment e2e run $RUN_ID"
   run_case run_optional_template_key_case
   run_case run_basic_setup_case
-  run_case run_env_substitution_case
-  run_case run_write_env_file_case
-  run_case run_working_directory_case
-  run_case run_start_action_case
-  run_case run_preset_setup_node_case
-  run_case run_preset_setup_bun_case
-  run_case run_preset_setup_mise_case
-  run_case run_preset_setup_github_cli_case
-  run_case run_preset_setup_docker_case
-  run_case run_opencode_agent_case
-  run_case run_tunnel_case
   run_case run_node_docker_case
   run_case run_failure_case
   run_case run_start_failure_case
