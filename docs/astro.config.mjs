@@ -28,6 +28,11 @@ export default defineConfig({
       title: "bastion.computer",
       social: [
         {
+          icon: "rss",
+          label: "Blog",
+          href: "https://blog.bastion.computer/",
+        },
+        {
           icon: "github",
           label: "GitHub",
           href: "https://github.com/bastion-computer/bastion",
