@@ -26,6 +26,9 @@ export default defineConfig({
       ],
       favicon: "/favicon.ico",
       title: "bastion.computer",
+      components: {
+        Header: "./src/components/Header.astro",
+      },
       social: [
         {
           icon: "github",
