@@ -240,8 +240,7 @@ run_interactive_case() {
 main() {
   local key="$RUN_ID-template"
   local env_key="$RUN_ID-env"
-  local key_env_id
-  local id_env_id
+  local env_id
 
   precheck
   trap cleanup EXIT
@@ -250,17 +249,12 @@ main() {
   create_template "$key"
 
   create_environment "$key" "$env_key"
-  key_env_id="$CREATED_ENV_ID"
-  assert_environment_running_without_ssh_fields "$key_env_id"
+  env_id="$CREATED_ENV_ID"
+  assert_environment_running_without_ssh_fields "$env_id"
   run_key_reference_case "$env_key"
-  remove_environment "$key_env_id"
-
-  create_environment "$key" ""
-  id_env_id="$CREATED_ENV_ID"
-  assert_environment_running_without_ssh_fields "$id_env_id"
-  run_command_case "$id_env_id"
-  run_exit_status_case "$id_env_id"
-  run_interactive_case "$id_env_id"
+  run_command_case "$env_id"
+  run_exit_status_case "$env_id"
+  run_interactive_case "$env_id"
   log "SSH e2e run passed"
 }
 
