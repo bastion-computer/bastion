@@ -46,6 +46,11 @@ export default defineConfig({
       title: "bastion.computer",
       social: [
         {
+          icon: "email",
+          label: "Email",
+          href: "mailto:hazim@bastion.computer",
+        },
+        {
           icon: "github",
           label: "GitHub",
           href: "https://github.com/bastion-computer/bastion",
