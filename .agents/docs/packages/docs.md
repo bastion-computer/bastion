@@ -38,6 +38,10 @@ The sidebar navigation is configured in `astro.config.mjs` under the `starlight(
 
 The Astro configuration file defines the Starlight integration with site metadata, sidebar structure, and any additional Astro settings.
 
+### Starlight overrides
+
+Custom Starlight component overrides live under `docs/src/components/`. When overriding components also provided by `starlight-theme-black`, register the local override with a Starlight plugin after `starlightThemeBlack()` so the theme can install its defaults before replacing individual components.
+
 ### tsconfig.json
 
 Extends `astro/tsconfigs/strict` — this is **independent** of the root `tsconfig.json` because Astro requires different compiler options (e.g., `noEmit` cannot be used with `.astro` files).
