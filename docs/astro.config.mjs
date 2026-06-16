@@ -5,6 +5,23 @@ import cloudflare from "@astrojs/cloudflare";
 import starlightLlmsTxt from "starlight-llms-txt";
 import starlightThemeBlack from "starlight-theme-black";
 
+/** @returns {import("@astrojs/starlight/types").StarlightPlugin} */
+function bastionHeaderLinks() {
+  return {
+    name: "bastion-header-links",
+    hooks: {
+      "config:setup": ({ config, updateConfig }) => {
+        updateConfig({
+          components: {
+            ...config.components,
+            Header: "./src/components/Header.astro",
+          },
+        });
+      },
+    },
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   site: "https://bastion.computer",
@@ -23,15 +40,11 @@ export default defineConfig({
         starlightThemeBlack({
           footerText: `© ${new Date().getFullYear()} Bastion Computer. All rights reserved.`,
         }),
+        bastionHeaderLinks(),
       ],
       favicon: "/favicon.ico",
       title: "bastion.computer",
       social: [
-        {
-          icon: "rss",
-          label: "Blog",
-          href: "https://blog.bastion.computer/",
-        },
         {
           icon: "github",
           label: "GitHub",
