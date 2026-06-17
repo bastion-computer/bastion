@@ -13,7 +13,6 @@ INSTALL_SERVICES=0
 INSTALL_DIR="${BASTION_INSTALL_DIR:-}"
 TMP_DIR=""
 BASTION_BIN=""
-BASTIOND_BIN=""
 BASTION_GUEST_PROXY_BIN=""
 
 cat <<'EOF'
@@ -46,7 +45,7 @@ Usage: install.sh
 Installs or updates Bastion from the latest GitHub release.
 
 Supported targets:
-  - Linux x86_64 host install with bastion, bastiond, and systemd services.
+  - Linux x86_64 host install with bastion, bastion-guest-proxy, and systemd services.
   - macOS Apple silicon CLI install with bastion only.
 
 Options:
@@ -240,10 +239,6 @@ download_and_verify() {
     fail "release archive did not contain an executable bastion binary"
   fi
 
-  if [ "$INSTALL_SERVICES" -eq 1 ] && [ ! -x "$TMP_DIR/extract/bastiond" ]; then
-    fail "release archive did not contain an executable bastiond binary"
-  fi
-
   if [ "$INSTALL_SERVICES" -eq 1 ] && [ ! -x "$TMP_DIR/extract/bastion-guest-proxy" ]; then
     fail "release archive did not contain an executable bastion-guest-proxy binary"
   fi
@@ -257,9 +252,7 @@ install_binaries() {
 
   BASTION_BIN="$INSTALL_DIR/bastion"
   if [ "$INSTALL_SERVICES" -eq 1 ]; then
-    run_as_root install -m 0755 "$TMP_DIR/extract/bastiond" "$INSTALL_DIR/bastiond"
     run_as_root install -m 0755 "$TMP_DIR/extract/bastion-guest-proxy" "$INSTALL_DIR/bastion-guest-proxy"
-    BASTIOND_BIN="$INSTALL_DIR/bastiond"
     BASTION_GUEST_PROXY_BIN="$INSTALL_DIR/bastion-guest-proxy"
   fi
 
@@ -269,20 +262,17 @@ install_binaries() {
 ensure_binaries() {
   local latest_version=$1
   local existing_bastion
-  local existing_bastiond
   local existing_guest_proxy
   local current_version
 
   existing_bastion="$(command -v bastion 2>/dev/null || true)"
-  existing_bastiond="$(command -v bastiond 2>/dev/null || true)"
   existing_guest_proxy="$(command -v bastion-guest-proxy 2>/dev/null || true)"
   resolve_install_dir "$existing_bastion"
 
   current_version="$(installed_version "$existing_bastion" || true)"
-  if [ -n "$current_version" ] && [ "$current_version" = "$latest_version" ] && { [ "$INSTALL_SERVICES" -eq 0 ] || { [ -n "$existing_bastiond" ] && [ -n "$existing_guest_proxy" ]; }; }; then
+  if [ -n "$current_version" ] && [ "$current_version" = "$latest_version" ] && { [ "$INSTALL_SERVICES" -eq 0 ] || [ -n "$existing_guest_proxy" ]; }; then
     BASTION_BIN="$existing_bastion"
     if [ "$INSTALL_SERVICES" -eq 1 ]; then
-      BASTIOND_BIN="$existing_bastiond"
       BASTION_GUEST_PROXY_BIN="$existing_guest_proxy"
     fi
     log "Bastion $latest_version is already installed"
@@ -369,7 +359,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=$SERVICE_ENV_FILE
-ExecStart=$BASTIOND_BIN --socket-uid $service_uid --socket-gid $service_gid
+ExecStart=$BASTION_BIN start daemon --socket-uid $service_uid --socket-gid $service_gid
 KillMode=process
 Restart=always
 RestartSec=2
@@ -390,7 +380,7 @@ Type=simple
 User=$service_user
 Group=$service_group
 EnvironmentFile=$SERVICE_ENV_FILE
-ExecStart=$BASTION_BIN start
+ExecStart=$BASTION_BIN start api
 Restart=always
 RestartSec=2
 

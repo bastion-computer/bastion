@@ -8,13 +8,13 @@ persisted client overrides. CLI flags take precedence over environment values.
 
 ## Host API
 
-These settings apply to `bastion start`.
+These settings apply to `bastion start api`.
 
 | Flag                | Environment          | Default                      | Description                          |
 | ------------------- | -------------------- | ---------------------------- | ------------------------------------ |
 | `--addr`            | `BASTION_ADDR`       | `localhost:3148`             | Host API listen address.             |
 | `--data-dir`        | `BASTION_DATA_DIR`   | `~/.bastion`                 | Persistent data directory.           |
-| `--bastiond-socket` | `BASTIOND_SOCKET`    | `/run/bastion/bastiond.sock` | Unix socket used to call `bastiond`. |
+| `--bastiond-socket` | `BASTIOND_SOCKET`    | `/run/bastion/bastiond.sock` | Unix socket used to call the daemon. |
 | `--log-format`      | `BASTION_LOG_FORMAT` | `json`                       | `json` or `text`.                    |
 | `--log-level`       | `BASTION_LOG_LEVEL`  | `info`                       | `debug`, `info`, `warn`, or `error`. |
 
@@ -68,7 +68,7 @@ bastion client config
 
 ## Daemon
 
-These settings apply to `bastiond`.
+These settings apply to `bastion start daemon`.
 
 | Flag           | Environment               | Default                        | Description                          |
 | -------------- | ------------------------- | ------------------------------ | ------------------------------------ |
@@ -81,7 +81,7 @@ These settings apply to `bastiond`.
 | `--log-format` | `BASTIOND_LOG_FORMAT`     | `json`                         | `json` or `text`.                    |
 | `--log-level`  | `BASTIOND_LOG_LEVEL`      | `info`                         | `debug`, `info`, `warn`, or `error`. |
 
-`bastiond` must run as root. When run with `sudo`, it defaults its data
+`bastion start daemon` must run as root. When run with `sudo`, it defaults its data
 directory to the invoking user's home directory rather than root's home.
 The configured socket owner/group is also applied to per-VM proxy sockets used
 by OpenCode and environment tunnels, so it should match the user running the

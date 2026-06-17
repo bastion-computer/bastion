@@ -137,9 +137,9 @@ underscores, and hyphens.
 
 ## Seeding and Overrides
 
-`bastiond` seeds built-in action packages into `<data-dir>/actions` when it
+`bastion start daemon` seeds built-in action packages into `<data-dir>/actions` when it
 starts. Seeding overwrites directories whose names match built-in actions so
 updated built-in action packages take effect after a Bastion upgrade.
 
 Use a unique action name for custom actions. Directories with built-in action
-names are managed by Bastion and will be replaced on `bastiond` startup.
+names are managed by Bastion and will be replaced on daemon startup.

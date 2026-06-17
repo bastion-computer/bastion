@@ -281,7 +281,7 @@ template is created:
 ```
 
 The expression `${{ env.PROJECT_NAME }}` is replaced with the `PROJECT_NAME`
-value from the `bastion start` process environment. If the variable is not set,
+value from the `bastion start api` process environment. If the variable is not set,
 template creation fails.
 
 Substitution works anywhere a string appears in the template JSON, including

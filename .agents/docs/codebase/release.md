@@ -32,10 +32,9 @@ assets are:
 - `bastion_<tag>_darwin_arm64.tar.gz`
 - `bastion_<tag>_darwin_arm64.tar.gz.sha256`
 
-The Linux archive contains the host runtime binaries and the guest proxy installed into templates:
+The Linux archive contains the host runtime binary and the guest proxy installed into templates:
 
 - `bastion`
-- `bastiond`
 - `bastion-guest-proxy`
 
 The macOS archive contains the client CLI only:

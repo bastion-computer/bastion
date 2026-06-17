@@ -22,7 +22,7 @@ instance type.
 
 ## Install Bastion
 
-Install `bastion`, `bastiond`, `bastion-guest-proxy`, and the systemd services:
+Install `bastion`, `bastion-guest-proxy`, and the systemd services:
 
 ```sh
 curl -fsSL https://bastion.computer/install.sh | bash

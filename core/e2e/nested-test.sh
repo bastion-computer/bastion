@@ -65,10 +65,6 @@ precheck() {
     fail "CLI build not found at $BASTION; run mise run //core:build or mise run //core:test:e2e"
   fi
 
-  if [ ! -x "$CORE_DIR/tmp/bastiond" ]; then
-    fail "daemon build not found at $CORE_DIR/tmp/bastiond; run mise run //core:build or mise run //core:test:e2e"
-  fi
-
   if ! run_cli templates list >/dev/null 2>&1; then
     fail "Bastion API is not reachable on $API_URL; run mise dev:up"
   fi
@@ -191,13 +187,13 @@ BASTIOND_SOCKET="$INNER_SOCKET" \
 BASTION_VM_CPUS=1 \
 BASTION_VM_MEMORY_BYTES=805306368 \
 BASTION_VM_NETWORK_PREFIX="$INNER_NETWORK_PREFIX" \
-./core/tmp/bastiond --data-dir "$INNER_DATA_DIR" --socket "$INNER_SOCKET" >/tmp/bastion-nested-daemon.log 2>&1 &
+./core/tmp/bastion --data-dir "$INNER_DATA_DIR" start daemon --socket "$INNER_SOCKET" >/tmp/bastion-nested-daemon.log 2>&1 &
 DAEMON_PID=$!
 printf 'inner-daemon-started\n'
 
 BASTION_DATA_DIR="$INNER_DATA_DIR" \
 BASTIOND_SOCKET="$INNER_SOCKET" \
-./core/tmp/bastion start --addr 127.0.0.1:4148 --data-dir "$INNER_DATA_DIR" --bastiond-socket "$INNER_SOCKET" >/tmp/bastion-nested-api.log 2>&1 &
+./core/tmp/bastion --data-dir "$INNER_DATA_DIR" start api --addr 127.0.0.1:4148 --bastiond-socket "$INNER_SOCKET" >/tmp/bastion-nested-api.log 2>&1 &
 API_PID=$!
 printf 'inner-api-started\n'
 

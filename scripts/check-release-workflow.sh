@@ -59,6 +59,10 @@ check_target() {
   local binary
 
   actual="$(matrix_binaries "$target")" || fail "missing $target matrix binaries"
+  if [ "$actual" != "$expected" ]; then
+    fail "$target matrix binaries are '$actual', want '$expected'"
+  fi
+
   target_dir="$TMP_DIR/$target"
   archive="$target_dir/dist/bastion_test_${target}.tar.gz"
 
@@ -82,7 +86,7 @@ if [ ! -f "$WORKFLOW" ]; then
 fi
 
 TMP_DIR="$(mktemp -d)"
-check_target linux_x86_64 'bastion bastiond bastion-guest-proxy'
+check_target linux_x86_64 'bastion bastion-guest-proxy'
 check_target darwin_arm64 'bastion'
 
 printf 'release workflow package contents are valid\n'
