@@ -152,7 +152,7 @@ bastion env remove --id env_xxxxxx
 bastion env remove --key review-123
 ```
 
-Removal asks `bastiond` to tear down the VM, cleans up stored VM metadata, and
+Removal asks the daemon to tear down the VM, cleans up stored VM metadata, and
 deletes the environment record.
 
 Example response:

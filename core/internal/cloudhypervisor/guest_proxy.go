@@ -104,7 +104,7 @@ func (m Manager) guestProxyBinaryPath() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("%s not found next to bastiond or on PATH", guestProxyBinaryName)
+	return "", fmt.Errorf("%s not found next to bastion or on PATH", guestProxyBinaryName)
 }
 
 func executableFile(path string) (string, error) {

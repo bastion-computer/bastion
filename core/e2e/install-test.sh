@@ -164,10 +164,9 @@ prepare_local_release() {
   mkdir -p "$LOCAL_RELEASE_DIR"
 
   install -m 0755 "$CORE_DIR/tmp/bastion" "$staging/bastion"
-  install -m 0755 "$CORE_DIR/tmp/bastiond" "$staging/bastiond"
   install -m 0755 "$CORE_DIR/tmp/bastion-guest-proxy" "$staging/bastion-guest-proxy"
 
-  tar -C "$staging" -czf "$LOCAL_RELEASE_DIR/$archive" bastion bastiond bastion-guest-proxy
+  tar -C "$staging" -czf "$LOCAL_RELEASE_DIR/$archive" bastion bastion-guest-proxy
   (cd "$LOCAL_RELEASE_DIR" && sha256sum "$archive" >"$archive.sha256")
   rm -rf "$staging"
 }
@@ -446,12 +445,13 @@ curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | BASTION_INSTALL_V
 grep -q 'checksum verified' /tmp/bastion-install.log || fail "installer did not verify the release checksum"
 grep -q 'services installed, enabled, and started' /tmp/bastion-install.log || fail "installer did not set up services by default"
 command -v bastion >/dev/null || fail "bastion was not installed on PATH"
-command -v bastiond >/dev/null || fail "bastiond was not installed on PATH"
 test -f /etc/default/bastion || fail "/etc/default/bastion was not created"
 grep -q '^BASTION_DATA_DIR=' /etc/default/bastion || fail "service env file is missing BASTION_DATA_DIR"
 grep -q '^BASTIOND_SOCKET=' /etc/default/bastion || fail "service env file is missing BASTIOND_SOCKET"
 grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastiond.service || fail "bastiond.service does not read /etc/default/bastion"
 grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not read /etc/default/bastion"
+grep -q '^ExecStart=.*/bastion start daemon --socket-uid ' /etc/systemd/system/bastiond.service || fail "bastiond.service does not run bastion start daemon"
+grep -q '^ExecStart=.*/bastion start api$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not run bastion start api"
 
 inner_network_prefix="$(choose_inner_network_prefix)"
 printf '\nBASTION_E2E_SENTINEL=preserve\nBASTION_VM_CPUS=1\nBASTION_VM_MEMORY_BYTES=805306368\nBASTION_VM_NETWORK_PREFIX=%s\n' "$inner_network_prefix" >>/etc/default/bastion

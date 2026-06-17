@@ -22,13 +22,13 @@ The launch scope is intentionally small:
 
 Bastion is split into two processes.
 
-| Process         | Role                                                                                                         |
-| --------------- | ------------------------------------------------------------------------------------------------------------ |
-| `bastion start` | Runs the local host API on `localhost:3148` by default, stores metadata in SQLite, and serves the CLI.       |
-| `bastiond`      | Runs privileged Cloud Hypervisor operations behind a Unix socket at `/run/bastion/bastiond.sock` by default. |
+| Process                | Role                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `bastion start api`    | Runs the local host API on `localhost:3148` by default, stores metadata in SQLite, and serves the CLI.       |
+| `bastion start daemon` | Runs privileged Cloud Hypervisor operations behind a Unix socket at `/run/bastion/bastiond.sock` by default. |
 
 The regular `bastion` CLI talks to the host API. The host API talks to
-`bastiond` only when it needs to launch, inspect, remove, or connect to a VM.
+the daemon only when it needs to launch, inspect, remove, or connect to a VM.
 This keeps the public API local and narrow while the privileged runtime work
 stays behind a Unix socket.
 

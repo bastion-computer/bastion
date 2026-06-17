@@ -19,22 +19,49 @@ Client commands resolve `--api-url` in this order: explicit flag,
 
 ## `bastion start`
 
+Starts a Bastion process. Specify a process type: `api` or `daemon`.
+
+On macOS, `bastion start api` and `bastion start daemon` print a compatibility
+message. Use `--api-url` to connect the macOS CLI to a remote Linux Bastion host
+API.
+
+### `bastion start api`
+
 Starts the local host API service.
 
-On macOS, `bastion start` is a no-op that prints a compatibility message. Use
-`--api-url` to connect the macOS CLI to a remote Linux Bastion host API.
-
 ```sh
-bastion start [flags]
+bastion start api [flags]
 ```
 
 | Flag                | Environment          | Default                      | Description                           |
 | ------------------- | -------------------- | ---------------------------- | ------------------------------------- |
 | `--addr`            | `BASTION_ADDR`       | `localhost:3148`             | Host API listen address.              |
 | `--data-dir`        | `BASTION_DATA_DIR`   | `~/.bastion`                 | Persistent data directory.            |
-| `--bastiond-socket` | `BASTIOND_SOCKET`    | `/run/bastion/bastiond.sock` | Unix socket used to reach `bastiond`. |
+| `--bastiond-socket` | `BASTIOND_SOCKET`    | `/run/bastion/bastiond.sock` | Unix socket used to reach the daemon. |
 | `--log-format`      | `BASTION_LOG_FORMAT` | `json`                       | `json` or `text`.                     |
 | `--log-level`       | `BASTION_LOG_LEVEL`  | `info`                       | `debug`, `info`, `warn`, or `error`.  |
+
+### `bastion start daemon`
+
+Starts the privileged Cloud Hypervisor daemon. It must run as root.
+
+```sh
+sudo bastion start daemon [flags]
+```
+
+| Flag           | Environment               | Default                            | Description                          |
+| -------------- | ------------------------- | ---------------------------------- | ------------------------------------ |
+| `--data-dir`   | `BASTION_DATA_DIR`        | `~/.bastion` for the sudo user     | Persistent data directory.           |
+| `--socket`     | `BASTIOND_SOCKET`         | `/run/bastion/bastiond.sock`       | Unix socket path.                    |
+| `--socket-uid` | `SUDO_UID` or current UID | User owner for the daemon socket.  |
+| `--socket-gid` | `SUDO_GID` or current GID | Group owner for the daemon socket. |
+| `--vm-uid`     | `BASTIOND_VM_UID`         | `0`                                | UID used for VM-owned runtime files. |
+| `--vm-gid`     | `BASTIOND_VM_GID`         | `0`                                | GID used for VM-owned runtime files. |
+| `--log-format` | `BASTIOND_LOG_FORMAT`     | `json`                             | `json` or `text`.                    |
+| `--log-level`  | `BASTIOND_LOG_LEVEL`      | `info`                             | `debug`, `info`, `warn`, or `error`. |
+
+The socket owner/group also owns per-VM proxy sockets used by OpenCode and
+environment tunnels, so it should match the user running `bastion start api`.
 
 ## `bastion system`
 
@@ -211,27 +238,3 @@ bastion version
 
 Local development builds report `dev`. Release builds can inject a version at
 build time.
-
-## `bastiond`
-
-`bastiond` is the privileged Cloud Hypervisor daemon. It is a separate binary and
-must run as root. It is included in Linux host archives only; macOS releases ship
-the client-only `bastion` binary.
-
-```sh
-sudo bastiond [flags]
-```
-
-| Flag           | Environment               | Default                            | Description                          |
-| -------------- | ------------------------- | ---------------------------------- | ------------------------------------ |
-| `--data-dir`   | `BASTION_DATA_DIR`        | `~/.bastion` for the sudo user     | Persistent data directory.           |
-| `--socket`     | `BASTIOND_SOCKET`         | `/run/bastion/bastiond.sock`       | Unix socket path.                    |
-| `--socket-uid` | `SUDO_UID` or current UID | User owner for the daemon socket.  |
-| `--socket-gid` | `SUDO_GID` or current GID | Group owner for the daemon socket. |
-| `--vm-uid`     | `BASTIOND_VM_UID`         | `0`                                | UID used for VM-owned runtime files. |
-| `--vm-gid`     | `BASTIOND_VM_GID`         | `0`                                | GID used for VM-owned runtime files. |
-| `--log-format` | `BASTIOND_LOG_FORMAT`     | `json`                             | `json` or `text`.                    |
-| `--log-level`  | `BASTIOND_LOG_LEVEL`      | `info`                             | `debug`, `info`, `warn`, or `error`. |
-
-The socket owner/group also owns per-VM proxy sockets used by OpenCode and
-environment tunnels, so it should match the user running `bastion start`.

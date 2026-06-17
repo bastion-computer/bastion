@@ -3,7 +3,7 @@ title: API Reference
 description: Local HTTP API endpoints exposed by Bastion.
 ---
 
-The host API is served by `bastion start` on `http://localhost:3148` by default.
+The host API is served by `bastion start api` on `http://localhost:3148` by default.
 The CLI is a client for this API.
 
 ## Health
@@ -426,7 +426,7 @@ Domain errors map to these statuses:
 
 ## Daemon API
 
-`bastiond` also exposes an internal API over its Unix socket. The host API uses
+The daemon also exposes an internal API over its Unix socket. The host API uses
 it for `/v1/health`, `POST /v1/vms`, `GET /v1/vms/:id`, and
 `DELETE /v1/vms/:id`. Treat this API as an implementation detail unless you are
 working on Bastion itself.

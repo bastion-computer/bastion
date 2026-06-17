@@ -2,20 +2,18 @@ This package contains the Go implementation of Bastion's host API service and CL
 
 ## Overview
 
-The core package lives in `core/`. On Linux it builds the `bastion`, `bastiond`, and `bastion-guest-proxy` binaries; on Darwin it builds the client-only `bastion` binary. The `bastion` binary is responsible for two kinds of entrypoints:
+The core package lives in `core/`. On Linux it builds the `bastion` and `bastion-guest-proxy` binaries; on Darwin it builds the client-only `bastion` binary. The `bastion` binary is responsible for process entrypoints and client commands:
 
-- `bastion start` runs the local host API service on `localhost:3148` by default.
+- `bastion start api` runs the local host API service on `localhost:3148` by default.
+- `sudo bastion start daemon` runs privileged Cloud Hypervisor runtime operations behind a Unix socket.
 - CLI commands operate locally when managing host/client configuration, or call the host API service and print JSON responses for product resources.
-
-The `bastiond` binary runs privileged Cloud Hypervisor runtime operations behind a Unix socket and should be started with `sudo bastiond`.
 
 ## Layout
 
 | Path | Purpose |
 | ---- | ------- |
 | `actions` | Embedded built-in preset actions seeded into `<data-dir>/actions`. |
-| `cmd/bastion` | Minimal CLI/API binary entrypoint. |
-| `cmd/bastiond` | Privileged Cloud Hypervisor daemon entrypoint. |
+| `cmd/bastion` | Minimal CLI/API/daemon binary entrypoint. |
 | `cmd/bastion-guest-proxy` | Minimal Linux guest-side vsock HTTP proxy installed into templates. |
 | `pkg/sshtunnel` | Public SSH tunnel framing protocol shared by CLI/API SSH streams. |
 | `internal/cli` | Cobra command tree and CLI output handling. |
@@ -44,21 +42,21 @@ Run package tasks from the repo root with mise:
 | Task | Command | Purpose |
 | ---- | ------- | ------- |
 | `mise run //core:dev:api` | `air -c .air.api.toml` | Start the host API with live reload. |
-| `mise run //core:dev:daemon` | `air -c .air.daemon.toml` | Start bastiond with live reload. |
+| `mise run //core:dev:daemon` | `air -c .air.daemon.toml` | Start the daemon with live reload. |
 | `mise run //core:lint` | `golangci-lint run ./...` | Run Go linters. |
 | `mise run //core:format:check` | `gofmt -l .` check | Check Go formatting without writing files. |
 | `mise run //core:format:write` | `gofmt -w .` | Rewrite Go formatting. |
-| `mise run //core:build` | `go build -o ./tmp/bastion ./cmd/bastion` and, on Linux, `go build -o ./tmp/bastiond ./cmd/bastiond` plus `go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy` | Build the CLI and supported runtime binaries. |
+| `mise run //core:build` | `go build -o ./tmp/bastion ./cmd/bastion` and, on Linux, `go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy` | Build the CLI and supported runtime binaries. |
 | `mise run //core:test` | `go test ./...` | Run Go tests. |
 | `mise run //core:test:e2e` | Build binaries and run `core/e2e/*.sh` scripts | Run core E2E tests against a reachable local API/daemon. |
 
-Root aggregate tasks include this package, so `mise run dev:up`, `mise run lint`, `mise run format:check`, `mise run build`, and `mise run test` can all be run from the repository root. The root `dev:up` task opens a tmux session with dedicated panes for the API and bastiond Air processes.
+Root aggregate tasks include this package, so `mise run dev:up`, `mise run lint`, `mise run format:check`, `mise run build`, and `mise run test` can all be run from the repository root. The root `dev:up` task opens a tmux session with dedicated panes for the API and daemon Air processes.
 
 Local builds report `dev` from `internal/config.Version`. Release builds can inject a version by setting `BASTION_VERSION` before running `mise run //core:build`.
 
 ## API Service
 
-`bastion start` accepts:
+`bastion start api` accepts:
 
 - `--addr`: listen address. Defaults to `localhost:3148` and can be set with `BASTION_ADDR`.
 - `--data-dir`: persistent data directory. Defaults to `~/.bastion` and can be set with `BASTION_DATA_DIR`.
@@ -68,7 +66,7 @@ Local builds report `dev` from `internal/config.Version`. Release builds can inj
 
 The service uses Gin and wraps it in `http.Server` so timeouts and graceful shutdown remain explicit. `internal/api/server.go` owns route registration. Domain-specific handler packages under `internal/handlers` expose `NewHandler(service)` constructors and handler methods used by those routes.
 
-`bastiond` accepts `--data-dir`, `--socket`, `--socket-uid`, `--socket-gid`, `--vm-uid`, `--vm-gid`, `--log-format`, and `--log-level`. It also uses Gin, but listens on a Unix socket instead of TCP. The `--socket-uid` and `--socket-gid` owner is also used for per-VM proxy sockets such as `vsock.socket`, so keep it aligned with the API service user. Root-only Cloud Hypervisor operations, TAP device setup, VMM launch, guest proxy installation, and VM cleanup belong in `internal/cloudhypervisor`; do not add runtime orchestration to `internal/system`, which is limited to `bastion system ...` host setup commands.
+`bastion start daemon` accepts `--socket`, `--socket-uid`, `--socket-gid`, `--vm-uid`, `--vm-gid`, `--log-format`, and `--log-level`, plus the root `--data-dir` flag. It also uses Gin, but listens on a Unix socket instead of TCP. The `--socket-uid` and `--socket-gid` owner is also used for per-VM proxy sockets such as `vsock.socket`, so keep it aligned with the API service user. Root-only Cloud Hypervisor operations, TAP device setup, VMM launch, guest proxy installation, and VM cleanup belong in `internal/cloudhypervisor`; do not add runtime orchestration to `internal/system`, which is limited to `bastion system ...` host setup commands.
 
 Host-initiated guest proxy traffic must use `internal/tunnel.DialGuestProxy`; Cloud Hypervisor requires sending `CONNECT <port>\n` and consuming the `OK <host-port>\n` acknowledgement before speaking HTTP.
 
@@ -78,7 +76,7 @@ Core stores persistent data in SQLite at `<data-dir>/sqlite.db`.
 
 - The default data directory is `~/.bastion`.
 - The development data directory is `.bastion` via the Air configuration.
-- `bastion start` owns creating the top-level data directory; `bastiond` waits for it at startup and must not create it first.
+- `bastion start api` owns creating the top-level data directory; `bastion start daemon` waits for it at startup and must not create it first.
 - Tests use `:memory:` and run the same migrations as local development.
 
 SQL migrations live in `core/internal/migrations` and are embedded into the Go binary. `internal/database.Open()` runs pending migrations automatically before the API starts serving. If migrations fail, startup fails rather than serving against a partially migrated schema.
@@ -93,7 +91,7 @@ Most client commands call the host API configured by `--api-url`, `BASTION_API_U
 
 Supported top-level commands are intentionally limited to the current product scope:
 
-- `bastion start`
+- `bastion start api` and `bastion start daemon`
 - `bastion system check`, `bastion system add cloud-hypervisor`, and `bastion system remove cloud-hypervisor`
 - `bastion templates ...`
 - `bastion env ...`

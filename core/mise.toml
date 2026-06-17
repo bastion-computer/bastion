@@ -20,7 +20,7 @@ description = "Format Go files"
 run = "gofmt -w ."
 
 [tasks.build]
-description = "Build the Bastion CLI and daemon"
+description = "Build the Bastion CLI and guest proxy"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
@@ -33,10 +33,9 @@ fi
 
 if [ "$(go env GOOS)" = "darwin" ]; then
   CGO_ENABLED=0 go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
-  rm -f ./tmp/bastiond
+  rm -f ./tmp/bastiond ./tmp/bastion-guest-proxy
 else
   go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
-  go build -ldflags "$ldflags" -o ./tmp/bastiond ./cmd/bastiond
   go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy
 fi
 '''
@@ -58,7 +57,6 @@ if [ -n "${BASTION_VERSION:-}" ]; then
 fi
 
 go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
-go build -ldflags "$ldflags" -o ./tmp/bastiond ./cmd/bastiond
 go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy
 bash ./e2e/client-test.sh
 bash ./e2e/env-test.sh
@@ -72,5 +70,5 @@ description = "Run the host API with Air live reload"
 run = "air -c .air.api.toml"
 
 [tasks."dev:daemon"]
-description = "Run bastiond with Air live reload"
+description = "Run the daemon with Air live reload"
 run = "air -c .air.daemon.toml"

@@ -15,7 +15,7 @@ The current runtime expects:
 | Operating system  | Linux                                      |
 | Architecture      | x86_64                                     |
 | Virtualization    | `/dev/kvm` exists and is readable/writable |
-| Privileged daemon | `bastiond` runs as root                    |
+| Privileged daemon | `bastion start daemon` runs as root        |
 
 On cloud hosts, the instance must support KVM. If Bastion is running inside a
 VM, nested virtualization must be enabled.
@@ -78,7 +78,7 @@ The command installs runtime assets under `<data-dir>/cloud-hypervisor`.
 
 | Asset                   | Description                                           |
 | ----------------------- | ----------------------------------------------------- |
-| Cloud Hypervisor binary | Static VMM binary used by `bastiond`.                 |
+| Cloud Hypervisor binary | Static VMM binary used by the daemon.                 |
 | Guest kernel            | Ubuntu 24.04 kernel used to boot environments.        |
 | Guest initramfs         | Matching initramfs for the guest kernel.              |
 | Guest rootfs image      | Base Ubuntu image copied for each environment.        |
@@ -99,16 +99,16 @@ manager.
 
 ## Start the Runtime Services
 
-`bastion start` runs the unprivileged host API:
+`bastion start api` runs the unprivileged host API:
 
 ```sh
-bastion start
+bastion start api
 ```
 
-`bastiond` runs the privileged VM runtime:
+`bastion start daemon` runs the privileged VM runtime:
 
 ```sh
-sudo bastiond
+sudo bastion start daemon
 ```
 
 Both processes must point at the same data directory and daemon socket. The

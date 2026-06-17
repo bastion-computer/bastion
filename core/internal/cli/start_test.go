@@ -1,4 +1,6 @@
-package main
+//go:build !darwin
+
+package cli
 
 import (
 	"context"
@@ -9,6 +11,54 @@ import (
 	"testing"
 	"time"
 )
+
+func TestStartCommandRequiresProcessSubcommand(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRootCommand()
+
+	startCmd, remaining, err := cmd.Find([]string{startUse})
+	if err != nil {
+		t.Fatalf("find start command: %v", err)
+	}
+
+	if startCmd.Name() != startUse {
+		t.Fatalf("command = %q, want %q", startCmd.Name(), startUse)
+	}
+
+	if len(remaining) != 0 {
+		t.Fatalf("remaining args = %v, want none", remaining)
+	}
+
+	if startCmd.Runnable() {
+		t.Fatal("bastion start is runnable, want process subcommand required")
+	}
+}
+
+func TestStartCommandIncludesProcessSubcommands(t *testing.T) {
+	t.Parallel()
+
+	for _, process := range []string{startAPIUse, startDaemonUse} {
+		t.Run(process, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := NewRootCommand()
+
+			processCmd, remaining, err := cmd.Find([]string{startUse, process})
+			if err != nil {
+				t.Fatalf("find start %s command: %v", process, err)
+			}
+
+			if processCmd.Name() != process {
+				t.Fatalf("command = %q, want %q", processCmd.Name(), process)
+			}
+
+			if len(remaining) != 0 {
+				t.Fatalf("remaining args = %v, want none", remaining)
+			}
+		})
+	}
+}
 
 func TestWaitForDataDirTimesOutWithoutCreatingDir(t *testing.T) {
 	t.Parallel()
