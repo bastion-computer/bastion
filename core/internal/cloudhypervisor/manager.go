@@ -41,6 +41,7 @@ const (
 	defaultMemoryBytes   = 2 << 30
 	defaultRootfsSize    = "20G"
 	gibBytes             = int64(1 << 30)
+	defaultRootfsBytes   = 20 * gibBytes
 )
 
 // Manager performs privileged Cloud Hypervisor operations for bastiond.

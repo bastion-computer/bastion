@@ -36,6 +36,14 @@ type resolvedResources struct {
 	cpus        int
 	memoryBytes int64
 	rootfsSize  string
+	rootfsBytes int64
+}
+
+// ResourceUsage contains resolved template capacity consumption.
+type ResourceUsage struct {
+	VCPU        int64
+	MemoryBytes int64
+	VolumeBytes int64
 }
 
 type templateActions struct {
@@ -116,6 +124,16 @@ func resolveTemplateResources(config json.RawMessage) (resolvedResources, error)
 	return resources.resolve()
 }
 
+// ResolveTemplateResourceUsage returns resolved resource usage in host accounting units.
+func ResolveTemplateResourceUsage(config json.RawMessage) (ResourceUsage, error) {
+	resources, err := resolveTemplateResources(config)
+	if err != nil {
+		return ResourceUsage{}, err
+	}
+
+	return ResourceUsage{VCPU: int64(resources.cpus), MemoryBytes: resources.memoryBytes, VolumeBytes: resources.rootfsBytes}, nil
+}
+
 func parseTemplateConfig(config json.RawMessage) (templateConfig, error) {
 	if len(config) == 0 {
 		return templateConfig{}, nil
@@ -167,6 +185,7 @@ func (r templateResources) resolve() (resolvedResources, error) {
 	}
 
 	rootfsSize := defaultRootfsSize
+	rootfsBytes := defaultRootfsBytes
 
 	if r.Volume != nil {
 		value, err := resourceGiBBytes(*r.Volume, "volume")
@@ -175,9 +194,10 @@ func (r templateResources) resolve() (resolvedResources, error) {
 		}
 
 		rootfsSize = strconv.FormatInt(value, 10)
+		rootfsBytes = value
 	}
 
-	return resolvedResources{cpus: cpus, memoryBytes: memoryBytes, rootfsSize: rootfsSize}, nil
+	return resolvedResources{cpus: cpus, memoryBytes: memoryBytes, rootfsSize: rootfsSize, rootfsBytes: rootfsBytes}, nil
 }
 
 func resourceGiBBytes(value int64, name string) (int64, error) {

@@ -184,6 +184,10 @@ Environment status is derived from Cloud Hypervisor runtime state.
 
 When a failure is persisted, responses include `lastError`.
 
+The `/v1/utilization` API counts `creating`, `running`, and `paused`
+environments as capacity-consuming. It excludes `stopped`, `error`, and removed
+environments.
+
 ## Creation Logs
 
 `bastion env create` uses the host API streaming creation endpoint. API clients

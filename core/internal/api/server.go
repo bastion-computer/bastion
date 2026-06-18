@@ -15,9 +15,11 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/handlers/environments"
 	"github.com/bastion-computer/bastion/core/internal/handlers/secrets"
 	"github.com/bastion-computer/bastion/core/internal/handlers/templates"
+	utilizationhandler "github.com/bastion-computer/bastion/core/internal/handlers/utilization"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
+	utilizationservice "github.com/bastion-computer/bastion/core/internal/services/utilization"
 )
 
 func init() {
@@ -38,6 +40,8 @@ type routerConfig struct {
 	templateOrchestrator    template.Orchestrator
 	environmentOrchestrator environment.Orchestrator
 	environmentSSHRunner    environments.SSHRunner
+	dataDir                 string
+	utilizationHostCapacity utilizationservice.HostCapacityProvider
 }
 
 // RouterOption configures the Bastion API router.
@@ -64,6 +68,20 @@ func WithEnvironmentSSHRunner(runner environments.SSHRunner) RouterOption {
 	}
 }
 
+// WithDataDir configures the Bastion data directory for host capacity routes.
+func WithDataDir(dataDir string) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.dataDir = dataDir
+	}
+}
+
+// WithUtilizationHostCapacity configures host capacity detection for utilization routes.
+func WithUtilizationHostCapacity(provider utilizationservice.HostCapacityProvider) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.utilizationHostCapacity = provider
+	}
+}
+
 // NewRouter builds the Bastion API router.
 func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *gin.Engine {
 	cfg := routerConfig{}
@@ -87,6 +105,14 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 	secretRoutes.GET("/by-key/:key", secretHandler.GetByKey)
 	secretRoutes.DELETE("/:id", secretHandler.RemoveByID)
 	secretRoutes.DELETE("/by-key/:key", secretHandler.RemoveByKey)
+
+	utilizationOptions := []utilizationservice.Option{utilizationservice.WithDataDir(cfg.dataDir)}
+	if cfg.utilizationHostCapacity != nil {
+		utilizationOptions = append(utilizationOptions, utilizationservice.WithHostCapacityProvider(cfg.utilizationHostCapacity))
+	}
+
+	utilizationHandler := utilizationhandler.NewHandler(utilizationservice.NewService(db, utilizationOptions...))
+	v1.GET("/utilization", utilizationHandler.Get)
 
 	templateHandler := templates.NewHandler(template.NewService(db, template.WithOrchestrator(cfg.templateOrchestrator)))
 	templateRoutes := v1.Group("/templates")

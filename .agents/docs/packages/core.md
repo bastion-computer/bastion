@@ -29,6 +29,7 @@ The core package lives in `core/`. On Linux it builds the `bastion` and `bastion
 | `internal/services/template` | Template request/response types and persistence service. |
 | `internal/services/environment` | Environment request/response types and persistence service. |
 | `internal/services/secret` | Secret request/response types and persistence service. |
+| `internal/services/utilization` | Host capacity and live environment resource usage service. |
 | `internal/tunnel` | Shared guest-proxy tunnel constants and Cloud Hypervisor vsock dial helpers. |
 | `internal/schema` | Embedded JSON Schema documents and validation helpers. |
 | `internal/system` | Host setup/check commands for Cloud Hypervisor assets and utilities. |

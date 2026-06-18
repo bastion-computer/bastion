@@ -20,6 +20,41 @@ Response:
 }
 ```
 
+## Utilization
+
+```http
+GET /v1/utilization
+```
+
+Returns host capacity and current allocations for live environments. `memory` and
+`volume` values are bytes. `vcpu.total` is calculated from host CPU topology as
+physical CPUs x cores per CPU x threads per core.
+
+Used capacity includes environments in `creating`, `running`, and `paused`
+states. It excludes `stopped`, `error`, and removed environments.
+
+Response:
+
+```json
+{
+  "vcpu": {
+    "total": 16,
+    "used": 2,
+    "available": 14
+  },
+  "memory": {
+    "total": 34359738368,
+    "used": 2147483648,
+    "available": 32212254720
+  },
+  "volume": {
+    "total": 1099511627776,
+    "used": 17179869184,
+    "available": 1082331758592
+  }
+}
+```
+
 ## Secrets
 
 Secrets store sensitive values that templates can reference with
