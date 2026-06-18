@@ -95,6 +95,7 @@ Supported top-level commands are intentionally limited to the current product sc
 
 - `bastion start api` and `bastion start daemon`
 - `bastion system check`, `bastion system add cloud-hypervisor`, and `bastion system remove cloud-hypervisor`
+- `bastion utilization`
 - `bastion secrets ...`
 - `bastion templates ...`
 - `bastion env ...`

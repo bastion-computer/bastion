@@ -365,7 +365,7 @@ assert_opencode_proxy_health() {
 }
 
 get_utilization() {
-  curl -fsS --connect-timeout 5 --max-time 10 "${API_URL%/}/v1/utilization"
+  run_cli utilization
 }
 
 assert_utilization_delta() {
