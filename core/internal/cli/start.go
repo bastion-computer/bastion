@@ -79,6 +79,7 @@ func newStartAPICommand(opts *rootOptions) *cobra.Command {
 			daemonClient := ch.NewClient(bastiondSocket)
 
 			return api.Run(cmd.Context(), addr, db, logger,
+				api.WithDataDir(resolvedDataDir),
 				api.WithTemplateOrchestrator(daemonClient),
 				api.WithEnvironmentOrchestrator(daemonClient),
 			)

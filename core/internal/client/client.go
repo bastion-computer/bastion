@@ -20,6 +20,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
+	"github.com/bastion-computer/bastion/core/internal/services/utilization"
 	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
 
@@ -35,6 +36,12 @@ func New(baseURL string) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{},
 	}
+}
+
+// GetUtilization returns current host capacity accounting.
+func (c *Client) GetUtilization(ctx context.Context) (utilization.Utilization, error) {
+	var out utilization.Utilization
+	return out, c.do(ctx, http.MethodGet, "/v1/utilization", nil, &out)
 }
 
 // CreateSecret stores a secret.

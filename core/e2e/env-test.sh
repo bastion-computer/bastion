@@ -364,6 +364,36 @@ assert_opencode_proxy_health() {
   fi
 }
 
+get_utilization() {
+  run_cli utilization
+}
+
+assert_utilization_delta() {
+  local baseline=$1
+  local expected_vcpu=$2
+  local expected_memory=$3
+  local expected_volume=$4
+  local output
+
+  output="$(get_utilization)"
+  if ! jq -e \
+    --argjson baseline "$baseline" \
+    --argjson expected_vcpu "$expected_vcpu" \
+    --argjson expected_memory "$expected_memory" \
+    --argjson expected_volume "$expected_volume" '
+      def available_ok($resource):
+        $resource.available == (if ($resource.total - $resource.used) < 0 then 0 else ($resource.total - $resource.used) end);
+      (.vcpu.used - $baseline.vcpu.used) == $expected_vcpu and
+      (.memory.used - $baseline.memory.used) == $expected_memory and
+      (.volume.used - $baseline.volume.used) == $expected_volume and
+      available_ok(.vcpu) and
+      available_ok(.memory) and
+      available_ok(.volume)
+    ' <<<"$output" >/dev/null; then
+    fail "utilization response is $(jq -c . <<<"$output"), want delta vcpu=$expected_vcpu memory=$expected_memory volume=$expected_volume from baseline $(jq -c . <<<"$baseline")"
+  fi
+}
+
 wait_for_proxy_url() {
   local logs=$1
   local line
@@ -638,9 +668,11 @@ run_basic_setup_case() {
   local proxy_url
   local secret_key="$RUN_ID-secret"
   local secret_value="/opt/bastion-e2e-secret-$RUN_ID"
+  local utilization_baseline
 
   create_secret "$secret_key" "$secret_value"
   create_template "$key" "$(lifecycle_config)"
+  utilization_baseline="$(get_utilization)"
 
   output="$(run_cli templates get --key "$key")"
   if [[ "$output" != *"\${{ secret.$secret_key }}"* ]]; then
@@ -674,6 +706,7 @@ run_basic_setup_case() {
   second_env="$CREATED_ENV_ID"
   assert_json_no_key "env create $second_env" "$CREATED_ENV_OUTPUT"
   assert_environment_running "$second_env"
+  assert_utilization_delta "$utilization_baseline" 2 2147483648 17179869184
   ssh_env "$second_env" grep -q "$RUN_ID" /opt/bastion-e2e/run-id
   ssh_env "$second_env" grep -q basic-complete /opt/bastion-e2e/status
   ssh_env "$second_env" id bastione2e >/dev/null

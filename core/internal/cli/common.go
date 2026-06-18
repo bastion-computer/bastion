@@ -19,6 +19,7 @@ const (
 	removeUse      = "remove"
 	secretsUse     = "secrets"
 	setUse         = "set"
+	utilizationUse = "utilization"
 	getIDKeyUse    = "get [--id ID | --key KEY]"
 	removeIDKeyUse = "remove [--id ID | --key KEY]"
 )

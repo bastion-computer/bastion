@@ -112,6 +112,18 @@ bastion client --data-dir ~/.bastion-remote set api-url https://bastion.example
 bastion --data-dir ~/.bastion-remote env list
 ```
 
+## `bastion utilization`
+
+Shows host capacity and current allocations for live environments.
+
+```sh
+bastion utilization
+```
+
+The command calls `GET /v1/utilization` and writes JSON to stdout. `memory` and
+`volume` values are bytes. Used capacity includes environments in `creating`,
+`running`, and `paused` states.
+
 ## `bastion secrets`
 
 Creates and manages secrets referenced by templates.

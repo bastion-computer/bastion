@@ -27,6 +27,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
+	"github.com/bastion-computer/bastion/core/internal/services/utilization"
 	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
 
@@ -34,6 +35,7 @@ const (
 	apiTestProdTag = "prod"
 	apiTestGPUTag  = "gpu"
 	apiTestCPUTag  = "cpu"
+	apiTestGiB     = int64(1 << 30)
 )
 
 func TestListRoutes(t *testing.T) {
@@ -49,6 +51,34 @@ func TestListRoutes(t *testing.T) {
 
 	assertList[template.Metadata](t, router, "/v1/templates", 2)
 	assertList[environment.Environment](t, router, "/v1/environments", 2)
+}
+
+func TestUtilizationRoute(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithUtilizationHostCapacity(func(context.Context) (utilization.HostCapacity, error) {
+		return utilization.HostCapacity{VCPU: 12, MemoryBytes: 32 * apiTestGiB, VolumeBytes: 100 * apiTestGiB}, nil
+	}))
+
+	template := createTemplateWithConfig(t, router, "utilization-template", json.RawMessage(`{"agents":{"opencode":{}},"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`))
+	createEnvironment(t, router, requireStringPtr(t, template.Key))
+
+	res := request(t, router, http.MethodGet, "/v1/utilization", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("utilization status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var got utilization.Utilization
+	decode(t, res, &got)
+
+	want := utilization.Utilization{
+		VCPU:   utilization.Resource{Total: 12, Used: 3, Available: 9},
+		Memory: utilization.Resource{Total: 32 * apiTestGiB, Used: 4 * apiTestGiB, Available: 28 * apiTestGiB},
+		Volume: utilization.Resource{Total: 100 * apiTestGiB, Used: 5 * apiTestGiB, Available: 95 * apiTestGiB},
+	}
+	if got != want {
+		t.Fatalf("utilization = %#v, want %#v", got, want)
+	}
 }
 
 func TestCreateTemplateRejectsInvalidConfig(t *testing.T) {
