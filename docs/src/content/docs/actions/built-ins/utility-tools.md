@@ -6,10 +6,10 @@ description: Built-in Bastion actions for development utilities.
 Utility tool actions install CLIs and helper tools commonly needed by coding
 agents in guest VMs.
 
-Host environment substitutions such as `${{ env.GITHUB_TOKEN }}` are resolved
-when the template is created. The resolved values are then passed into the
-guest action and may be written to guest files by the action. Use scoped tokens
-appropriate for the environment.
+Secret references such as `${{ secret.GITHUB_TOKEN }}` are resolved before
+guest actions run. The resolved values are passed into the guest action and may
+be written to guest files by the action. Use scoped tokens appropriate for the
+environment.
 
 ## `set_default_ssh_directory`
 
@@ -74,8 +74,8 @@ Example:
         },
         "context": {
           "NODE_ENV": "development",
-          "SOME_VAR_1": "${{ env.SOME_VAR_1 }}",
-          "SOME_VAR_2": "${{ env.SOME_VAR_2 }}",
+          "SOME_VAR_1": "${{ secret.SOME_VAR_1 }}",
+          "SOME_VAR_2": "${{ secret.SOME_VAR_2 }}",
           "FEATURE_FLAGS": {
             "localDev": true
           }
@@ -115,7 +115,7 @@ Example:
       {
         "use": "setup_github_cli",
         "with": {
-          "token": "${{ env.GITHUB_TOKEN }}",
+          "token": "${{ secret.GITHUB_TOKEN }}",
           "hostname": "github.com",
           "git_protocol": "https"
         }

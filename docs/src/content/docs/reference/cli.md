@@ -112,6 +112,28 @@ bastion client --data-dir ~/.bastion-remote set api-url https://bastion.example
 bastion --data-dir ~/.bastion-remote env list
 ```
 
+## `bastion secrets`
+
+Creates and manages secrets referenced by templates.
+
+```sh
+bastion secrets create [--key KEY] --value VALUE
+bastion secrets list [--limit N] [--cursor CURSOR]
+bastion secrets get (--id ID | --key KEY)
+bastion secrets remove (--id ID | --key KEY)
+```
+
+| Command  | Description                                      |
+| -------- | ------------------------------------------------ |
+| `create` | Store a secret value and return metadata only.   |
+| `list`   | Return paginated secret metadata without values. |
+| `get`    | Return one secret with its value.                |
+| `remove` | Delete one secret by ID or key.                  |
+
+Secret IDs start with `sec_`. Secret keys are optional. When set, they must be
+unique and cannot start with `sec_`. Templates can reference secrets with
+`${{ secret.KEY }}` or `${{ secret.sec_xxxxxx }}`.
+
 ## `bastion templates`
 
 Creates and manages environment templates.

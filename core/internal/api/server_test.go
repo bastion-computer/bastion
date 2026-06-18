@@ -25,6 +25,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
@@ -80,6 +81,8 @@ func TestDocumentedTemplateExamplesCreateTemplates(t *testing.T) {
 	t.Parallel()
 
 	router := newTestRouter(t, slog.New(slog.DiscardHandler))
+	createSecret(t, router, "OPENAI_API_KEY", "test-openai-key")
+	createSecret(t, router, "GITHUB_TOKEN", "test-github-token")
 
 	cases := []struct {
 		name string
@@ -143,6 +146,103 @@ func TestTemplateAndEnvironmentOptionalKeys(t *testing.T) {
 	}
 
 	assertDelete(t, router, "/v1/environments/by-key/api-environment-key")
+}
+
+func TestSecretRoutes(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler))
+	key := "api-secret"
+
+	created := createSecretRoute(t, router, key, "secret-value")
+	assertSecretListRoute(t, router, created.ID, "secret-value")
+	assertSecretGetRoutes(t, router, created.ID, key, "secret-value")
+	assertSecretDeleteRoute(t, router, created.ID, key, "secret-value")
+}
+
+func createSecretRoute(t *testing.T, router http.Handler, key, value string) secret.Metadata {
+	t.Helper()
+
+	res := request(t, router, http.MethodPost, "/v1/secrets", secret.CreateRequest{Key: &key, Value: value})
+	if res.Code != http.StatusCreated {
+		t.Fatalf("create secret status = %d, want %d; body: %s", res.Code, http.StatusCreated, res.Body.String())
+	}
+
+	var created secret.Metadata
+	decode(t, res, &created)
+
+	if !strings.HasPrefix(created.ID, "sec_") || created.Key == nil || *created.Key != key {
+		t.Fatalf("created secret = %#v, want sec_ id and key", created)
+	}
+
+	if strings.Contains(res.Body.String(), value) || strings.Contains(res.Body.String(), `"value"`) {
+		t.Fatalf("create secret response leaked value: %s", res.Body.String())
+	}
+
+	return created
+}
+
+func assertSecretListRoute(t *testing.T, router http.Handler, secretID, value string) {
+	t.Helper()
+
+	res := request(t, router, http.MethodGet, "/v1/secrets", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("list secrets status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var page services.Page[secret.Metadata]
+	decode(t, res, &page)
+
+	if len(page.Entries) != 1 || page.Entries[0].ID != secretID {
+		t.Fatalf("secret page = %#v, want created secret metadata", page)
+	}
+
+	if strings.Contains(res.Body.String(), value) || strings.Contains(res.Body.String(), `"value"`) {
+		t.Fatalf("list secrets response leaked value: %s", res.Body.String())
+	}
+}
+
+func assertSecretGetRoutes(t *testing.T, router http.Handler, secretID, key, value string) {
+	t.Helper()
+
+	for _, path := range []string{"/v1/secrets/" + secretID, "/v1/secrets/by-key/" + key} {
+		res := request(t, router, http.MethodGet, path, nil)
+		if res.Code != http.StatusOK {
+			t.Fatalf("get secret %s status = %d, want %d", path, res.Code, http.StatusOK)
+		}
+
+		var got secret.Secret
+		decode(t, res, &got)
+
+		if got.ID != secretID || got.Value != value {
+			t.Fatalf("get secret %s = %#v, want value", path, got)
+		}
+	}
+}
+
+func assertSecretDeleteRoute(t *testing.T, router http.Handler, secretID, key, value string) {
+	t.Helper()
+
+	res := request(t, router, http.MethodDelete, "/v1/secrets/by-key/"+key, nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("delete secret status = %d, want %d", res.Code, http.StatusOK)
+	}
+
+	var removed secret.Metadata
+	decode(t, res, &removed)
+
+	if removed.ID != secretID {
+		t.Fatalf("removed secret = %#v, want %s", removed, secretID)
+	}
+
+	if strings.Contains(res.Body.String(), value) || strings.Contains(res.Body.String(), `"value"`) {
+		t.Fatalf("delete secret response leaked value: %s", res.Body.String())
+	}
+
+	res = request(t, router, http.MethodGet, "/v1/secrets/"+secretID, nil)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("get deleted secret status = %d, want %d", res.Code, http.StatusNotFound)
+	}
 }
 
 func TestCreateEnvironmentForwardsFailedDependency(t *testing.T) {
@@ -423,6 +523,20 @@ func createTemplate(t *testing.T, handler http.Handler, key string) template.Met
 	t.Helper()
 
 	return createTemplateWithConfig(t, handler, key, json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`))
+}
+
+func createSecret(t *testing.T, handler http.Handler, key, value string) secret.Metadata {
+	t.Helper()
+
+	res := request(t, handler, http.MethodPost, "/v1/secrets", secret.CreateRequest{Key: &key, Value: value})
+	if res.Code != http.StatusCreated {
+		t.Fatalf("create secret status = %d, want %d", res.Code, http.StatusCreated)
+	}
+
+	var created secret.Metadata
+	decode(t, res, &created)
+
+	return created
 }
 
 func createTemplateWithConfig(t *testing.T, handler http.Handler, key string, config json.RawMessage) template.Metadata {

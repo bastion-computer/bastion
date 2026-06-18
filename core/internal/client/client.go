@@ -18,6 +18,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/services"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
@@ -34,6 +35,42 @@ func New(baseURL string) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{},
 	}
+}
+
+// CreateSecret stores a secret.
+func (c *Client) CreateSecret(ctx context.Context, req secret.CreateRequest) (secret.Metadata, error) {
+	var out secret.Metadata
+	return out, c.do(ctx, http.MethodPost, "/v1/secrets", req, &out)
+}
+
+// ListSecrets returns secret metadata.
+func (c *Client) ListSecrets(ctx context.Context, limit int, cursor string) (services.Page[secret.Metadata], error) {
+	var out services.Page[secret.Metadata]
+	return out, c.do(ctx, http.MethodGet, listPath("/v1/secrets", limit, cursor), nil, &out)
+}
+
+// GetSecret returns a secret by ID or key.
+func (c *Client) GetSecret(ctx context.Context, id, key string) (secret.Secret, error) {
+	var out secret.Secret
+
+	path, err := resourcePath("/v1/secrets", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
+// RemoveSecret deletes a secret.
+func (c *Client) RemoveSecret(ctx context.Context, id, key string) (secret.Metadata, error) {
+	var out secret.Metadata
+
+	path, err := resourcePath("/v1/secrets", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
 }
 
 // CreateTemplate stores a template.

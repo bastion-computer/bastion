@@ -16,6 +16,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/schema"
 	"github.com/bastion-computer/bastion/core/internal/services"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 )
 
 // Template contains an environment template and its JSON configuration.
@@ -106,12 +107,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 		return Metadata{}, fmt.Errorf("%w: template config does not match schema: %w", failure.ErrInvalid, err)
 	}
 
-	config, err := services.SubstituteTemplateEnvironment(req.Config)
+	preparedConfig, err := s.resolveSecrets(ctx, req.Config)
 	if err != nil {
 		return Metadata{}, err
 	}
 
-	if err := schema.ValidateTemplateConfig(config); err != nil {
+	if err := schema.ValidateTemplateConfig(preparedConfig); err != nil {
 		return Metadata{}, fmt.Errorf("%w: resolved template config does not match schema: %w", failure.ErrInvalid, err)
 	}
 
@@ -120,13 +121,13 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 		return Metadata{}, err
 	}
 
-	template := Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append([]byte(nil), config...), CreatedAt: services.Now()}
+	template := Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append([]byte(nil), req.Config...), CreatedAt: services.Now()}
 
 	if _, err := s.orchestrator.PrepareTemplate(ctx, ch.PrepareTemplateRequest{
 		Template: ch.Template{
 			ID:     template.ID,
 			Key:    services.CopyStringPtr(template.Key),
-			Config: template.Config,
+			Config: preparedConfig,
 		},
 		Logs: req.Logs,
 	}); err != nil {
@@ -145,6 +146,23 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 	}
 
 	return template.Metadata(), nil
+}
+
+func (s *Service) resolveSecrets(ctx context.Context, config json.RawMessage) (json.RawMessage, error) {
+	secrets := secret.NewService(s.db)
+
+	return services.SubstituteTemplateSecrets(ctx, config, func(ctx context.Context, reference string) (string, error) {
+		resolved, err := secrets.GetReference(ctx, reference)
+		if errors.Is(err, failure.ErrNotFound) {
+			return "", fmt.Errorf("%w: secret %s not found", failure.ErrInvalid, reference)
+		}
+
+		if err != nil {
+			return "", err
+		}
+
+		return resolved.Value, nil
+	})
 }
 
 // List returns template metadata ordered by creation time.

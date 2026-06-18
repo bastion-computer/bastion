@@ -13,8 +13,10 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/handlers/environments"
+	"github.com/bastion-computer/bastion/core/internal/handlers/secrets"
 	"github.com/bastion-computer/bastion/core/internal/handlers/templates"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
@@ -77,6 +79,15 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 	v1.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	secretHandler := secrets.NewHandler(secret.NewService(db))
+	secretRoutes := v1.Group("/secrets")
+	secretRoutes.POST("", secretHandler.Create)
+	secretRoutes.GET("", secretHandler.List)
+	secretRoutes.GET("/:id", secretHandler.GetByID)
+	secretRoutes.GET("/by-key/:key", secretHandler.GetByKey)
+	secretRoutes.DELETE("/:id", secretHandler.RemoveByID)
+	secretRoutes.DELETE("/by-key/:key", secretHandler.RemoveByKey)
 
 	templateHandler := templates.NewHandler(template.NewService(db, template.WithOrchestrator(cfg.templateOrchestrator)))
 	templateRoutes := v1.Group("/templates")

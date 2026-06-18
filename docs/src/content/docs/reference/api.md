@@ -20,6 +20,89 @@ Response:
 }
 ```
 
+## Secrets
+
+Secrets store sensitive values that templates can reference with
+`${{ secret.KEY }}` or `${{ secret.sec_xxxxxx }}`. List and remove responses
+return metadata only. `GET` returns the value.
+
+### Create Secret
+
+```http
+POST /v1/secrets
+Content-Type: application/json
+```
+
+Request with an optional unique key. Secret keys cannot start with the reserved
+`sec_` ID prefix:
+
+```json
+{
+  "key": "OPENAI_API_KEY",
+  "value": "sk_xxxxxx"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "sec_xxxxxx",
+  "key": "OPENAI_API_KEY",
+  "createdAt": "<iso_timestamp>"
+}
+```
+
+If no key was provided, the `key` field is omitted from responses.
+
+### List Secrets
+
+```http
+GET /v1/secrets?limit=20&cursor=<cursor>
+```
+
+Response:
+
+```json
+{
+  "cursor": null,
+  "entries": [
+    {
+      "id": "sec_xxxxxx",
+      "key": "OPENAI_API_KEY",
+      "createdAt": "<iso_timestamp>"
+    }
+  ]
+}
+```
+
+### Get Secret
+
+```http
+GET /v1/secrets/sec_xxxxxx
+GET /v1/secrets/by-key/OPENAI_API_KEY
+```
+
+Response:
+
+```json
+{
+  "id": "sec_xxxxxx",
+  "key": "OPENAI_API_KEY",
+  "value": "sk_xxxxxx",
+  "createdAt": "<iso_timestamp>"
+}
+```
+
+### Remove Secret
+
+```http
+DELETE /v1/secrets/sec_xxxxxx
+DELETE /v1/secrets/by-key/OPENAI_API_KEY
+```
+
+The response is the removed secret metadata without the secret value.
+
 ## Templates
 
 ### Create Template

@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 )
 
 const (
@@ -118,6 +120,97 @@ func TestEnvironmentByKeyPaths(t *testing.T) {
 	want := []string{"GET /v1/environments/by-key/dev-env", "DELETE /v1/environments/by-key/dev-env"}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("paths = %#v, want %#v", paths, want)
+	}
+}
+
+func TestSecretClientPaths(t *testing.T) {
+	t.Parallel()
+
+	paths := make([]string, 0, 4)
+	secretKey := "client-secret"
+	client := newSecretClientPathTestClient(t, &paths, secretKey)
+
+	if _, err := client.CreateSecret(context.Background(), secret.CreateRequest{Key: &secretKey, Value: "secret-value"}); err != nil {
+		t.Fatalf("create secret: %v", err)
+	}
+
+	if _, err := client.ListSecrets(context.Background(), 10, "next"); err != nil {
+		t.Fatalf("list secrets: %v", err)
+	}
+
+	if _, err := client.GetSecret(context.Background(), "", secretKey); err != nil {
+		t.Fatalf("get secret: %v", err)
+	}
+
+	if _, err := client.RemoveSecret(context.Background(), "sec_created", ""); err != nil {
+		t.Fatalf("remove secret: %v", err)
+	}
+
+	want := []string{
+		"POST http://bastion.test/v1/secrets",
+		"GET http://bastion.test/v1/secrets?cursor=next&limit=10",
+		"GET http://bastion.test/v1/secrets/by-key/client-secret",
+		"DELETE http://bastion.test/v1/secrets/sec_created",
+	}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("paths = %#v, want %#v", paths, want)
+	}
+}
+
+func newSecretClientPathTestClient(t *testing.T, paths *[]string, secretKey string) *Client {
+	t.Helper()
+
+	return &Client{
+		baseURL: clientTestBaseURL,
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			*paths = append(*paths, req.Method+" "+req.URL.String())
+
+			return secretClientPathResponse(t, req, secretKey), nil
+		})},
+	}
+}
+
+func secretClientPathResponse(t *testing.T, req *http.Request, secretKey string) *http.Response {
+	t.Helper()
+
+	switch req.Method {
+	case http.MethodPost:
+		assertSecretClientCreateRequest(t, req, secretKey)
+
+		return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"sec_created","key":"client-secret","createdAt":"now"}`)
+	case http.MethodGet:
+		if strings.Contains(req.URL.Path, "/by-key/") {
+			return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"sec_created","key":"client-secret","value":"secret-value","createdAt":"now"}`)
+		}
+
+		return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[{"id":"sec_created","key":"client-secret","createdAt":"now"}]}`)
+	case http.MethodDelete:
+		return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"sec_created","key":"client-secret","createdAt":"now"}`)
+	default:
+		t.Fatalf("unexpected method %s", req.Method)
+
+		return nil
+	}
+}
+
+func assertSecretClientCreateRequest(t *testing.T, req *http.Request, secretKey string) {
+	t.Helper()
+
+	var createReq secret.CreateRequest
+	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
+		t.Fatalf("decode create request: %v", err)
+	}
+
+	if createReq.Key == nil || *createReq.Key != secretKey || createReq.Value != "secret-value" {
+		t.Fatalf("create request = %#v, want keyed secret value", createReq)
+	}
+}
+
+func clientJSONResponse(statusCode int, status, body string) *http.Response {
+	return &http.Response{
+		StatusCode: statusCode,
+		Status:     status,
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 }
 

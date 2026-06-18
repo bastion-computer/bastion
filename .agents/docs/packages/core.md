@@ -28,6 +28,7 @@ The core package lives in `core/`. On Linux it builds the `bastion` and `bastion
 | `internal/services` | Shared service-layer helpers and response types. |
 | `internal/services/template` | Template request/response types and persistence service. |
 | `internal/services/environment` | Environment request/response types and persistence service. |
+| `internal/services/secret` | Secret request/response types and persistence service. |
 | `internal/tunnel` | Shared guest-proxy tunnel constants and Cloud Hypervisor vsock dial helpers. |
 | `internal/schema` | Embedded JSON Schema documents and validation helpers. |
 | `internal/system` | Host setup/check commands for Cloud Hypervisor assets and utilities. |
@@ -93,6 +94,7 @@ Supported top-level commands are intentionally limited to the current product sc
 
 - `bastion start api` and `bastion start daemon`
 - `bastion system check`, `bastion system add cloud-hypervisor`, and `bastion system remove cloud-hypervisor`
+- `bastion secrets ...`
 - `bastion templates ...`
 - `bastion env ...`
 - `bastion client set api-url URL`, `bastion client remove api-url`, and `bastion client config`

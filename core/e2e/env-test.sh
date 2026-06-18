@@ -13,10 +13,12 @@ RUN_ID="e2e-env-$(date +%Y%m%d%H%M%S)-$$"
 TEMPLATE_KEYS=()
 TEMPLATE_IDS=()
 ENV_IDS=()
+SECRET_IDS=()
 PROXY_PIDS=()
 CREATED_TEMPLATE_ID=""
 CREATED_ENV_ID=""
 CREATED_ENV_OUTPUT=""
+CREATED_SECRET_ID=""
 
 log() {
   printf '[env-test] %s\n' "$*"
@@ -38,7 +40,7 @@ cleanup() {
   cleanup_proxies
 
   if [ "$status" -ne 0 ] && [ "${BASTION_E2E_KEEP_FAILED:-}" = "1" ]; then
-    log "preserving failed run resources: environments=${ENV_IDS[*]:-} templates=${TEMPLATE_IDS[*]:-} template_keys=${TEMPLATE_KEYS[*]:-}"
+    log "preserving failed run resources: environments=${ENV_IDS[*]:-} templates=${TEMPLATE_IDS[*]:-} template_keys=${TEMPLATE_KEYS[*]:-} secrets=${SECRET_IDS[*]:-}"
     exit "$status"
   fi
 
@@ -93,6 +95,18 @@ cleanup_templates() {
   TEMPLATE_IDS=()
 }
 
+cleanup_secrets() {
+  local secret_id
+
+  for secret_id in "${SECRET_IDS[@]}"; do
+    if [ -n "$secret_id" ]; then
+      run_cli secrets remove --id "$secret_id" >/dev/null 2>&1 || log "cleanup: secret $secret_id was not removed"
+    fi
+  done
+
+  SECRET_IDS=()
+}
+
 cleanup_proxies() {
   local proxy_pid
 
@@ -111,10 +125,12 @@ cleanup_resources() {
   collect_template_environments
   cleanup_environments
   cleanup_templates
+  cleanup_secrets
 
   CREATED_TEMPLATE_ID=""
   CREATED_ENV_ID=""
   CREATED_ENV_OUTPUT=""
+  CREATED_SECRET_ID=""
 }
 
 run_case() {
@@ -168,6 +184,48 @@ create_template() {
 
   TEMPLATE_KEYS+=("$key")
   TEMPLATE_IDS+=("$CREATED_TEMPLATE_ID")
+}
+
+create_secret() {
+  local key=$1
+  local value=$2
+  local output
+
+  log "creating secret $key"
+  output="$(run_cli secrets create --key "$key" --value "$value")"
+  CREATED_SECRET_ID="$(json_get '.id' <<<"$output")"
+
+  if [ -z "$CREATED_SECRET_ID" ] || [ "$CREATED_SECRET_ID" = "null" ]; then
+    fail "secret $key did not return an id"
+  fi
+
+  if [[ "$CREATED_SECRET_ID" != sec_* ]]; then
+    fail "secret $key id is $CREATED_SECRET_ID, want sec_ prefix"
+  fi
+
+  if ! jq -e --arg key "$key" '.key == $key' <<<"$output" >/dev/null; then
+    fail "secret $key response key is $(jq -c '.key // null' <<<"$output"), want $key"
+  fi
+
+  if jq -e 'has("value")' <<<"$output" >/dev/null || [[ "$output" == *"$value"* ]]; then
+    fail "secret create response leaked value: $output"
+  fi
+
+  output="$(run_cli secrets get --key "$key")"
+  if ! jq -e --arg id "$CREATED_SECRET_ID" --arg key "$key" --arg value "$value" '.id == $id and .key == $key and .value == $value' <<<"$output" >/dev/null; then
+    fail "secret get --key $key response is $(jq -c . <<<"$output"), want created value"
+  fi
+
+  output="$(run_cli secrets list --limit 5000)"
+  if ! jq -e --arg id "$CREATED_SECRET_ID" '.entries[] | select(.id == $id)' <<<"$output" >/dev/null; then
+    fail "secret list did not include $CREATED_SECRET_ID"
+  fi
+
+  if [[ "$output" == *"$value"* ]]; then
+    fail "secret list response leaked value: $output"
+  fi
+
+  SECRET_IDS+=("$CREATED_SECRET_ID")
 }
 
 create_unkeyed_template() {
@@ -394,8 +452,12 @@ basic_setup_config() {
 
 lifecycle_config() {
   local api_key="opencode-e2e-${RUN_ID}"
+  local secret_key="$RUN_ID-secret"
+  local secret_ref
   local verify_opencode_written
   local verify_opencode_started
+
+  secret_ref="\${{ secret.$secret_key }}"
 
   verify_opencode_written="$(printf '%s\n' \
     'set -eu' \
@@ -416,6 +478,7 @@ lifecycle_config() {
   jq -nc \
     --arg run_id "$RUN_ID" \
     --arg api_key "$api_key" \
+    --arg secret_ref "$secret_ref" \
     --arg verify_opencode_written "$verify_opencode_written" \
     --arg verify_opencode_started "$verify_opencode_started" \
     '{
@@ -441,13 +504,13 @@ lifecycle_config() {
           {run: "set -eu\nprintf \"run_id=\($run_id)\\n\" > /opt/bastion-e2e/run-id\nprintf \"hostname=%s\\n\" \"$(hostname)\" > /opt/bastion-e2e/hostname"},
           {run: "set -eu\nuseradd -m bastione2e\nid bastione2e > /opt/bastion-e2e/user"},
           {run: "set -eu\nchmod 600 /opt/bastion-e2e/run-id\nprintf basic-complete > /opt/bastion-e2e/status"},
-          {run: "set -eu\nmkdir -p /opt/bastion-e2e-env\nprintf \"%s\\n\" \"${{ env.HOME }}\" > /opt/bastion-e2e-env/home"},
+          {run: "set -eu\nmkdir -p /opt/bastion-e2e-secret\nprintf \"%s\\n\" \($secret_ref) > /opt/bastion-e2e-secret/value"},
           {
             use: "write_env_file",
             with: {path: "/opt/bastion-e2e-write-env"},
             context: {
               BASTION_E2E_STATIC: "hello world",
-              BASTION_E2E_HOME: "${{ env.HOME }}",
+              BASTION_E2E_SECRET: $secret_ref,
               BASTION_E2E_NUMBER: 42,
               BASTION_E2E_BOOL: true,
               BASTION_E2E_JSON: {run_id: $run_id}
@@ -573,8 +636,20 @@ run_basic_setup_case() {
   local expected_key_url
   local proxy_logs
   local proxy_url
+  local secret_key="$RUN_ID-secret"
+  local secret_value="/opt/bastion-e2e-secret-$RUN_ID"
 
+  create_secret "$secret_key" "$secret_value"
   create_template "$key" "$(lifecycle_config)"
+
+  output="$(run_cli templates get --key "$key")"
+  if [[ "$output" != *"\${{ secret.$secret_key }}"* ]]; then
+    fail "template get did not preserve secret reference for $secret_key: $output"
+  fi
+
+  if [[ "$output" == *"$secret_value"* ]]; then
+    fail "template get leaked secret value: $output"
+  fi
 
   logs="/tmp/bastion-env-test-start-$RUN_ID.log"
   create_environment_with_logs "$key" "$logs" --key "$first_env_key" -t "$shared_tag" --tag "$first_env_tag"
@@ -614,10 +689,13 @@ run_basic_setup_case() {
     fail "concurrent environments have non-unique DHCP addresses: first=$first_ip second=$second_ip"
   fi
 
-  ssh_env "$second_env" test -s /opt/bastion-e2e-env/home
-  ssh_env "$second_env" grep -q '^/' /opt/bastion-e2e-env/home
-  if ssh_env "$second_env" "grep -F -q '\${{ env.HOME }}' /opt/bastion-e2e-env/home" 2>/dev/null; then
-    fail "environment variable placeholder was not substituted in $second_env"
+  ssh_env "$second_env" test -s /opt/bastion-e2e-secret/value
+  if [ "$(ssh_env "$second_env" cat /opt/bastion-e2e-secret/value)" != "$secret_value" ]; then
+    fail "secret value in $second_env was not resolved"
+  fi
+
+  if ssh_env "$second_env" "grep -F -q '\${{ secret.$secret_key }}' /opt/bastion-e2e-secret/value" 2>/dev/null; then
+    fail "secret placeholder was not substituted in $second_env"
   fi
 
   ssh_env "$second_env" "set -eu
@@ -630,10 +708,7 @@ if [ \"\$mode\" != 600 ]; then
 fi
 . \"\$env_file\"
 test \"\$BASTION_E2E_STATIC\" = 'hello world'
-case \"\$BASTION_E2E_HOME\" in
-  /*) ;;
-  *) printf 'BASTION_E2E_HOME was %s, want absolute path\n' \"\$BASTION_E2E_HOME\" >&2; exit 1 ;;
-esac
+test \"\$BASTION_E2E_SECRET\" = '$secret_value'
 test \"\$BASTION_E2E_NUMBER\" = 42
 test \"\$BASTION_E2E_BOOL\" = true
 printf '%s' \"\$BASTION_E2E_JSON\" | jq -e --arg run_id '$RUN_ID' '.run_id == \$run_id' >/dev/null
