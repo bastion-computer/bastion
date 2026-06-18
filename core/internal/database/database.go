@@ -13,7 +13,6 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	sqlite "github.com/mattn/go-sqlite3"
 
 	"github.com/bastion-computer/bastion/core/internal/migrations"
 )
@@ -82,12 +81,6 @@ func (c *Client) QueryRowContext(ctx context.Context, query string, args ...any)
 // BeginTx starts a database transaction.
 func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return c.db.BeginTx(ctx, opts)
-}
-
-// IsConstraint reports whether err is a SQLite constraint violation.
-func IsConstraint(err error) bool {
-	var sqliteErr sqlite.Error
-	return errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite.ErrConstraint
 }
 
 func dsn(dataDir string) (string, error) {

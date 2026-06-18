@@ -81,6 +81,17 @@ check_target() {
   done
 }
 
+check_darwin_client_build() {
+  (
+    cd core
+    BASTION_VERSION=test CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
+      go build \
+        -ldflags '-X github.com/bastion-computer/bastion/core/internal/config.Version=test' \
+        -o "$TMP_DIR/bastion_darwin_arm64" \
+        ./cmd/bastion
+  )
+}
+
 if [ ! -f "$WORKFLOW" ]; then
   fail "workflow not found: $WORKFLOW"
 fi
@@ -88,5 +99,6 @@ fi
 TMP_DIR="$(mktemp -d)"
 check_target linux_x86_64 'bastion bastion-guest-proxy'
 check_target darwin_arm64 'bastion'
+check_darwin_client_build
 
-printf 'release workflow package contents are valid\n'
+printf 'release workflow package contents and darwin client build are valid\n'
