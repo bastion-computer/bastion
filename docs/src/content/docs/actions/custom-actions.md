@@ -98,7 +98,7 @@ sets `BASTION_CONTEXT_FILE` to that file path before running the action command.
   "context": {
     "env": {
       "NODE_ENV": "development",
-      "API_TOKEN": "${{ env.API_TOKEN }}"
+      "API_TOKEN": "${{ secret.API_TOKEN }}"
     }
   }
 }

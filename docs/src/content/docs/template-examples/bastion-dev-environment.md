@@ -26,7 +26,7 @@ Create `template.json`:
       "auth": {
         "openai": {
           "type": "api",
-          "key": "${{ env.OPENAI_API_KEY }}"
+          "key": "${{ secret.OPENAI_API_KEY }}"
         }
       },
       "config": {
@@ -53,7 +53,7 @@ Create `template.json`:
       {
         "use": "setup_github_cli",
         "with": {
-          "token": "${{ env.GITHUB_TOKEN }}",
+          "token": "${{ secret.GITHUB_TOKEN }}",
           "hostname": "github.com",
           "git_protocol": "https"
         }
@@ -85,12 +85,11 @@ Create `template.json`:
 
 ## Create the Environment
 
-Export the host environment variables referenced by the template before creating
-the environment:
+Create the secrets referenced by the template before registering it:
 
 ```sh
-export GITHUB_TOKEN=ghp_xxxxxx
-export OPENAI_API_KEY=sk_xxxxxx
+bastion secrets create --key GITHUB_TOKEN --value ghp_xxxxxx
+bastion secrets create --key OPENAI_API_KEY --value sk_xxxxxx
 ```
 
 Register the template:
@@ -116,9 +115,9 @@ as the default SSH directory.
 
 ## Change OpenCode Providers
 
-The template uses OpenAI by default. To use Anthropic instead, change the
-`agents.opencode.auth` and `agents.opencode.config` objects, then export
-`ANTHROPIC_API_KEY` on the host before creating the environment:
+The template uses OpenAI by default. To use Anthropic instead, create an
+`ANTHROPIC_API_KEY` secret and change the `agents.opencode.auth` and
+`agents.opencode.config` objects:
 
 ```json
 {
@@ -128,7 +127,7 @@ The template uses OpenAI by default. To use Anthropic instead, change the
       "auth": {
         "anthropic": {
           "type": "api",
-          "key": "${{ env.ANTHROPIC_API_KEY }}"
+          "key": "${{ secret.ANTHROPIC_API_KEY }}"
         }
       },
       "config": {
@@ -143,7 +142,6 @@ For other providers, update both objects. Also update or remove the
 `config` agent model and variant overrides when they should not use OpenAI
 `gpt-5.5` with `xhigh`.
 
-Environment substitutions such as `${{ env.OPENAI_API_KEY }}` are resolved by
-Bastion when the template is created. The resolved API key is written into the
-prepared guest OpenCode auth file, so use a token scoped for environments cloned
-from this template.
+Secret references such as `${{ secret.OPENAI_API_KEY }}` are resolved by
+Bastion before guest setup runs. The resolved API key is written into the guest
+OpenCode auth file, so use a token scoped for these environments.

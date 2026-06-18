@@ -122,13 +122,40 @@ func openCodeStartCommand(agent templateOpenCodeAgent) (string, error) {
 		return "", err
 	}
 
-	return strings.Join([]string{
+	workingDirectory := openCodeWorkingDirectory(agent)
+
+	configJSON, hasConfig, err := optionalJSONObject(agent.Config)
+	if err != nil {
+		return "", fmt.Errorf("encode opencode config: %w", err)
+	}
+
+	authJSON, hasAuth, err := optionalJSONObject(agent.Auth)
+	if err != nil {
+		return "", fmt.Errorf("encode opencode auth: %w", err)
+	}
+
+	lines := []string{
 		shellStrictMode,
-		"mkdir -p " + shellQuote(openCodeWorkingDirectory(agent)),
+		"umask 077",
+	}
+
+	if hasConfig {
+		lines = append(lines, writeOpenCodeJSONCommand("config", configJSON, "/root/.config/opencode", "/root/.config/opencode/opencode.json"))
+	}
+
+	if hasAuth {
+		lines = append(lines, writeOpenCodeJSONCommand("auth", authJSON, "/root/.local/share/opencode", "/root/.local/share/opencode/auth.json"))
+	}
+
+	lines = append(lines,
+		"mkdir -p "+shellQuote(workingDirectory),
+		"printf %s "+shellQuote(openCodeSystemdUnit(workingDirectory, port))+" > /etc/systemd/system/"+openCodeServiceName,
 		"systemctl daemon-reload",
-		"systemctl restart " + openCodeServiceName,
+		"systemctl restart "+openCodeServiceName,
 		openCodeHealthWaitCommand(port),
-	}, "\n"), nil
+	)
+
+	return strings.Join(lines, "\n"), nil
 }
 
 func optionalJSONObject(value map[string]any) (string, bool, error) {

@@ -17,6 +17,7 @@ const (
 	listUse        = "list"
 	proxyUse       = "proxy"
 	removeUse      = "remove"
+	secretsUse     = "secrets"
 	setUse         = "set"
 	getIDKeyUse    = "get [--id ID | --key KEY]"
 	removeIDKeyUse = "remove [--id ID | --key KEY]"

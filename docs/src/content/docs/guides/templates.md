@@ -134,7 +134,7 @@ Example with provider credentials and a custom model:
       "auth": {
         "anthropic": {
           "type": "api",
-          "key": "${{ env.ANTHROPIC_API_KEY }}"
+          "key": "${{ secret.ANTHROPIC_API_KEY }}"
         }
       },
       "config": {
@@ -260,10 +260,16 @@ layout. Built-in actions are documented by category under
 [Utility Tools](/actions/built-ins/utility-tools/) and
 [Runtimes](/actions/built-ins/runtimes/).
 
-## Environment Substitution
+## Secret References
 
-Bastion resolves host environment variables in template strings when the
-template is created:
+Bastion resolves secret references in template strings before the config is sent
+to VM orchestration. Store a secret first:
+
+```sh
+bastion secrets create --key PROJECT_NAME --value acme-app
+```
+
+Then reference it from template JSON:
 
 ```json
 {
@@ -273,20 +279,26 @@ template is created:
   "actions": {
     "init": [
       {
-        "run": "printf '%s\\n' '${{ env.PROJECT_NAME }}' > /workspace/project.txt"
+        "run": "printf '%s\\n' '${{ secret.PROJECT_NAME }}' > /workspace/project.txt"
       }
     ]
   }
 }
 ```
 
-The expression `${{ env.PROJECT_NAME }}` is replaced with the `PROJECT_NAME`
-value from the `bastion start api` process environment. If the variable is not set,
-template creation fails.
+Use `${{ secret.KEY }}` for keyed secrets or `${{ secret.sec_xxxxxx }}` for a
+secret ID. If the secret does not exist, template creation or environment
+creation fails.
 
-Substitution works anywhere a string appears in the template JSON, including
-`agents.opencode`, `actions.init`, `actions.start`, `run` commands,
-`working_directory`, action package inputs, and action package context.
+The stored template config keeps the original reference syntax. `templates get`
+does not return secret values. Resolution works anywhere a string appears in the
+template JSON, including `agents.opencode`, `actions.init`, `actions.start`,
+`run` commands, `working_directory`, action package inputs, and action package
+context.
+
+Values used by `actions.init` are baked into the prepared template snapshot.
+Use `actions.start` for values that should be resolved fresh for each new
+environment.
 
 ## Create a Template
 

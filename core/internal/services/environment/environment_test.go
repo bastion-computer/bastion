@@ -12,6 +12,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
@@ -134,6 +135,64 @@ func TestServicePreservesTemplateResourcesForOrchestration(t *testing.T) {
 
 	if launched.Resources.VCPU != 3 || launched.Resources.Memory != 4 || launched.Resources.Volume != 5 {
 		t.Fatalf("launched resources = %#v, want template resources", launched.Resources)
+	}
+}
+
+func TestServiceResolvesTemplateSecretsWhenLaunchingEnvironment(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	secrets := secret.NewService(db)
+	templates := template.NewService(db)
+	orchestrator := newFakeOrchestrator()
+	service := environment.NewService(db, environment.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+	secretKey := "runtime-token"
+
+	if _, err := secrets.Create(ctx, secret.CreateRequest{Key: &secretKey, Value: "initial-secret"}); err != nil {
+		t.Fatalf("create initial secret: %v", err)
+	}
+
+	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
+		Key:    new("runtime-secret-template"),
+		Config: json.RawMessage(`{"agents":{"opencode":{"auth":{"anthropic":{"type":"api","key":"${{ secret.runtime-token }}"}}}},"actions":{"init":[],"start":[{"run":"printf '${{ secret.runtime-token }}' > /tmp/runtime-token"}]}}`),
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	if _, err := secrets.Remove(ctx, "", secretKey); err != nil {
+		t.Fatalf("remove initial secret: %v", err)
+	}
+
+	if _, err := secrets.Create(ctx, secret.CreateRequest{Key: &secretKey, Value: "rotated-secret"}); err != nil {
+		t.Fatalf("create rotated secret: %v", err)
+	}
+
+	if _, err := service.Create(ctx, environment.CreateRequest{TemplateID: createdTemplate.ID}); err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+
+	if len(orchestrator.templates) != 1 {
+		t.Fatalf("launched templates = %d, want 1", len(orchestrator.templates))
+	}
+
+	launchedConfig := string(orchestrator.templates[0].Config)
+	if !strings.Contains(launchedConfig, "rotated-secret") {
+		t.Fatalf("launched config = %s, want rotated secret", launchedConfig)
+	}
+
+	if strings.Contains(launchedConfig, "initial-secret") || strings.Contains(launchedConfig, "${{ secret.runtime-token }}") {
+		t.Fatalf("launched config = %s, want only resolved rotated secret", launchedConfig)
+	}
+
+	storedTemplate, err := templates.Get(ctx, createdTemplate.ID, "")
+	if err != nil {
+		t.Fatalf("get stored template: %v", err)
+	}
+
+	if strings.Contains(string(storedTemplate.Config), "rotated-secret") || strings.Contains(string(storedTemplate.Config), "initial-secret") {
+		t.Fatalf("stored template config leaked secret: %s", storedTemplate.Config)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
@@ -180,19 +181,26 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 	}
 }
 
-func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
-	const envName = "BASTION_TEMPLATE_SUBSTITUTION_TEST"
-
-	t.Setenv(envName, "substituted-value")
+func TestServicePreparesResolvedTemplateSecretsWithoutStoringValues(t *testing.T) {
+	t.Parallel()
 
 	db := openDB(t)
+	secrets := secret.NewService(db)
 	orchestrator := &fakeTemplateOrchestrator{}
 	service := template.NewService(db, template.WithOrchestrator(orchestrator))
 	ctx := context.Background()
+	key := "substitution-token"
+
+	createdSecret, err := secrets.Create(ctx, secret.CreateRequest{Key: &key, Value: "substituted-value"})
+	if err != nil {
+		t.Fatalf("create secret: %v", err)
+	}
+
+	originalConfig := json.RawMessage(fmt.Sprintf(`{"agents":{"opencode":{"working_directory":"/workspace/${{ secret.%s }}","auth":{"anthropic":{"type":"api","key":"${{ secret.%s }}"}},"config":{"model":"anthropic/${{ secret.%s }}"}}},"actions":{"init":[{"run":"printf '${{ secret.%s }}'"},{"use":"write_env_file","with":{"path":"/workspace/${{ secret.%s }}"},"context":{"TOKEN":"${{ secret.%s }}","NESTED":{"name":"prefix-${{ secret.%s }}"}}}],"start":[{"run":"printf '${{ secret.%s }} again'"}]}}`, key, createdSecret.ID, key, key, createdSecret.ID, key, createdSecret.ID, key))
 
 	created, err := service.Create(ctx, template.CreateRequest{
 		Key:    new("substitution-template"),
-		Config: json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}","auth":{"anthropic":{"type":"api","key":"${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}},"config":{"model":"anthropic/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}}},"actions":{"init":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}'"},{"use":"write_env_file","with":{"path":"/workspace/${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"},"context":{"TOKEN":"${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}","NESTED":{"name":"prefix-${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }}"}}}],"start":[{"run":"printf '${{ env.BASTION_TEMPLATE_SUBSTITUTION_TEST }} again'"}]}}`),
+		Config: originalConfig,
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)
@@ -209,8 +217,12 @@ func TestServicePreparesResolvedTemplateEnvironmentVariables(t *testing.T) {
 		t.Fatalf("get stored template: %v", err)
 	}
 
-	if !jsonEqual(stored.Config, orchestrator.prepared[0].Config) {
-		t.Fatalf("stored config = %s, want prepared config %s", stored.Config, orchestrator.prepared[0].Config)
+	if !jsonEqual(stored.Config, originalConfig) {
+		t.Fatalf("stored config = %s, want original config %s", stored.Config, originalConfig)
+	}
+
+	if strings.Contains(string(stored.Config), "substituted-value") {
+		t.Fatalf("stored config leaked secret value: %s", stored.Config)
 	}
 }
 
@@ -272,10 +284,10 @@ func requirePreparedSubstitutionConfig(t *testing.T, config json.RawMessage) {
 	}
 }
 
-func TestServiceRejectsUnsetTemplateEnvironmentVariableBeforePrepare(t *testing.T) {
+func TestServiceRejectsMissingTemplateSecretBeforePrepare(t *testing.T) {
 	t.Parallel()
 
-	missingName := "BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2"
+	missingName := "missing-secret-key"
 	db := openDB(t)
 	orchestrator := &fakeTemplateOrchestrator{}
 	service := template.NewService(db, template.WithOrchestrator(orchestrator))
@@ -283,10 +295,31 @@ func TestServiceRejectsUnsetTemplateEnvironmentVariableBeforePrepare(t *testing.
 
 	_, err := service.Create(ctx, template.CreateRequest{
 		Key:    new("missing-substitution-template"),
-		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo ${{ env.BASTION_TEMPLATE_SUBSTITUTION_MISSING_TEST_73D4C05F5B2F4E2FA7D8C7D2 }}"}]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo ${{ secret.missing-secret-key }}"}]}}`),
 	})
 	if !errors.Is(err, failure.ErrInvalid) || !strings.Contains(err.Error(), missingName) {
-		t.Fatalf("create template error = %v, want invalid missing env var", err)
+		t.Fatalf("create template error = %v, want invalid missing secret", err)
+	}
+
+	if len(orchestrator.prepared) != 0 {
+		t.Fatalf("prepared templates = %d, want 0", len(orchestrator.prepared))
+	}
+}
+
+func TestServiceRejectsTemplateEnvironmentSubstitution(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	orchestrator := &fakeTemplateOrchestrator{}
+	service := template.NewService(db, template.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	_, err := service.Create(ctx, template.CreateRequest{
+		Key:    new("env-substitution-template"),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo ${{ env.HOME }}"}]}}`),
+	})
+	if !errors.Is(err, failure.ErrInvalid) || !strings.Contains(err.Error(), "env.HOME") {
+		t.Fatalf("create template error = %v, want invalid env substitution", err)
 	}
 
 	if len(orchestrator.prepared) != 0 {

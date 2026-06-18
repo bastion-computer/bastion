@@ -18,6 +18,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/schema"
 	"github.com/bastion-computer/bastion/core/internal/services"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
 )
 
 // Environment describes a managed opencode environment.
@@ -146,7 +147,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 		return Environment{}, err
 	}
 
-	if err := schema.ValidateTemplateConfig(template.Config); err != nil {
+	resolvedConfig, err := s.resolveSecrets(ctx, template.Config)
+	if err != nil {
+		return Environment{}, err
+	}
+
+	if err := schema.ValidateTemplateConfig(resolvedConfig); err != nil {
 		return Environment{}, fmt.Errorf("%w: resolved template config does not match schema: %w", failure.ErrInvalid, err)
 	}
 
@@ -167,7 +173,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 		Template: ch.Template{
 			ID:     template.ID,
 			Key:    services.CopyStringPtr(template.Key),
-			Config: template.Config,
+			Config: resolvedConfig,
 		},
 		Logs: req.Logs,
 	})
@@ -196,6 +202,23 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	}
 
 	return s.Get(ctx, environment.ID)
+}
+
+func (s *Service) resolveSecrets(ctx context.Context, config json.RawMessage) (json.RawMessage, error) {
+	secrets := secret.NewService(s.db)
+
+	return services.SubstituteTemplateSecrets(ctx, config, func(ctx context.Context, reference string) (string, error) {
+		resolved, err := secrets.GetReference(ctx, reference)
+		if errors.Is(err, failure.ErrNotFound) {
+			return "", fmt.Errorf("%w: secret %s not found", failure.ErrInvalid, reference)
+		}
+
+		if err != nil {
+			return "", err
+		}
+
+		return resolved.Value, nil
+	})
 }
 
 func (s *Service) createRecord(ctx context.Context, environment Environment) error {
