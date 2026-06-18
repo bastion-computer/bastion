@@ -131,8 +131,8 @@ bastion secrets remove (--id ID | --key KEY)
 | `remove` | Delete one secret by ID or key.                  |
 
 Secret IDs start with `sec_`. Secret keys are optional. When set, they must be
-unique. Templates can reference secrets with `${{ secret.KEY }}` or
-`${{ secret.sec_xxxxxx }}`.
+unique and cannot start with `sec_`. Templates can reference secrets with
+`${{ secret.KEY }}` or `${{ secret.sec_xxxxxx }}`.
 
 ## `bastion templates`
 

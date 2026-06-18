@@ -15,6 +15,8 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services"
 )
 
+const secretIDPrefix = "sec"
+
 // Secret contains a secret and its value.
 type Secret struct {
 	ID        string  `json:"id"`
@@ -52,11 +54,15 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 		return Metadata{}, err
 	}
 
+	if req.Key != nil && strings.HasPrefix(*req.Key, secretIDPrefix+"_") {
+		return Metadata{}, fmt.Errorf("%w: secret key cannot use reserved %s_ prefix", failure.ErrInvalid, secretIDPrefix)
+	}
+
 	if req.Value == "" {
 		return Metadata{}, fmt.Errorf("%w: secret value is required", failure.ErrInvalid)
 	}
 
-	secretID, err := services.GenerateID("sec")
+	secretID, err := services.GenerateID(secretIDPrefix)
 	if err != nil {
 		return Metadata{}, err
 	}

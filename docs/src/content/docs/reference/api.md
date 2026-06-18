@@ -33,7 +33,8 @@ POST /v1/secrets
 Content-Type: application/json
 ```
 
-Request with an optional unique key:
+Request with an optional unique key. Secret keys cannot start with the reserved
+`sec_` ID prefix:
 
 ```json
 {

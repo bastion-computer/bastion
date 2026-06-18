@@ -287,8 +287,9 @@ Then reference it from template JSON:
 ```
 
 Use `${{ secret.KEY }}` for keyed secrets or `${{ secret.sec_xxxxxx }}` for a
-secret ID. If the secret does not exist, template creation or environment
-creation fails.
+secret ID. Secret keys cannot start with `sec_`, which is reserved for secret
+IDs. If the secret does not exist, template creation or environment creation
+fails.
 
 The stored template config keeps the original reference syntax. `templates get`
 does not return secret values. Resolution works anywhere a string appears in the

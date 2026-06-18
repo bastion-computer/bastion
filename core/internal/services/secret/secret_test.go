@@ -153,6 +153,7 @@ func TestServiceRejectsDuplicateBlankAndEmptySecrets(t *testing.T) {
 	ctx := context.Background()
 	key := "duplicate-secret"
 	blankKey := ""
+	reservedKey := "sec_reserved"
 
 	if _, err := service.Create(ctx, secret.CreateRequest{Key: &key, Value: "first"}); err != nil {
 		t.Fatalf("create keyed secret: %v", err)
@@ -164,6 +165,10 @@ func TestServiceRejectsDuplicateBlankAndEmptySecrets(t *testing.T) {
 
 	if _, err := service.Create(ctx, secret.CreateRequest{Key: &blankKey, Value: "value"}); !errors.Is(err, failure.ErrInvalid) {
 		t.Fatalf("create blank-key secret error = %v, want invalid", err)
+	}
+
+	if _, err := service.Create(ctx, secret.CreateRequest{Key: &reservedKey, Value: "value"}); !errors.Is(err, failure.ErrInvalid) {
+		t.Fatalf("create reserved-prefix secret error = %v, want invalid", err)
 	}
 
 	if _, err := service.Create(ctx, secret.CreateRequest{Value: ""}); !errors.Is(err, failure.ErrInvalid) {
