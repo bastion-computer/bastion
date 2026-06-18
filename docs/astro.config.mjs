@@ -44,6 +44,22 @@ export default defineConfig({
       ],
       favicon: "/favicon.ico",
       title: "bastion.computer",
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content: "https://i.imgur.com/ohVUfp0.png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image",
+            content: "https://i.imgur.com/ohVUfp0.png",
+          },
+        },
+      ],
       social: [
         {
           icon: "email",
