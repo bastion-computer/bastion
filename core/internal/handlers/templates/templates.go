@@ -94,7 +94,7 @@ func (h Handler) Import(c *gin.Context) {
 		key = &value
 	}
 
-	imported, err := h.templates.Import(c.Request.Context(), template.ImportRequest{Key: key, Archive: c.Request.Body})
+	imported, err := h.templates.Import(c.Request.Context(), template.ImportRequest{Key: key, Archive: c.Request.Body, ArchiveSize: c.Request.ContentLength})
 	handlers.Respond(c, imported, err, http.StatusCreated)
 }
 

@@ -32,8 +32,9 @@ type CreateRequest struct {
 
 // ImportRequest contains the fields needed to import a prepared template archive.
 type ImportRequest struct {
-	Key     *string   `json:"key,omitempty"`
-	Archive io.Reader `json:"-"`
+	Key         *string   `json:"key,omitempty"`
+	Archive     io.Reader `json:"-"`
+	ArchiveSize int64     `json:"-"`
 }
 
 // ArchiveContentType is the media type used for template import/export streams.

@@ -108,6 +108,10 @@ func TestImportTemplateUploadsArchive(t *testing.T) {
 				t.Fatalf("request = %s %s?%s, want keyed import", req.Method, req.URL.Path, req.URL.RawQuery)
 			}
 
+			if req.ContentLength != int64(len("template-archive")) {
+				t.Fatalf("ContentLength = %d, want archive size", req.ContentLength)
+			}
+
 			if req.Header.Get("Content-Type") != template.ArchiveContentType {
 				t.Fatalf("Content-Type = %q, want %q", req.Header.Get("Content-Type"), template.ArchiveContentType)
 			}
@@ -129,7 +133,7 @@ func TestImportTemplateUploadsArchive(t *testing.T) {
 		})},
 	}
 
-	imported, err := client.ImportTemplate(context.Background(), template.ImportRequest{Key: &key, Archive: strings.NewReader("template-archive")})
+	imported, err := client.ImportTemplate(context.Background(), template.ImportRequest{Key: &key, Archive: strings.NewReader("template-archive"), ArchiveSize: int64(len("template-archive"))})
 	if err != nil {
 		t.Fatalf("import template: %v", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/services/template"
@@ -132,9 +133,11 @@ func TestTemplatesExportCommandWritesArchive(t *testing.T) {
 
 	var stdout bytes.Buffer
 
+	var stderr bytes.Buffer
+
 	cmd := newTemplatesExportCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
-	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{cliTestKeyFlag, templateCreateTestKey})
 
 	if err := cmd.Execute(); err != nil {
@@ -143,6 +146,13 @@ func TestTemplatesExportCommandWritesArchive(t *testing.T) {
 
 	if stdout.String() != "template-archive" {
 		t.Fatalf("stdout = %q, want archive bytes", stdout.String())
+	}
+
+	progress := stderr.String()
+	for _, want := range []string{"bastion: exporting template [", "16 B"} {
+		if !strings.Contains(progress, want) {
+			t.Fatalf("export progress missing %q:\n%s", want, progress)
+		}
 	}
 }
 
@@ -184,9 +194,11 @@ func TestTemplatesImportCommandUploadsArchiveFile(t *testing.T) {
 
 	var stdout bytes.Buffer
 
+	var stderr bytes.Buffer
+
 	cmd := newTemplatesImportCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
-	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{cliTestKeyFlag, templateCreateTestKey, "--file", archivePath})
 
 	if err := cmd.Execute(); err != nil {
@@ -200,5 +212,12 @@ func TestTemplatesImportCommandUploadsArchiveFile(t *testing.T) {
 
 	if imported.ID != "tpl_restored" || imported.Key == nil || *imported.Key != templateCreateTestKey {
 		t.Fatalf("import output = %#v, want restored template", imported)
+	}
+
+	progress := stderr.String()
+	for _, want := range []string{"bastion: importing template [", "100%", "16 B/16 B"} {
+		if !strings.Contains(progress, want) {
+			t.Fatalf("import progress missing %q:\n%s", want, progress)
+		}
 	}
 }

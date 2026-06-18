@@ -13,13 +13,16 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/failure"
 )
 
-const testEnvironmentID = "env_test"
+const (
+	testEnvironmentID = "env_test"
+	testSocketPath    = "test.sock"
+)
 
 func TestClientWrapsFailedDependencyResponses(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{
-		socketPath: "test.sock",
+		socketPath: testSocketPath,
 		http: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusFailedDependency,
@@ -32,6 +35,49 @@ func TestClientWrapsFailedDependencyResponses(t *testing.T) {
 	_, err := client.Launch(context.Background(), LaunchRequest{EnvironmentID: testEnvironmentID})
 	if !errors.Is(err, failure.ErrFailedDependency) {
 		t.Fatalf("launch error = %v, want failed dependency", err)
+	}
+}
+
+func TestClientWrapsInvalidResponses(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{
+		socketPath: testSocketPath,
+		http: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Status:     "400 Bad Request",
+				Body:       io.NopCloser(strings.NewReader(`{"error":"open template archive: EOF"}`)),
+			}, nil
+		})},
+	}
+
+	_, err := client.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_bad", Reader: strings.NewReader("")})
+	if !errors.Is(err, failure.ErrInvalid) {
+		t.Fatalf("import error = %v, want invalid", err)
+	}
+}
+
+func TestClientImportTemplateSendsContentLength(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{
+		socketPath: testSocketPath,
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.ContentLength != int64(len("template-archive")) {
+				t.Fatalf("ContentLength = %d, want archive size", req.ContentLength)
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Body:       io.NopCloser(strings.NewReader(`{"template":{"id":"tpl_restored","config":{"agents":{"opencode":{}},"actions":{"init":[]}}}}`)),
+			}, nil
+		})},
+	}
+
+	if _, err := client.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_restored", Reader: strings.NewReader("template-archive"), ContentLength: int64(len("template-archive"))}); err != nil {
+		t.Fatalf("import template: %v", err)
 	}
 }
 
@@ -50,7 +96,7 @@ func TestClientLaunchStreamsLogsAndResult(t *testing.T) {
 	}
 
 	client := &Client{
-		socketPath: "test.sock",
+		socketPath: testSocketPath,
 		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.Method != http.MethodPost || req.URL.Path != "/v1/vms" {
 				t.Fatalf("request = %s %s, want POST /v1/vms", req.Method, req.URL.Path)
@@ -90,7 +136,7 @@ func TestClientLaunchWrapsStreamFailedDependencyEvent(t *testing.T) {
 	}
 
 	client := &Client{
-		socketPath: "test.sock",
+		socketPath: testSocketPath,
 		http: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
