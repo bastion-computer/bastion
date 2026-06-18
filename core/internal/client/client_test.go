@@ -12,6 +12,7 @@ import (
 
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
 const (
@@ -61,6 +62,80 @@ func TestCreateEnvironmentStreamsLogsAndResult(t *testing.T) {
 
 	if logs.String() != "installing docker\n" {
 		t.Fatalf("logs = %q, want streamed log", logs.String())
+	}
+}
+
+func TestExportTemplateStreamsArchive(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{
+		baseURL: clientTestBaseURL,
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.Method != http.MethodGet || req.URL.Path != "/v1/templates/by-key/dev/export" {
+				t.Fatalf("request = %s %s, want GET /v1/templates/by-key/dev/export", req.Method, req.URL.Path)
+			}
+
+			if req.Header.Get("Accept") != template.ArchiveContentType {
+				t.Fatalf("Accept = %q, want %q", req.Header.Get("Accept"), template.ArchiveContentType)
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     clientTestOKStatus,
+				Body:       io.NopCloser(bytes.NewBufferString("template-archive")),
+			}, nil
+		})},
+	}
+
+	var archive bytes.Buffer
+	if err := client.ExportTemplate(context.Background(), "", "dev", &archive); err != nil {
+		t.Fatalf("export template: %v", err)
+	}
+
+	if archive.String() != "template-archive" {
+		t.Fatalf("archive = %q, want template archive", archive.String())
+	}
+}
+
+func TestImportTemplateUploadsArchive(t *testing.T) {
+	t.Parallel()
+
+	key := "restored"
+	client := &Client{
+		baseURL: clientTestBaseURL,
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.Method != http.MethodPost || req.URL.Path != "/v1/templates/import" || req.URL.Query().Get("key") != key {
+				t.Fatalf("request = %s %s?%s, want keyed import", req.Method, req.URL.Path, req.URL.RawQuery)
+			}
+
+			if req.Header.Get("Content-Type") != template.ArchiveContentType {
+				t.Fatalf("Content-Type = %q, want %q", req.Header.Get("Content-Type"), template.ArchiveContentType)
+			}
+
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read import body: %v", err)
+			}
+
+			if string(body) != "template-archive" {
+				t.Fatalf("import body = %q, want archive", body)
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusCreated,
+				Status:     "201 Created",
+				Body:       io.NopCloser(bytes.NewBufferString(`{"id":"tpl_restored","key":"restored","createdAt":"now"}`)),
+			}, nil
+		})},
+	}
+
+	imported, err := client.ImportTemplate(context.Background(), template.ImportRequest{Key: &key, Archive: strings.NewReader("template-archive")})
+	if err != nil {
+		t.Fatalf("import template: %v", err)
+	}
+
+	if imported.ID != "tpl_restored" || imported.Key == nil || *imported.Key != key {
+		t.Fatalf("imported = %#v, want restored template", imported)
 	}
 }
 

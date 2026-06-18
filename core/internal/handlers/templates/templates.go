@@ -77,6 +77,38 @@ func (h Handler) GetByKey(c *gin.Context) {
 	handlers.Respond(c, template, err, http.StatusOK)
 }
 
+// ExportByID handles template export by ID requests.
+func (h Handler) ExportByID(c *gin.Context) {
+	h.export(c, c.Param("id"), "")
+}
+
+// ExportByKey handles template export by key requests.
+func (h Handler) ExportByKey(c *gin.Context) {
+	h.export(c, "", c.Param("key"))
+}
+
+// Import handles template import requests.
+func (h Handler) Import(c *gin.Context) {
+	var key *string
+	if value, ok := c.GetQuery("key"); ok {
+		key = &value
+	}
+
+	imported, err := h.templates.Import(c.Request.Context(), template.ImportRequest{Key: key, Archive: c.Request.Body})
+	handlers.Respond(c, imported, err, http.StatusCreated)
+}
+
+func (h Handler) export(c *gin.Context, id, key string) {
+	c.Header("Content-Type", template.ArchiveContentType)
+
+	if err := h.templates.Export(c.Request.Context(), id, key, c.Writer); err != nil {
+		_ = c.Error(err)
+		if !c.Writer.Written() {
+			handlers.Respond(c, nil, err, http.StatusOK)
+		}
+	}
+}
+
 // RemoveByID handles template removal by ID requests.
 func (h Handler) RemoveByID(c *gin.Context) {
 	template, err := h.templates.Remove(c.Request.Context(), c.Param("id"), "")

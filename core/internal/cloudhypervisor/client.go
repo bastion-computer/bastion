@@ -53,6 +53,78 @@ func (c *Client) RemoveTemplate(ctx context.Context, templateID string) (Prepare
 	return prepared, c.do(ctx, http.MethodDelete, "/v1/templates/"+url.PathEscape(templateID), nil, &prepared)
 }
 
+// ExportTemplate asks bastiond to stream prepared template artifacts.
+func (c *Client) ExportTemplate(ctx context.Context, exportReq ExportTemplateRequest) error {
+	if exportReq.Writer == nil {
+		return errors.New("template archive writer is required")
+	}
+
+	contents, err := json.Marshal(exportReq)
+	if err != nil {
+		return fmt.Errorf("encode bastiond request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://bastiond/v1/templates/export", bytes.NewReader(contents))
+	if err != nil {
+		return fmt.Errorf("create bastiond request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", TemplateArchiveContentType)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("call bastiond at %s: %w", c.socketPath, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return decodeDaemonStatusError(res)
+	}
+
+	if _, err := io.Copy(exportReq.Writer, res.Body); err != nil {
+		return fmt.Errorf("read bastiond template archive: %w", err)
+	}
+
+	return nil
+}
+
+// ImportTemplate asks bastiond to restore prepared template artifacts from an archive.
+func (c *Client) ImportTemplate(ctx context.Context, importReq ImportTemplateRequest) (ImportedTemplate, error) {
+	var imported ImportedTemplate
+
+	if strings.TrimSpace(importReq.TemplateID) == "" {
+		return imported, errors.New("template id is required")
+	}
+
+	if importReq.Reader == nil {
+		return imported, errors.New("template archive reader is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://bastiond/v1/templates/"+url.PathEscape(importReq.TemplateID)+"/import", importReq.Reader)
+	if err != nil {
+		return imported, fmt.Errorf("create bastiond request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", TemplateArchiveContentType)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return imported, fmt.Errorf("call bastiond at %s: %w", c.socketPath, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return imported, decodeDaemonStatusError(res)
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&imported); err != nil {
+		return imported, fmt.Errorf("decode bastiond response: %w", err)
+	}
+
+	return imported, nil
+}
+
 func decodePrepareTemplateStream(decoder *json.Decoder, logs io.Writer) (PreparedTemplate, error) {
 	var prepared PreparedTemplate
 

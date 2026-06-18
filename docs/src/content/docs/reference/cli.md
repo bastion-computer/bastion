@@ -142,6 +142,8 @@ Creates and manages environment templates.
 bastion templates create [--key KEY] (--config JSON | --file PATH)
 bastion templates list [--limit N] [--cursor CURSOR]
 bastion templates get (--id ID | --key KEY)
+bastion templates export (--id ID | --key KEY) > template.tar.gz
+bastion templates import [--key KEY] --file PATH
 bastion templates remove (--id ID | --key KEY)
 ```
 
@@ -150,10 +152,15 @@ bastion templates remove (--id ID | --key KEY)
 | `create` | Validate, initialize, snapshot, and store an immutable template. |
 | `list`   | Return paginated template metadata.                              |
 | `get`    | Return one template with full config.                            |
+| `export` | Stream a prepared template archive to stdout by ID or key.       |
+| `import` | Upload a prepared template archive and create a new template.    |
 | `remove` | Delete one template by ID or key.                                |
 
 Template keys are optional. When set, they must be unique. Unkeyed templates are
 referenced by ID.
+
+Imports never preserve the exported template ID or key. Use `--key` on import to
+assign a new key to the restored template.
 
 ## `bastion env`
 

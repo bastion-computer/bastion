@@ -30,7 +30,6 @@ func NewServer(addr string, db *database.Client, logger *slog.Logger, opts ...Ro
 		Addr:              addr,
 		Handler:           NewRouter(db, logger, opts...),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 }
@@ -93,7 +92,10 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 	templateRoutes := v1.Group("/templates")
 	templateRoutes.POST("", templateHandler.Create)
 	templateRoutes.GET("", templateHandler.List)
+	templateRoutes.POST("/import", templateHandler.Import)
+	templateRoutes.GET("/:id/export", templateHandler.ExportByID)
 	templateRoutes.GET("/:id", templateHandler.GetByID)
+	templateRoutes.GET("/by-key/:key/export", templateHandler.ExportByKey)
 	templateRoutes.GET("/by-key/:key", templateHandler.GetByKey)
 	templateRoutes.DELETE("/:id", templateHandler.RemoveByID)
 	templateRoutes.DELETE("/by-key/:key", templateHandler.RemoveByKey)

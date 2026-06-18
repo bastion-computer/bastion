@@ -41,6 +41,15 @@ type CreateRequest struct {
 	Logs   io.Writer       `json:"-"`
 }
 
+// ImportRequest contains the fields needed to import a prepared template archive.
+type ImportRequest struct {
+	Key     *string   `json:"key,omitempty"`
+	Archive io.Reader `json:"-"`
+}
+
+// ArchiveContentType is the media type used for template import/export streams.
+const ArchiveContentType = ch.TemplateArchiveContentType
+
 // Stream event types used by POST /v1/templates.
 const (
 	StreamEventLog    = "log"
@@ -61,6 +70,8 @@ type CreateStreamEvent struct {
 type Orchestrator interface {
 	PrepareTemplate(context.Context, ch.PrepareTemplateRequest) (ch.PreparedTemplate, error)
 	RemoveTemplate(context.Context, string) (ch.PreparedTemplate, error)
+	ExportTemplate(context.Context, ch.ExportTemplateRequest) error
+	ImportTemplate(context.Context, ch.ImportTemplateRequest) (ch.ImportedTemplate, error)
 }
 
 // Option configures the template service.
@@ -165,6 +176,86 @@ func (s *Service) resolveSecrets(ctx context.Context, config json.RawMessage) (j
 	})
 }
 
+// Export streams a prepared template archive by ID or key.
+func (s *Service) Export(ctx context.Context, templateID, key string, archive io.Writer) error {
+	if archive == nil {
+		return fmt.Errorf("%w: template archive writer is required", failure.ErrInvalid)
+	}
+
+	template, err := s.Get(ctx, templateID, key)
+	if err != nil {
+		return err
+	}
+
+	if err := s.orchestrator.ExportTemplate(ctx, ch.ExportTemplateRequest{
+		Template: ch.Template{
+			ID:     template.ID,
+			Key:    services.CopyStringPtr(template.Key),
+			Config: template.Config,
+		},
+		Writer: archive,
+	}); err != nil {
+		return fmt.Errorf("export template artifacts: %w", err)
+	}
+
+	return nil
+}
+
+// Import stores a prepared template archive under a new template ID and optional key.
+func (s *Service) Import(ctx context.Context, req ImportRequest) (Metadata, error) {
+	if err := services.ValidateOptionalKey("template", req.Key); err != nil {
+		return Metadata{}, err
+	}
+
+	if req.Archive == nil {
+		return Metadata{}, fmt.Errorf("%w: template archive file is required", failure.ErrInvalid)
+	}
+
+	templateID, err := services.GenerateID("tpl")
+	if err != nil {
+		return Metadata{}, err
+	}
+
+	imported, err := s.orchestrator.ImportTemplate(ctx, ch.ImportTemplateRequest{TemplateID: templateID, Reader: req.Archive})
+	if err != nil {
+		return Metadata{}, fmt.Errorf("import template artifacts: %w", err)
+	}
+
+	cleanupImported := true
+	defer func() {
+		if cleanupImported {
+			_, _ = s.orchestrator.RemoveTemplate(context.Background(), templateID)
+		}
+	}()
+
+	if imported.Template.ID != "" && imported.Template.ID != templateID {
+		return Metadata{}, fmt.Errorf("%w: imported template id mismatch", failure.ErrInvalid)
+	}
+
+	if len(imported.Template.Config) == 0 || !json.Valid(imported.Template.Config) {
+		return Metadata{}, fmt.Errorf("%w: imported template config must be valid JSON", failure.ErrInvalid)
+	}
+
+	if err := schema.ValidateTemplateConfig(imported.Template.Config); err != nil {
+		return Metadata{}, fmt.Errorf("%w: imported template config does not match schema: %w", failure.ErrInvalid, err)
+	}
+
+	template := Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append([]byte(nil), imported.Template.Config...), CreatedAt: services.Now()}
+
+	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, created_at) VALUES (?, ?, ?, ?)`, template.ID, services.OptionalStringValue(template.Key), string(template.Config), template.CreatedAt)
+	if err != nil {
+		if database.IsConstraint(err) {
+			return Metadata{}, fmt.Errorf("%w: template already exists", failure.ErrConflict)
+		}
+
+		return Metadata{}, fmt.Errorf("import template: %w", err)
+	}
+
+	cleanupImported = false
+
+	return template.Metadata(), nil
+}
+
 // List returns template metadata ordered by creation time.
 func (s *Service) List(ctx context.Context, limit int, cursor string) (services.Page[Metadata], error) {
 	limit = services.NormalizeLimit(limit)
@@ -263,4 +354,12 @@ func (noopOrchestrator) PrepareTemplate(_ context.Context, req ch.PrepareTemplat
 
 func (noopOrchestrator) RemoveTemplate(_ context.Context, templateID string) (ch.PreparedTemplate, error) {
 	return ch.PreparedTemplate{TemplateID: templateID, UpdatedAt: services.Now()}, nil
+}
+
+func (noopOrchestrator) ExportTemplate(_ context.Context, _ ch.ExportTemplateRequest) error {
+	return nil
+}
+
+func (noopOrchestrator) ImportTemplate(_ context.Context, req ch.ImportTemplateRequest) (ch.ImportedTemplate, error) {
+	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID}, UpdatedAt: services.Now()}, nil
 }
