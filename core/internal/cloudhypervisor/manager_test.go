@@ -1,8 +1,13 @@
 package cloudhypervisor
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -103,6 +108,70 @@ func TestPrepareTemplateWorkspaceUsesResourceVolumeSize(t *testing.T) {
 	}
 }
 
+func TestManagerExportsAndImportsPreparedTemplateArchive(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	sourceID := "tpl_source"
+	restoredID := "tpl_restored"
+	sourceKey := "source-template"
+	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
+
+	writeTestPreparedTemplate(t, dataDir, sourceID)
+
+	manager := Manager{DataDir: dataDir}
+
+	var archive bytes.Buffer
+	if err := manager.ExportTemplate(context.Background(), ExportTemplateRequest{
+		Template: Template{ID: sourceID, Key: &sourceKey, Config: config},
+		Writer:   &archive,
+	}); err != nil {
+		t.Fatalf("export template archive: %v", err)
+	}
+
+	imported, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: restoredID, Reader: bytes.NewReader(archive.Bytes())})
+	if err != nil {
+		t.Fatalf("import template archive: %v", err)
+	}
+
+	if imported.Template.ID != restoredID || imported.Template.Key != nil || !jsonEqual(imported.Template.Config, config) {
+		t.Fatalf("imported template = %#v, want restored id/config without key", imported.Template)
+	}
+
+	assertPreparedTemplateFiles(t, dataDir, restoredID)
+	assertPathMode(t, filepath.Join(templateDir(dataDir, restoredID), envRootfsFileName), 0o400)
+}
+
+func TestManagerImportTemplateRejectsUnsafeArchivePath(t *testing.T) {
+	t.Parallel()
+
+	var archive bytes.Buffer
+
+	gzipWriter := gzip.NewWriter(&archive)
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	if err := tarWriter.WriteHeader(&tar.Header{Name: "../rootfs.img", Mode: 0o600, Size: 4}); err != nil {
+		t.Fatalf("write unsafe header: %v", err)
+	}
+
+	if _, err := io.WriteString(tarWriter, "test"); err != nil {
+		t.Fatalf("write unsafe file: %v", err)
+	}
+
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("close tar: %v", err)
+	}
+
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatalf("close gzip: %v", err)
+	}
+
+	manager := Manager{DataDir: t.TempDir()}
+	if _, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_unsafe", Reader: bytes.NewReader(archive.Bytes())}); err == nil {
+		t.Fatal("import unsafe archive path error = nil, want error")
+	}
+}
+
 func TestPrepareRestoreWorkspaceCreatesQCOW2Overlay(t *testing.T) {
 	t.Parallel()
 
@@ -134,10 +203,11 @@ func TestPrepareRestoreWorkspaceCreatesQCOW2Overlay(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // Verifies all mutable restore snapshot fields in one fixture.
 func TestPatchSnapshotConfigUsesEnvironmentDiskAndNetwork(t *testing.T) {
 	t.Parallel()
 
-	workspace := workspace{dir: t.TempDir(), rootfsPath: "/env/rootfs.img"}
+	workspace := workspace{dir: t.TempDir(), rootfsPath: "/env/rootfs.img", seedPath: "/env/cidata.img"}
 	plan := networkPlan{networkIndex: 3, tapName: "bt123", guestIP: "10.241.0.6", guestMAC: "06:00:0A:F1:00:06"}
 	input := []byte(`{
   "disks": [
@@ -164,6 +234,11 @@ func TestPatchSnapshotConfigUsesEnvironmentDiskAndNetwork(t *testing.T) {
 	rootfs := requireJSONObject(t, disks[0], "rootfs disk")
 	if rootfs["path"] != workspace.rootfsPath || rootfs["backing_files"] != true {
 		t.Fatalf("rootfs disk = %#v, want env overlay with backing files", rootfs)
+	}
+
+	seed := requireJSONObject(t, disks[1], "seed disk")
+	if seed["path"] != workspace.seedPath || seed["image_type"] != "Raw" || seed["readonly"] != true {
+		t.Fatalf("seed disk = %#v, want imported template seed path", seed)
 	}
 
 	nets := requireJSONArray(t, got["net"], "net")
@@ -537,6 +612,41 @@ func writeTestPreparedTemplate(t *testing.T, dataDir, templateID string) {
 			t.Fatalf("write prepared template file %s: %v", filepath.Base(path), err)
 		}
 	}
+}
+
+func assertPreparedTemplateFiles(t *testing.T, dataDir, templateID string) {
+	t.Helper()
+
+	dir := templateDir(dataDir, templateID)
+	for _, path := range []string{
+		filepath.Join(dir, envRootfsFileName),
+		filepath.Join(dir, envSeedFileName),
+		filepath.Join(dir, snapshotDirName, snapshotConfigFileName),
+		filepath.Join(dir, snapshotDirName, snapshotStateFileName),
+		filepath.Join(dir, snapshotDirName, snapshotMemoryFileName),
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat imported template file %s: %v", path, err)
+		}
+
+		if !info.Mode().IsRegular() {
+			t.Fatalf("imported template file %s is not regular", path)
+		}
+	}
+}
+
+func jsonEqual(left, right json.RawMessage) bool {
+	var leftValue, rightValue any
+	if err := json.Unmarshal(left, &leftValue); err != nil {
+		return false
+	}
+
+	if err := json.Unmarshal(right, &rightValue); err != nil {
+		return false
+	}
+
+	return fmt.Sprintf("%#v", leftValue) == fmt.Sprintf("%#v", rightValue)
 }
 
 func slicesEqual(left, right []string) bool {

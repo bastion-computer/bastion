@@ -245,6 +245,51 @@ func assertSecretDeleteRoute(t *testing.T, router http.Handler, secretID, key, v
 	}
 }
 
+func TestTemplateImportExportRoutes(t *testing.T) {
+	t.Parallel()
+
+	orchestrator := &templateArchiveOrchestrator{importConfig: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)}
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithTemplateOrchestrator(orchestrator))
+	source := createTemplate(t, router, "template-export-source")
+
+	res := request(t, router, http.MethodGet, "/v1/templates/by-key/template-export-source/export", nil)
+	if res.Code != http.StatusOK || strings.TrimSpace(res.Body.String()) != "template-archive" {
+		t.Fatalf("export by key response = status %d body %q, want archive", res.Code, res.Body.String())
+	}
+
+	if got := res.Header().Get("Content-Type"); got != ch.TemplateArchiveContentType {
+		t.Fatalf("export content type = %q, want %q", got, ch.TemplateArchiveContentType)
+	}
+
+	res = request(t, router, http.MethodGet, "/v1/templates/"+source.ID+"/export", nil)
+	if res.Code != http.StatusOK || strings.TrimSpace(res.Body.String()) != "template-archive" {
+		t.Fatalf("export by id response = status %d body %q, want archive", res.Code, res.Body.String())
+	}
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/templates/import?key=template-import-restored", strings.NewReader("template-archive"))
+	req.Header.Set("Content-Type", ch.TemplateArchiveContentType)
+
+	res = httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("import template status = %d, want %d; body: %s", res.Code, http.StatusCreated, res.Body.String())
+	}
+
+	var imported template.Metadata
+	decode(t, res, &imported)
+
+	if imported.ID == "" || imported.ID == source.ID || imported.Key == nil || *imported.Key != "template-import-restored" {
+		t.Fatalf("imported template = %#v, want new keyed template", imported)
+	}
+
+	assertGet(t, router, "/v1/templates/by-key/template-import-restored", imported.ID)
+
+	if len(orchestrator.importedArchives) != 1 || string(orchestrator.importedArchives[0]) != "template-archive" {
+		t.Fatalf("imported archives = %q, want archive", orchestrator.importedArchives)
+	}
+}
+
 func TestCreateEnvironmentForwardsFailedDependency(t *testing.T) {
 	t.Parallel()
 
@@ -782,6 +827,42 @@ func requireStringPtr(t *testing.T, value *string) string {
 }
 
 type failedDependencyOrchestrator struct{}
+
+type templateArchiveOrchestrator struct {
+	prepared         []ch.Template
+	removed          []string
+	importConfig     json.RawMessage
+	importedArchives [][]byte
+}
+
+func (o *templateArchiveOrchestrator) PrepareTemplate(_ context.Context, req ch.PrepareTemplateRequest) (ch.PreparedTemplate, error) {
+	o.prepared = append(o.prepared, req.Template)
+
+	return ch.PreparedTemplate{TemplateID: req.Template.ID}, nil
+}
+
+func (o *templateArchiveOrchestrator) RemoveTemplate(_ context.Context, templateID string) (ch.PreparedTemplate, error) {
+	o.removed = append(o.removed, templateID)
+
+	return ch.PreparedTemplate{TemplateID: templateID}, nil
+}
+
+func (o *templateArchiveOrchestrator) ExportTemplate(_ context.Context, req ch.ExportTemplateRequest) error {
+	_, err := io.WriteString(req.Writer, "template-archive")
+
+	return err
+}
+
+func (o *templateArchiveOrchestrator) ImportTemplate(_ context.Context, req ch.ImportTemplateRequest) (ch.ImportedTemplate, error) {
+	contents, err := io.ReadAll(req.Reader)
+	if err != nil {
+		return ch.ImportedTemplate{}, err
+	}
+
+	o.importedArchives = append(o.importedArchives, contents)
+
+	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID, Config: append(json.RawMessage(nil), o.importConfig...)}}, nil
+}
 
 func (failedDependencyOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {
 	return ch.VM{

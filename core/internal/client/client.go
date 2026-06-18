@@ -132,6 +132,81 @@ func (c *Client) RemoveTemplate(ctx context.Context, id, key string) (template.T
 	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
 }
 
+// ExportTemplate streams a prepared template archive by ID or key.
+func (c *Client) ExportTemplate(ctx context.Context, id, key string, archive io.Writer) error {
+	if archive == nil {
+		return errors.New("template archive writer is required")
+	}
+
+	path, err := resourcePath("/v1/templates", id, key)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path+"/export", nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Accept", template.ArchiveContentType)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("call host API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return decodeHostStatusError(res)
+	}
+
+	if _, err := io.Copy(archive, res.Body); err != nil {
+		return fmt.Errorf("read template archive: %w", err)
+	}
+
+	return nil
+}
+
+// ImportTemplate uploads a prepared template archive and returns the imported metadata.
+func (c *Client) ImportTemplate(ctx context.Context, importReq template.ImportRequest) (template.Metadata, error) {
+	var out template.Metadata
+
+	if importReq.Archive == nil {
+		return out, errors.New("template archive file is required")
+	}
+
+	path := "/v1/templates/import"
+
+	if importReq.Key != nil {
+		values := url.Values{}
+		values.Set("key", *importReq.Key)
+		path += "?" + values.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, importReq.Archive)
+	if err != nil {
+		return out, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", template.ArchiveContentType)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call host API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeHostStatusError(res)
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return out, fmt.Errorf("decode response: %w", err)
+	}
+
+	return out, nil
+}
+
 // CreateEnvironment creates an environment from a template.
 func (c *Client) CreateEnvironment(ctx context.Context, createReq environment.CreateRequest) (environment.Environment, error) {
 	return postHostStream(ctx, c.http, c.baseURL+"/v1/environments", createReq, createReq.Logs, decodeCreateEnvironmentStream)

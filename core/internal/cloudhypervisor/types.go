@@ -27,6 +27,8 @@ const (
 
 	// GuestProxyVsockPort is the fixed guest-side vsock port for HTTP tunnel proxying.
 	GuestProxyVsockPort = tunnel.GuestProxyVsockPort
+	// TemplateArchiveContentType is the media type used for streamed template backups.
+	TemplateArchiveContentType = "application/vnd.bastion.template+tar+gzip"
 
 	// NetworkIndexLimit is the number of /30 VM networks available in 10.241.0.0/16.
 	NetworkIndexLimit = 16000
@@ -69,6 +71,24 @@ type LaunchRequest struct {
 type PrepareTemplateRequest struct {
 	Template Template  `json:"template"`
 	Logs     io.Writer `json:"-"`
+}
+
+// ExportTemplateRequest asks bastiond to stream prepared template artifacts.
+type ExportTemplateRequest struct {
+	Template Template  `json:"template"`
+	Writer   io.Writer `json:"-"`
+}
+
+// ImportTemplateRequest asks bastiond to restore prepared template artifacts.
+type ImportTemplateRequest struct {
+	TemplateID string    `json:"templateId"`
+	Reader     io.Reader `json:"-"`
+}
+
+// ImportedTemplate describes the template data found in an imported archive.
+type ImportedTemplate struct {
+	Template  Template `json:"template"`
+	UpdatedAt string   `json:"updatedAt,omitempty"`
 }
 
 // PreparedTemplate describes durable prepared template artifacts.

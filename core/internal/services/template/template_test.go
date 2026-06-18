@@ -1,10 +1,12 @@
 package template_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -112,6 +114,81 @@ func TestServiceCreatesTemplatesWithOptionalKeys(t *testing.T) {
 	}
 
 	requireNoKeyJSON(t, encoded, "unkeyed template metadata")
+}
+
+//nolint:gocyclo // Exercises the full service-level export/import workflow.
+func TestServiceExportsAndImportsTemplateWithNewIdentity(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	orchestrator := &fakeTemplateOrchestrator{importConfig: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)}
+	service := template.NewService(db, template.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
+
+	created, err := service.Create(ctx, template.CreateRequest{Key: new("source-template"), Config: config})
+	if err != nil {
+		t.Fatalf("create source template: %v", err)
+	}
+
+	var exported bytes.Buffer
+	if err := service.Export(ctx, "", "source-template", &exported); err != nil {
+		t.Fatalf("export template: %v", err)
+	}
+
+	if exported.String() != "template-archive" {
+		t.Fatalf("exported archive = %q, want fake archive", exported.String())
+	}
+
+	if len(orchestrator.exported) != 1 || orchestrator.exported[0].ID != created.ID || !jsonEqual(orchestrator.exported[0].Config, config) {
+		t.Fatalf("exported templates = %#v, want source template", orchestrator.exported)
+	}
+
+	imported, err := service.Import(ctx, template.ImportRequest{Key: new("restored-template"), Archive: bytes.NewReader(exported.Bytes())})
+	if err != nil {
+		t.Fatalf("import template: %v", err)
+	}
+
+	if imported.ID == "" || imported.ID == created.ID {
+		t.Fatalf("imported id = %q, want new id distinct from %q", imported.ID, created.ID)
+	}
+
+	requireTemplateKey(t, imported.Key, "restored-template")
+
+	got, err := service.Get(ctx, imported.ID, "")
+	if err != nil {
+		t.Fatalf("get imported template: %v", err)
+	}
+
+	if got.ID != imported.ID || !jsonEqual(got.Config, config) {
+		t.Fatalf("imported template = %#v, want restored config", got)
+	}
+
+	if len(orchestrator.importedIDs) != 1 || orchestrator.importedIDs[0] != imported.ID || len(orchestrator.importedArchives) != 1 || string(orchestrator.importedArchives[0]) != "template-archive" {
+		t.Fatalf("imported artifacts = ids %#v archives %q, want generated id and archive", orchestrator.importedIDs, orchestrator.importedArchives)
+	}
+}
+
+func TestServiceImportCleansArtifactsWhenKeyConflicts(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	orchestrator := &fakeTemplateOrchestrator{importConfig: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)}
+	service := template.NewService(db, template.WithOrchestrator(orchestrator))
+	ctx := context.Background()
+
+	if _, err := service.Create(ctx, template.CreateRequest{Key: new("existing-template"), Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)}); err != nil {
+		t.Fatalf("create existing template: %v", err)
+	}
+
+	_, err := service.Import(ctx, template.ImportRequest{Key: new("existing-template"), Archive: strings.NewReader("template-archive")})
+	if !errors.Is(err, failure.ErrConflict) {
+		t.Fatalf("import duplicate key error = %v, want conflict", err)
+	}
+
+	if len(orchestrator.importedIDs) != 1 || len(orchestrator.removed) != 1 || orchestrator.removed[0] != orchestrator.importedIDs[0] {
+		t.Fatalf("removed artifacts = %#v, imported ids = %#v; want imported artifact cleanup", orchestrator.removed, orchestrator.importedIDs)
+	}
 }
 
 func TestServiceRejectsDuplicateAndBlankTemplateKeys(t *testing.T) {
@@ -484,8 +561,12 @@ func jsonEqual(left, right json.RawMessage) bool {
 }
 
 type fakeTemplateOrchestrator struct {
-	prepared []ch.Template
-	removed  []string
+	prepared         []ch.Template
+	removed          []string
+	exported         []ch.Template
+	importConfig     json.RawMessage
+	importedIDs      []string
+	importedArchives [][]byte
 }
 
 func (o *fakeTemplateOrchestrator) PrepareTemplate(_ context.Context, req ch.PrepareTemplateRequest) (ch.PreparedTemplate, error) {
@@ -498,4 +579,23 @@ func (o *fakeTemplateOrchestrator) RemoveTemplate(_ context.Context, templateID 
 	o.removed = append(o.removed, templateID)
 
 	return ch.PreparedTemplate{TemplateID: templateID}, nil
+}
+
+func (o *fakeTemplateOrchestrator) ExportTemplate(_ context.Context, req ch.ExportTemplateRequest) error {
+	o.exported = append(o.exported, ch.Template{ID: req.Template.ID, Key: req.Template.Key, Config: append(json.RawMessage(nil), req.Template.Config...)})
+	_, err := io.WriteString(req.Writer, "template-archive")
+
+	return err
+}
+
+func (o *fakeTemplateOrchestrator) ImportTemplate(_ context.Context, req ch.ImportTemplateRequest) (ch.ImportedTemplate, error) {
+	contents, err := io.ReadAll(req.Reader)
+	if err != nil {
+		return ch.ImportedTemplate{}, err
+	}
+
+	o.importedIDs = append(o.importedIDs, req.TemplateID)
+	o.importedArchives = append(o.importedArchives, contents)
+
+	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID, Config: append(json.RawMessage(nil), o.importConfig...)}}, nil
 }

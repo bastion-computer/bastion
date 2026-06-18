@@ -225,6 +225,40 @@ Response:
 }
 ```
 
+### Export Template
+
+```http
+GET /v1/templates/tpl_xxxxxx/export
+GET /v1/templates/by-key/dev/export
+Accept: application/vnd.bastion.template+tar+gzip
+```
+
+The response body is a gzip-compressed tar archive containing the template config
+and prepared VM artifacts. Use the by-key route only for templates that have a
+key.
+
+### Import Template
+
+```http
+POST /v1/templates/import?key=dev-restored
+Content-Type: application/vnd.bastion.template+tar+gzip
+```
+
+The `key` query parameter is optional. Imports create a new template ID and do
+not preserve the exported ID or key.
+
+Response:
+
+```json
+{
+  "id": "tpl_xxxxxx",
+  "key": "dev-restored",
+  "createdAt": "<iso_timestamp>"
+}
+```
+
+If no key was provided, the `key` field is omitted from the response.
+
 ### Remove Template
 
 ```http

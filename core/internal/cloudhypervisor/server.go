@@ -21,6 +21,8 @@ func init() {
 	gin.SetMode(gin.ReleaseMode)
 }
 
+const daemonErrorKey = "error"
+
 // ServerOptions configures the bastiond server.
 type ServerOptions struct {
 	SocketPath string
@@ -43,7 +45,6 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 	server := &http.Server{
 		Handler:           NewRouter(opts.Manager, opts.Logger),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 
@@ -157,6 +158,30 @@ func NewRouter(manager Manager, logger *slog.Logger) *gin.Engine {
 		}, manager.PrepareTemplate)
 	})
 
+	v1.POST("/templates/export", func(c *gin.Context) {
+		var req ExportTemplateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			_ = c.Error(err)
+			c.JSON(http.StatusBadRequest, gin.H{daemonErrorKey: "invalid JSON body"})
+
+			return
+		}
+
+		c.Header("Content-Type", TemplateArchiveContentType)
+
+		if err := manager.ExportTemplate(c.Request.Context(), ExportTemplateRequest{Template: req.Template, Writer: c.Writer}); err != nil {
+			_ = c.Error(err)
+			if !c.Writer.Written() {
+				c.JSON(daemonStatusForError(err), gin.H{daemonErrorKey: err.Error()})
+			}
+		}
+	})
+
+	v1.POST("/templates/:id/import", func(c *gin.Context) {
+		imported, err := manager.ImportTemplate(c.Request.Context(), ImportTemplateRequest{TemplateID: c.Param("id"), Reader: c.Request.Body})
+		respondDaemon(c, imported, err)
+	})
+
 	v1.DELETE("/templates/:id", func(c *gin.Context) {
 		prepared, err := manager.RemoveTemplate(c.Request.Context(), c.Param("id"))
 		respondDaemon(c, prepared, err)
@@ -197,7 +222,7 @@ func serveDaemonCreate[TReq, TResult any](
 	var req TReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		_ = c.Error(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
+		c.JSON(http.StatusBadRequest, gin.H{daemonErrorKey: "invalid JSON body"})
 
 		return
 	}
@@ -240,7 +265,7 @@ func newDaemonLaunchStreamAdapter(w http.ResponseWriter, cancel context.CancelFu
 func respondDaemon(c *gin.Context, value any, err error) {
 	if err != nil {
 		_ = c.Error(err)
-		c.JSON(daemonStatusForError(err), gin.H{"error": err.Error()})
+		c.JSON(daemonStatusForError(err), gin.H{daemonErrorKey: err.Error()})
 
 		return
 	}

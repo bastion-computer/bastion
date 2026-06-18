@@ -525,6 +525,19 @@ func patchSnapshotConfig(contents []byte, workspace workspace, plan networkPlan)
 	rootfs["image_type"] = "Qcow2"
 	rootfs["backing_files"] = true
 
+	if len(disks) < 2 {
+		return nil, errors.New("snapshot config missing seed disk")
+	}
+
+	seed, ok := disks[1].(map[string]any)
+	if !ok {
+		return nil, errors.New("snapshot config seed disk is invalid")
+	}
+
+	seed["path"] = workspace.seedPath
+	seed["image_type"] = "Raw"
+	seed["readonly"] = true
+
 	nets, ok := config["net"].([]any)
 	if !ok || len(nets) == 0 {
 		return nil, errors.New("snapshot config missing network device")

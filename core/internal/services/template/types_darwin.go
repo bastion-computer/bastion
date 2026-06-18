@@ -30,6 +30,15 @@ type CreateRequest struct {
 	Logs   io.Writer       `json:"-"`
 }
 
+// ImportRequest contains the fields needed to import a prepared template archive.
+type ImportRequest struct {
+	Key     *string   `json:"key,omitempty"`
+	Archive io.Reader `json:"-"`
+}
+
+// ArchiveContentType is the media type used for template import/export streams.
+const ArchiveContentType = "application/vnd.bastion.template+tar+gzip"
+
 // Stream event types used by POST /v1/templates.
 const (
 	StreamEventLog    = "log"

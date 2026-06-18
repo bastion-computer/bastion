@@ -19,6 +19,8 @@ func newTemplatesCommand(opts *rootOptions) *cobra.Command {
 		newTemplatesCreateCommand(opts),
 		newTemplatesListCommand(opts),
 		newTemplatesGetCommand(opts),
+		newTemplatesExportCommand(opts),
+		newTemplatesImportCommand(opts),
 		newTemplatesRemoveCommand(opts),
 	)
 
@@ -92,4 +94,68 @@ func newTemplatesRemoveCommand(opts *rootOptions) *cobra.Command {
 	return newIDKeyCommand(removeIDKeyUse, "Remove a template", "template ID", "template key", func(cmd *cobra.Command, id, key string) (any, error) {
 		return apiClient(opts).RemoveTemplate(cmd.Context(), id, key)
 	})
+}
+
+func newTemplatesExportCommand(opts *rootOptions) *cobra.Command {
+	var (
+		id  string
+		key string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "export [--id ID | --key KEY]",
+		Short: "Export a prepared template archive",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireIDOrKey(id, key); err != nil {
+				return err
+			}
+
+			return apiClient(opts).ExportTemplate(cmd.Context(), id, key, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&id, "id", "", "template ID")
+	cmd.Flags().StringVar(&key, "key", "", "template key")
+
+	return cmd
+}
+
+func newTemplatesImportCommand(opts *rootOptions) *cobra.Command {
+	var (
+		key  string
+		file string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "import [--key KEY] --file PATH",
+		Short: "Import a prepared template archive",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if file == "" {
+				return errors.New("specify --file")
+			}
+
+			archive, err := os.Open(file) //nolint:gosec // CLI user explicitly chooses the template archive path.
+			if err != nil {
+				return err
+			}
+			defer func() { _ = archive.Close() }()
+
+			var templateKey *string
+			if cmd.Flags().Changed("key") {
+				templateKey = &key
+			}
+
+			imported, err := apiClient(opts).ImportTemplate(cmd.Context(), template.ImportRequest{Key: templateKey, Archive: archive})
+			if err != nil {
+				return err
+			}
+
+			return writeJSON(cmd.OutOrStdout(), imported)
+		},
+	}
+	cmd.Flags().StringVar(&key, "key", "", "optional unique template key")
+	cmd.Flags().StringVar(&file, "file", "", "template archive file")
+
+	return cmd
 }

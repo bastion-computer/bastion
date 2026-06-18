@@ -380,6 +380,43 @@ Get by ID:
 bastion templates get --id tpl_xxxxxx
 ```
 
+## Export and Import Templates
+
+Export a prepared template archive by key:
+
+```sh
+bastion templates export --key dev > dev-template.tar.gz
+```
+
+Export by ID:
+
+```sh
+bastion templates export --id tpl_xxxxxx > dev-template.tar.gz
+```
+
+The archive contains the stored template config plus the prepared root disk,
+cloud-init seed image, and paused VM snapshot. Use it for backups or to replicate
+a prepared template to another Bastion host without rerunning init actions.
+
+Import with a new key:
+
+```sh
+bastion templates import --key dev-restored --file ./dev-template.tar.gz
+```
+
+Import without a key:
+
+```sh
+bastion templates import --file ./dev-template.tar.gz
+```
+
+Imports always create a new template ID. They do not preserve the exported ID or
+key; pass `--key` when the restored template should have a human-friendly alias.
+
+Exported configs keep secret reference syntax, but prepared VM artifacts can
+contain values resolved during init actions. Treat exported archives as sensitive
+backup material.
+
 ## Remove a Template
 
 Remove by key:
