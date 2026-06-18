@@ -43,8 +43,9 @@ type CreateRequest struct {
 
 // ImportRequest contains the fields needed to import a prepared template archive.
 type ImportRequest struct {
-	Key     *string   `json:"key,omitempty"`
-	Archive io.Reader `json:"-"`
+	Key         *string   `json:"key,omitempty"`
+	Archive     io.Reader `json:"-"`
+	ArchiveSize int64     `json:"-"`
 }
 
 // ArchiveContentType is the media type used for template import/export streams.
@@ -202,6 +203,8 @@ func (s *Service) Export(ctx context.Context, templateID, key string, archive io
 }
 
 // Import stores a prepared template archive under a new template ID and optional key.
+//
+//nolint:gocyclo // Coordinates validation, artifact restore, cleanup, and DB insert rollback.
 func (s *Service) Import(ctx context.Context, req ImportRequest) (Metadata, error) {
 	if err := services.ValidateOptionalKey("template", req.Key); err != nil {
 		return Metadata{}, err
@@ -216,8 +219,12 @@ func (s *Service) Import(ctx context.Context, req ImportRequest) (Metadata, erro
 		return Metadata{}, err
 	}
 
-	imported, err := s.orchestrator.ImportTemplate(ctx, ch.ImportTemplateRequest{TemplateID: templateID, Reader: req.Archive})
+	imported, err := s.orchestrator.ImportTemplate(ctx, ch.ImportTemplateRequest{TemplateID: templateID, Reader: req.Archive, ContentLength: req.ArchiveSize})
 	if err != nil {
+		if errors.Is(err, ch.ErrInvalidTemplateArchive) {
+			return Metadata{}, fmt.Errorf("%w: import template artifacts: %w", failure.ErrInvalid, err)
+		}
+
 		return Metadata{}, fmt.Errorf("import template artifacts: %w", err)
 	}
 

@@ -20,6 +20,9 @@ const (
 	templateArchiveManifestMax  = 1 << 20
 )
 
+// ErrInvalidTemplateArchive marks malformed or unsupported template archives.
+var ErrInvalidTemplateArchive = errors.New("invalid template archive")
+
 type templateArchiveManifest struct {
 	Format   string   `json:"format"`
 	Template Template `json:"template"`
@@ -232,7 +235,7 @@ func writeTemplateArchiveFile(ctx context.Context, writer *tar.Writer, archiveNa
 func extractTemplateArchive(ctx context.Context, reader io.Reader, templateDir string) (templateArchiveManifest, error) {
 	gzipReader, err := gzip.NewReader(reader)
 	if err != nil {
-		return templateArchiveManifest{}, fmt.Errorf("open template archive: %w", err)
+		return templateArchiveManifest{}, fmt.Errorf("%w: open template archive: %w", ErrInvalidTemplateArchive, err)
 	}
 	defer func() { _ = gzipReader.Close() }()
 
@@ -282,7 +285,7 @@ func (s *templateArchiveReadState) readNext(ctx context.Context, reader *tar.Rea
 	}
 
 	if err != nil {
-		return false, fmt.Errorf("read template archive: %w", err)
+		return false, fmt.Errorf("%w: read template archive: %w", ErrInvalidTemplateArchive, err)
 	}
 
 	return false, s.readEntry(reader, header)
@@ -295,11 +298,11 @@ func (s *templateArchiveReadState) readEntry(reader io.Reader, header *tar.Heade
 	}
 
 	if header.Typeflag != tar.TypeReg {
-		return fmt.Errorf("template archive entry %s is not a regular file", name)
+		return fmt.Errorf("%w: template archive entry %s is not a regular file", ErrInvalidTemplateArchive, name)
 	}
 
 	if s.seen[name] {
-		return fmt.Errorf("template archive contains duplicate entry %s", name)
+		return fmt.Errorf("%w: template archive contains duplicate entry %s", ErrInvalidTemplateArchive, name)
 	}
 
 	if name == templateArchiveManifestName {
@@ -316,7 +319,7 @@ func (s *templateArchiveReadState) readEntry(reader io.Reader, header *tar.Heade
 
 	file, ok := s.expectedFiles[name]
 	if !ok {
-		return fmt.Errorf("template archive contains unexpected entry %s", name)
+		return fmt.Errorf("%w: template archive contains unexpected entry %s", ErrInvalidTemplateArchive, name)
 	}
 
 	if err := extractTemplateArchiveFile(reader, header.Size, file); err != nil {
@@ -330,21 +333,21 @@ func (s *templateArchiveReadState) readEntry(reader io.Reader, header *tar.Heade
 
 func (s templateArchiveReadState) validate() (templateArchiveManifest, error) {
 	if !s.seen[templateArchiveManifestName] {
-		return templateArchiveManifest{}, errors.New("template archive missing manifest")
+		return templateArchiveManifest{}, fmt.Errorf("%w: template archive missing manifest", ErrInvalidTemplateArchive)
 	}
 
 	for name := range s.expectedFiles {
 		if !s.seen[name] {
-			return templateArchiveManifest{}, fmt.Errorf("template archive missing %s", name)
+			return templateArchiveManifest{}, fmt.Errorf("%w: template archive missing %s", ErrInvalidTemplateArchive, name)
 		}
 	}
 
 	if s.manifest.Format != templateArchiveFormat {
-		return templateArchiveManifest{}, fmt.Errorf("unsupported template archive format %q", s.manifest.Format)
+		return templateArchiveManifest{}, fmt.Errorf("%w: unsupported template archive format %q", ErrInvalidTemplateArchive, s.manifest.Format)
 	}
 
 	if len(s.manifest.Template.Config) == 0 || !json.Valid(s.manifest.Template.Config) {
-		return templateArchiveManifest{}, errors.New("template archive manifest config must be valid JSON")
+		return templateArchiveManifest{}, fmt.Errorf("%w: template archive manifest config must be valid JSON", ErrInvalidTemplateArchive)
 	}
 
 	return s.manifest, nil
@@ -352,12 +355,12 @@ func (s templateArchiveReadState) validate() (templateArchiveManifest, error) {
 
 func canonicalTemplateArchiveName(name string) (string, error) {
 	if name == "" || strings.HasPrefix(name, "/") {
-		return "", fmt.Errorf("template archive contains unsafe entry %q", name)
+		return "", fmt.Errorf("%w: template archive contains unsafe entry %q", ErrInvalidTemplateArchive, name)
 	}
 
 	clean := path.Clean(name)
 	if clean == "." || clean != name || strings.HasPrefix(clean, "../") || clean == ".." {
-		return "", fmt.Errorf("template archive contains unsafe entry %q", name)
+		return "", fmt.Errorf("%w: template archive contains unsafe entry %q", ErrInvalidTemplateArchive, name)
 	}
 
 	return clean, nil
@@ -365,21 +368,21 @@ func canonicalTemplateArchiveName(name string) (string, error) {
 
 func readTemplateArchiveManifest(reader io.Reader, size int64) (templateArchiveManifest, error) {
 	if size < 0 || size > templateArchiveManifestMax {
-		return templateArchiveManifest{}, errors.New("template archive manifest is too large")
+		return templateArchiveManifest{}, fmt.Errorf("%w: template archive manifest is too large", ErrInvalidTemplateArchive)
 	}
 
 	contents, err := io.ReadAll(io.LimitReader(reader, templateArchiveManifestMax+1))
 	if err != nil {
-		return templateArchiveManifest{}, fmt.Errorf("read template archive manifest: %w", err)
+		return templateArchiveManifest{}, fmt.Errorf("%w: read template archive manifest: %w", ErrInvalidTemplateArchive, err)
 	}
 
 	if len(contents) > templateArchiveManifestMax {
-		return templateArchiveManifest{}, errors.New("template archive manifest is too large")
+		return templateArchiveManifest{}, fmt.Errorf("%w: template archive manifest is too large", ErrInvalidTemplateArchive)
 	}
 
 	var manifest templateArchiveManifest
 	if err := json.Unmarshal(contents, &manifest); err != nil {
-		return templateArchiveManifest{}, fmt.Errorf("parse template archive manifest: %w", err)
+		return templateArchiveManifest{}, fmt.Errorf("%w: parse template archive manifest: %w", ErrInvalidTemplateArchive, err)
 	}
 
 	return manifest, nil
@@ -387,7 +390,7 @@ func readTemplateArchiveManifest(reader io.Reader, size int64) (templateArchiveM
 
 func extractTemplateArchiveFile(reader io.Reader, size int64, file templateArchiveFile) error {
 	if size < 0 {
-		return fmt.Errorf("template archive entry %s has invalid size", file.archiveName)
+		return fmt.Errorf("%w: template archive entry %s has invalid size", ErrInvalidTemplateArchive, file.archiveName)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(file.path), 0o750); err != nil {
@@ -403,7 +406,7 @@ func extractTemplateArchiveFile(reader io.Reader, size int64, file templateArchi
 	closeErr := out.Close()
 
 	if copyErr != nil {
-		return fmt.Errorf("extract template archive entry %s: %w", file.archiveName, copyErr)
+		return fmt.Errorf("%w: extract template archive entry %s: %w", ErrInvalidTemplateArchive, file.archiveName, copyErr)
 	}
 
 	if closeErr != nil {
@@ -411,7 +414,7 @@ func extractTemplateArchiveFile(reader io.Reader, size int64, file templateArchi
 	}
 
 	if copied != size {
-		return fmt.Errorf("extract template archive entry %s: copied %d bytes, want %d", file.archiveName, copied, size)
+		return fmt.Errorf("%w: extract template archive entry %s: copied %d bytes, want %d", ErrInvalidTemplateArchive, file.archiveName, copied, size)
 	}
 
 	if err := os.Chmod(file.path, file.mode); err != nil {

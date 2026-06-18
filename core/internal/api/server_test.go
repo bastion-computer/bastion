@@ -275,6 +275,7 @@ func assertSecretDeleteRoute(t *testing.T, router http.Handler, secretID, key, v
 	}
 }
 
+//nolint:gocyclo // Verifies template import/export routes and archive forwarding in one fixture.
 func TestTemplateImportExportRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -317,6 +318,25 @@ func TestTemplateImportExportRoutes(t *testing.T) {
 
 	if len(orchestrator.importedArchives) != 1 || string(orchestrator.importedArchives[0]) != "template-archive" {
 		t.Fatalf("imported archives = %q, want archive", orchestrator.importedArchives)
+	}
+
+	if len(orchestrator.importSizes) != 1 || orchestrator.importSizes[0] != int64(len("template-archive")) {
+		t.Fatalf("import sizes = %#v, want archive size", orchestrator.importSizes)
+	}
+}
+
+func TestTemplateImportRejectsInvalidArchive(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithTemplateOrchestrator(ch.NewManager(t.TempDir(), 0, 0, slog.New(slog.DiscardHandler))))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/templates/import", strings.NewReader(""))
+	req.Header.Set("Content-Type", ch.TemplateArchiveContentType)
+
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("import invalid archive status = %d, want %d; body: %s", res.Code, http.StatusBadRequest, res.Body.String())
 	}
 }
 
@@ -863,6 +883,7 @@ type templateArchiveOrchestrator struct {
 	removed          []string
 	importConfig     json.RawMessage
 	importedArchives [][]byte
+	importSizes      []int64
 }
 
 func (o *templateArchiveOrchestrator) PrepareTemplate(_ context.Context, req ch.PrepareTemplateRequest) (ch.PreparedTemplate, error) {
@@ -890,6 +911,7 @@ func (o *templateArchiveOrchestrator) ImportTemplate(_ context.Context, req ch.I
 	}
 
 	o.importedArchives = append(o.importedArchives, contents)
+	o.importSizes = append(o.importSizes, req.ContentLength)
 
 	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID, Config: append(json.RawMessage(nil), o.importConfig...)}}, nil
 }

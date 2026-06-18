@@ -197,6 +197,10 @@ func (c *Client) ImportTemplate(ctx context.Context, importReq template.ImportRe
 
 	req.Header.Set("Content-Type", template.ArchiveContentType)
 
+	if importReq.ArchiveSize > 0 {
+		req.ContentLength = importReq.ArchiveSize
+	}
+
 	res, err := c.http.Do(req)
 	if err != nil {
 		return out, fmt.Errorf("call host API: %w", err)

@@ -274,8 +274,11 @@ func respondDaemon(c *gin.Context, value any, err error) {
 }
 
 func daemonStatusForError(err error) int {
-	if errors.Is(err, ErrVMInitFailed) {
+	switch {
+	case errors.Is(err, ErrVMInitFailed):
 		return http.StatusFailedDependency
+	case errors.Is(err, ErrInvalidTemplateArchive):
+		return http.StatusBadRequest
 	}
 
 	return http.StatusInternalServerError

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -111,7 +112,14 @@ func newTemplatesExportCommand(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			return apiClient(opts).ExportTemplate(cmd.Context(), id, key, cmd.OutOrStdout())
+			progress := newArchiveProgress(cmd.ErrOrStderr(), "exporting template", -1)
+			err := apiClient(opts).ExportTemplate(cmd.Context(), id, key, io.MultiWriter(cmd.OutOrStdout(), progress))
+
+			if finishErr := progress.finish(err == nil); finishErr != nil && err == nil {
+				return finishErr
+			}
+
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", "template ID")
@@ -141,12 +149,28 @@ func newTemplatesImportCommand(opts *rootOptions) *cobra.Command {
 			}
 			defer func() { _ = archive.Close() }()
 
+			info, err := archive.Stat()
+			if err != nil {
+				return err
+			}
+
+			archiveSize := int64(-1)
+			if info.Mode().IsRegular() {
+				archiveSize = info.Size()
+			}
+
 			var templateKey *string
 			if cmd.Flags().Changed("key") {
 				templateKey = &key
 			}
 
-			imported, err := apiClient(opts).ImportTemplate(cmd.Context(), template.ImportRequest{Key: templateKey, Archive: archive})
+			progress := newArchiveProgress(cmd.ErrOrStderr(), "importing template", archiveSize)
+			imported, err := apiClient(opts).ImportTemplate(cmd.Context(), template.ImportRequest{Key: templateKey, Archive: io.TeeReader(archive, progress), ArchiveSize: archiveSize})
+
+			if finishErr := progress.finish(err == nil); finishErr != nil && err == nil {
+				return finishErr
+			}
+
 			if err != nil {
 				return err
 			}

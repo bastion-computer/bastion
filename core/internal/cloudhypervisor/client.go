@@ -108,6 +108,10 @@ func (c *Client) ImportTemplate(ctx context.Context, importReq ImportTemplateReq
 
 	req.Header.Set("Content-Type", TemplateArchiveContentType)
 
+	if importReq.ContentLength > 0 {
+		req.ContentLength = importReq.ContentLength
+	}
+
 	res, err := c.http.Do(req)
 	if err != nil {
 		return imported, fmt.Errorf("call bastiond at %s: %w", c.socketPath, err)
@@ -322,7 +326,11 @@ func decodeDaemonStatusError(res *http.Response) error {
 
 func daemonStatusError(statusCode int, format string, args ...any) error {
 	err := fmt.Errorf(format, args...)
-	if statusCode == http.StatusFailedDependency {
+
+	switch statusCode {
+	case http.StatusBadRequest:
+		return fmt.Errorf("%w: %w", failure.ErrInvalid, err)
+	case http.StatusFailedDependency:
 		return fmt.Errorf("%w: %w", failure.ErrFailedDependency, err)
 	}
 

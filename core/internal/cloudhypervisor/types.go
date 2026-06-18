@@ -81,8 +81,9 @@ type ExportTemplateRequest struct {
 
 // ImportTemplateRequest asks bastiond to restore prepared template artifacts.
 type ImportTemplateRequest struct {
-	TemplateID string    `json:"templateId"`
-	Reader     io.Reader `json:"-"`
+	TemplateID    string    `json:"templateId"`
+	Reader        io.Reader `json:"-"`
+	ContentLength int64     `json:"-"`
 }
 
 // ImportedTemplate describes the template data found in an imported archive.
