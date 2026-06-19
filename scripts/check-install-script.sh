@@ -78,6 +78,7 @@ case "$url" in
     fi
     ;;
   'https://api.github.com/repos/bastion-computer/bastion/releases?per_page=100')
+    trap 'printf '\''curl: (23) Failure writing output to destination\n'\'' >&2; exit 23' PIPE
     cat <<'JSON'
 [
   {
@@ -88,6 +89,11 @@ case "$url" in
     "tag_name": "v1.1.0-rc.2",
     "prerelease": true
   },
+JSON
+    for ((i = 1; i <= 20000; i++)); do
+      printf '  {"tag_name":"v0.0.0-%s","prerelease": false},\n' "$i"
+    done
+    cat <<'JSON'
   {
     "tag_name": "v1.1.0-rc.1",
     "prerelease": true
@@ -147,6 +153,11 @@ assert_installed_version() {
       cat "$log" >&2
       fail "$label install failed"
     }
+
+  if grep -q 'Failure writing output to destination' "$log"; then
+    cat "$log" >&2
+    fail "$label install wrote a curl pipe warning"
+  fi
 
   if [ ! -x "$install_dir/bastion" ]; then
     cat "$log" >&2
