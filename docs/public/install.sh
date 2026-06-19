@@ -11,6 +11,7 @@ readonly RELEASE_BASE_URL="${BASTION_RELEASE_BASE_URL:-}"
 TARGET=""
 INSTALL_SERVICES=0
 INSTALL_DIR="${BASTION_INSTALL_DIR:-}"
+INSTALL_EXPERIMENTAL=0
 TMP_DIR=""
 BASTION_BIN=""
 BASTION_GUEST_PROXY_BIN=""
@@ -40,7 +41,7 @@ EOF
 
 usage() {
   cat <<'EOF'
-Usage: install.sh
+Usage: install.sh [--experimental]
 
 Installs or updates Bastion from the latest GitHub release.
 
@@ -49,6 +50,7 @@ Supported targets:
   - macOS Apple silicon CLI install with bastion only.
 
 Options:
+  --experimental             Install the latest GitHub prerelease instead of latest.
   -h, --help                 Show this help message.
 EOF
 }
@@ -75,6 +77,9 @@ parse_args() {
       -h | --help)
         usage
         exit 0
+        ;;
+      --experimental)
+        INSTALL_EXPERIMENTAL=1
         ;;
       *)
         fail "unknown argument: $1"
@@ -161,6 +166,34 @@ verify_checksum() {
   fi
 }
 
+latest_prerelease_release_tag() {
+  local url="https://api.github.com/repos/${REPO}/releases?per_page=100"
+  local line
+  local prerelease
+  local tag=""
+
+  while IFS= read -r line; do
+    case "$line" in
+      *'"tag_name": '*)
+        tag="${line#*\"tag_name\": \"}"
+        tag="${tag%%\"*}"
+        ;;
+      *'"prerelease": '*)
+        prerelease="${line#*\"prerelease\": }"
+        prerelease="${prerelease%%,*}"
+        prerelease="${prerelease%%[[:space:]]*}"
+        if [ "$prerelease" = "true" ] && [ -n "$tag" ]; then
+          printf '%s\n' "$tag"
+          return
+        fi
+        tag=""
+        ;;
+    esac
+  done < <(curl -fsSL "$url")
+
+  fail "could not resolve latest Bastion prerelease from $url"
+}
+
 latest_release_tag() {
   local url
   local effective_url
@@ -168,6 +201,11 @@ latest_release_tag() {
 
   if [ -n "$INSTALL_VERSION" ]; then
     printf '%s\n' "$INSTALL_VERSION"
+    return
+  fi
+
+  if [ "$INSTALL_EXPERIMENTAL" -eq 1 ]; then
+    latest_prerelease_release_tag
     return
   fi
 

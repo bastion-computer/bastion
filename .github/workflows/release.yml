@@ -79,9 +79,25 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Resolve release channel
+        id: release_channel
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF_NAME" == *-rc.* ]]; then
+            printf 'prerelease=true\n' >> "$GITHUB_OUTPUT"
+            printf 'make_latest=false\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'prerelease=false\n' >> "$GITHUB_OUTPUT"
+            printf 'make_latest=true\n' >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           generate_release_notes: true
+          prerelease: ${{ steps.release_channel.outputs.prerelease }}
+          make_latest: ${{ steps.release_channel.outputs.make_latest }}
           files: dist/*

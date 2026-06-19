@@ -92,6 +92,24 @@ check_darwin_client_build() {
   )
 }
 
+check_release_channel() {
+  if ! grep -q 'id: release_channel' "$WORKFLOW"; then
+    fail "workflow does not resolve the GitHub release channel"
+  fi
+
+  if ! grep -q '\*-rc\.\*' "$WORKFLOW"; then
+    fail "workflow does not detect -rc.* tags as prereleases"
+  fi
+
+  if ! grep -q 'prerelease:.*steps\.release_channel\.outputs\.prerelease' "$WORKFLOW"; then
+    fail "GitHub release prerelease flag is not driven by the release channel"
+  fi
+
+  if ! grep -q 'make_latest:.*steps\.release_channel\.outputs\.make_latest' "$WORKFLOW"; then
+    fail "GitHub release latest flag is not driven by the release channel"
+  fi
+}
+
 if [ ! -f "$WORKFLOW" ]; then
   fail "workflow not found: $WORKFLOW"
 fi
@@ -99,6 +117,7 @@ fi
 TMP_DIR="$(mktemp -d)"
 check_target linux_x86_64 'bastion bastion-guest-proxy'
 check_target darwin_arm64 'bastion'
+check_release_channel
 check_darwin_client_build
 
 printf 'release workflow package contents and darwin client build are valid\n'
