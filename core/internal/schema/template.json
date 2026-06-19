@@ -155,7 +155,7 @@
       "required": ["opencode"],
       "additionalProperties": false
     },
-    "tunnel": {
+    "tunnels": {
       "type": "object",
       "propertyNames": {
         "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
@@ -190,8 +190,8 @@
         }
       }
     },
-    "tunnel": {
-      "$ref": "#/$defs/tunnel"
+    "tunnels": {
+      "$ref": "#/$defs/tunnels"
     },
     "actions": {
       "type": "object",

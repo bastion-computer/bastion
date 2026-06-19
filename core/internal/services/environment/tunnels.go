@@ -103,7 +103,7 @@ func (s *Service) tunnelConnection(ctx context.Context, environmentID, key, name
 
 func tunnelsFromConfig(config json.RawMessage) ([]Tunnel, error) {
 	var parsed struct {
-		Tunnel map[string]int `json:"tunnel,omitempty"`
+		Tunnels map[string]int `json:"tunnels,omitempty"`
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(config))
@@ -113,8 +113,8 @@ func tunnelsFromConfig(config json.RawMessage) ([]Tunnel, error) {
 		return nil, fmt.Errorf("parse template config: %w", err)
 	}
 
-	entries := make([]Tunnel, 0, len(parsed.Tunnel))
-	for name, port := range parsed.Tunnel {
+	entries := make([]Tunnel, 0, len(parsed.Tunnels))
+	for name, port := range parsed.Tunnels {
 		if port < 1 || port > 65535 {
 			return nil, fmt.Errorf("tunnel %s port %d is out of range", name, port)
 		}

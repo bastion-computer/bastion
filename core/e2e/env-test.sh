@@ -527,7 +527,7 @@ lifecycle_config() {
         }
       },
       resources: {vcpu: 1, memory: 1, volume: 8},
-      tunnel: {frontend: 3000},
+      tunnels: {frontend: 3000},
       actions: {
         init: [
           {run: "set -eu\nmkdir -p /opt/bastion-e2e /var/log/bastion-e2e /opt/bastion-e2e-start\nprintf init-complete > /opt/bastion-e2e-start/init-status"},
@@ -789,8 +789,8 @@ fi"
   assert_bastion_opencode_attach "OpenCode CLI id route" --id "$first_env" "${API_URL%/}/v1/environments/$first_env/agents/opencode"
   assert_bastion_opencode_attach "OpenCode CLI key route" --key "$first_env_key" "${API_URL%/}/v1/environments/by-key/$first_env_key/agents/opencode"
 
-  expected_id_url="${API_URL%/}/v1/environments/$first_env/tunnel/frontend"
-  expected_key_url="${API_URL%/}/v1/environments/by-key/$first_env_key/tunnel/frontend"
+  expected_id_url="${API_URL%/}/v1/environments/$first_env/tunnels/frontend"
+  expected_key_url="${API_URL%/}/v1/environments/by-key/$first_env_key/tunnels/frontend"
 
   output="$(run_cli env tunnels --id "$first_env")"
   if ! jq -e --arg url "$expected_id_url" '.entries | length == 1 and .[0].name == "frontend" and .[0].port == 3000 and .[0].url == $url' <<<"$output" >/dev/null; then

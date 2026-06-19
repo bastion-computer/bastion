@@ -576,13 +576,13 @@ func TestTunnelProxyRouteForwardsRegisteredTunnel(t *testing.T) {
 
 	orchestrator := &agentProxyOrchestrator{vms: make(map[string]ch.VM), vsockSocketPath: socketPath}
 	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(orchestrator))
-	template := createTemplateWithConfig(t, router, "tunnel-proxy-template", json.RawMessage(`{"agents":{"opencode":{}},"tunnel":{"frontend":3000},"actions":{"init":[]}}`))
+	template := createTemplateWithConfig(t, router, "tunnel-proxy-template", json.RawMessage(`{"agents":{"opencode":{}},"tunnels":{"frontend":3000},"actions":{"init":[]}}`))
 	envKey := "tunnel-proxy-environment"
 	env := createEnvironmentFromRequest(t, router, environment.CreateRequest{Key: new(envKey), TemplateKey: requireStringPtr(t, template.Key)})
 
 	paths := []string{
-		"/v1/environments/" + env.ID + "/tunnel/frontend/preview?mode=dev",
-		"/v1/environments/by-key/" + envKey + "/tunnel/frontend/preview?mode=dev",
+		"/v1/environments/" + env.ID + "/tunnels/frontend/preview?mode=dev",
+		"/v1/environments/by-key/" + envKey + "/tunnels/frontend/preview?mode=dev",
 	}
 
 	for _, path := range paths {

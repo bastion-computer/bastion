@@ -465,17 +465,17 @@ Response:
 ```
 
 The environment must be running and its template must define a top-level
-`tunnel` object.
+`tunnels` object.
 
 ### Proxy Tunnel
 
 ```http
-GET /v1/environments/env_xxxxxx/tunnel/frontend
-GET /v1/environments/env_xxxxxx/tunnel/frontend/<path>
-POST /v1/environments/env_xxxxxx/tunnel/frontend/<path>
-GET /v1/environments/by-key/review-123/tunnel/frontend
-GET /v1/environments/by-key/review-123/tunnel/frontend/<path>
-POST /v1/environments/by-key/review-123/tunnel/frontend/<path>
+GET /v1/environments/env_xxxxxx/tunnels/frontend
+GET /v1/environments/env_xxxxxx/tunnels/frontend/<path>
+POST /v1/environments/env_xxxxxx/tunnels/frontend/<path>
+GET /v1/environments/by-key/review-123/tunnels/frontend
+GET /v1/environments/by-key/review-123/tunnels/frontend/<path>
+POST /v1/environments/by-key/review-123/tunnels/frontend/<path>
 ```
 
 All HTTP methods are proxied over the environment vsock device to

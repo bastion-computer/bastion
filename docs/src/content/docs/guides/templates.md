@@ -22,7 +22,7 @@ A template has four top-level fields:
 | Field       | Required | Description                                     |
 | ----------- | -------- | ----------------------------------------------- |
 | `resources` | No       | VM CPU, memory, and volume sizing.              |
-| `tunnel`    | No       | Named localhost ports exposed through the API.  |
+| `tunnels`   | No       | Named localhost ports exposed through the API.  |
 | `agents`    | Yes      | Agent servers Bastion installs and manages.     |
 | `actions`   | Yes      | Lifecycle actions: `init` and optional `start`. |
 
@@ -69,7 +69,7 @@ All resource values must be integers greater than or equal to `1`.
 
 ## Tunnels
 
-Use `tunnel` to register named HTTP ports that should be reachable through the
+Use `tunnels` to register named HTTP ports that should be reachable through the
 Bastion host API after an environment starts:
 
 ```json
@@ -77,7 +77,7 @@ Bastion host API after an environment starts:
   "agents": {
     "opencode": {}
   },
-  "tunnel": {
+  "tunnels": {
     "frontend": 3000,
     "backend": 3001
   },
@@ -88,7 +88,7 @@ Bastion host API after an environment starts:
 ```
 
 The tunnel name is used in URLs such as
-`/v1/environments/:id/tunnel/frontend`. The port is the guest-side localhost
+`/v1/environments/:id/tunnels/frontend`. The port is the guest-side localhost
 port. Services do not need to bind `0.0.0.0`; Bastion reaches them through a
 guest proxy over Cloud Hypervisor vsock and connects to `localhost:<port>` from
 inside the VM.

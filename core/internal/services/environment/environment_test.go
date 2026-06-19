@@ -295,7 +295,7 @@ func TestServiceListsAndResolvesTunnels(t *testing.T) {
 
 	createdTemplate, err := templates.Create(ctx, template.CreateRequest{
 		Key:    new("tunnel-template"),
-		Config: json.RawMessage(`{"agents":{"opencode":{}},"tunnel":{"backend":3001,"frontend":3000},"actions":{"init":[]}}`),
+		Config: json.RawMessage(`{"agents":{"opencode":{}},"tunnels":{"backend":3001,"frontend":3000},"actions":{"init":[]}}`),
 	})
 	if err != nil {
 		t.Fatalf("create template: %v", err)

@@ -124,7 +124,7 @@ Example response:
     {
       "name": "frontend",
       "port": 3000,
-      "url": "http://localhost:3148/v1/environments/env_xxxxxx/tunnel/frontend"
+      "url": "http://localhost:3148/v1/environments/env_xxxxxx/tunnels/frontend"
     }
   ]
 }

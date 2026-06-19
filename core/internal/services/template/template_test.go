@@ -226,7 +226,7 @@ func TestServiceAcceptsActionTemplateConfigs(t *testing.T) {
 		{key: "preset-actions", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","with":{"version":24}}]}}`)},
 		{key: "start-preset-actions", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[],"start":[{"use":"setup_node","with":{"version":24}}]}}`)},
 		{key: "resources", config: json.RawMessage(`{"agents":{"opencode":{}},"resources":{"vcpu":3,"memory":4,"volume":5},"actions":{"init":[]}}`)},
-		{key: "tunnel", config: json.RawMessage(`{"agents":{"opencode":{}},"tunnel":{"frontend":3000,"backend":3001},"actions":{"init":[]}}`)},
+		{key: "tunnels", config: json.RawMessage(`{"agents":{"opencode":{}},"tunnels":{"frontend":3000,"backend":3001},"actions":{"init":[]}}`)},
 		{key: "opencode-agent", config: json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/project","auth":{"anthropic":{"type":"api","key":"test-key"}},"config":{"model":"anthropic/claude-sonnet-4-5","permission":"allow"}}},"actions":{"init":[]}}`)},
 		{key: "bun-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_bun","with":{"version":"bun-v1.3.3"}}]}}`)},
 		{key: "mise-preset-action", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_mise","with":{"version":"v2025.12.0"}}]}}`)},
@@ -455,8 +455,9 @@ func TestServiceRejectsInvalidTemplateConfig(t *testing.T) {
 		{name: "invalid with input name", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","with":{"node-version":24}}]}}`)},
 		{name: "invalid with input value", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"use":"setup_node","with":{"version":{}}}]}}`)},
 		{name: "unknown top-level property", config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]},"legacy":{}}`)},
-		{name: "invalid tunnel name", config: json.RawMessage(`{"agents":{"opencode":{}},"tunnel":{"front/end":3000},"actions":{"init":[]}}`)},
-		{name: "invalid tunnel port", config: json.RawMessage(`{"agents":{"opencode":{}},"tunnel":{"frontend":70000},"actions":{"init":[]}}`)},
+		{name: "singular tunnel property", config: json.RawMessage(`{"agents":{"opencode":{}},"tunnel":{"frontend":3000},"actions":{"init":[]}}`)},
+		{name: "invalid tunnel name", config: json.RawMessage(`{"agents":{"opencode":{}},"tunnels":{"front/end":3000},"actions":{"init":[]}}`)},
+		{name: "invalid tunnel port", config: json.RawMessage(`{"agents":{"opencode":{}},"tunnels":{"frontend":70000},"actions":{"init":[]}}`)},
 		{name: "non integer vcpu", config: json.RawMessage(`{"agents":{"opencode":{}},"resources":{"vcpu":1.5},"actions":{"init":[]}}`)},
 	}
 
