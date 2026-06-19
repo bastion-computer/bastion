@@ -172,8 +172,8 @@ main() {
   local unkeyed_id
   local env_id
   local output
-  local source_archive="$ARCHIVE_DIR/source-template.tar.gz"
-  local restored_archive="$ARCHIVE_DIR/restored-template.tar.gz"
+  local source_archive="$ARCHIVE_DIR/source-template.tar.zst"
+  local restored_archive="$ARCHIVE_DIR/restored-template.tar.zst"
 
   precheck
   trap cleanup EXIT

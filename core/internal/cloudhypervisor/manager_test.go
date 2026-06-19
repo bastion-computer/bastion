@@ -6,12 +6,14 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +21,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 func TestPrepareCloudInitUsesEnvironmentIDForHostname(t *testing.T) {
@@ -129,7 +133,12 @@ func TestManagerExportsAndImportsPreparedTemplateArchive(t *testing.T) {
 		t.Fatalf("export template archive: %v", err)
 	}
 
-	imported, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: restoredID, Reader: bytes.NewReader(archive.Bytes())})
+	archiveBytes := archive.Bytes()
+	if len(archiveBytes) < 4 || !bytes.HasPrefix(archiveBytes, []byte{0x28, 0xb5, 0x2f, 0xfd}) {
+		t.Fatalf("archive prefix = % x, want zstd frame magic", archiveBytes[:min(len(archiveBytes), 4)])
+	}
+
+	imported, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: restoredID, Reader: bytes.NewReader(archiveBytes)})
 	if err != nil {
 		t.Fatalf("import template archive: %v", err)
 	}
@@ -142,13 +151,34 @@ func TestManagerExportsAndImportsPreparedTemplateArchive(t *testing.T) {
 	assertPathMode(t, filepath.Join(templateDir(dataDir, restoredID), envRootfsFileName), 0o400)
 }
 
+func TestManagerImportTemplateRejectsGzipArchive(t *testing.T) {
+	t.Parallel()
+
+	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
+
+	var archive bytes.Buffer
+
+	writeGzipTemplateArchive(t, &archive, config)
+
+	manager := Manager{DataDir: t.TempDir()}
+
+	_, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_gzip", Reader: bytes.NewReader(archive.Bytes())})
+	if !errors.Is(err, ErrInvalidTemplateArchive) {
+		t.Fatalf("import gzip archive error = %v, want invalid archive", err)
+	}
+}
+
 func TestManagerImportTemplateRejectsUnsafeArchivePath(t *testing.T) {
 	t.Parallel()
 
 	var archive bytes.Buffer
 
-	gzipWriter := gzip.NewWriter(&archive)
-	tarWriter := tar.NewWriter(gzipWriter)
+	zstdWriter, err := zstd.NewWriter(&archive)
+	if err != nil {
+		t.Fatalf("create zstd writer: %v", err)
+	}
+
+	tarWriter := tar.NewWriter(zstdWriter)
 
 	if err := tarWriter.WriteHeader(&tar.Header{Name: "../rootfs.img", Mode: 0o600, Size: 4}); err != nil {
 		t.Fatalf("write unsafe header: %v", err)
@@ -162,8 +192,8 @@ func TestManagerImportTemplateRejectsUnsafeArchivePath(t *testing.T) {
 		t.Fatalf("close tar: %v", err)
 	}
 
-	if err := gzipWriter.Close(); err != nil {
-		t.Fatalf("close gzip: %v", err)
+	if err := zstdWriter.Close(); err != nil {
+		t.Fatalf("close zstd: %v", err)
 	}
 
 	manager := Manager{DataDir: t.TempDir()}
@@ -611,6 +641,54 @@ func writeTestPreparedTemplate(t *testing.T, dataDir, templateID string) {
 		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 			t.Fatalf("write prepared template file %s: %v", filepath.Base(path), err)
 		}
+	}
+}
+
+func writeGzipTemplateArchive(t *testing.T, writer io.Writer, config json.RawMessage) {
+	t.Helper()
+
+	gzipWriter := gzip.NewWriter(writer)
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	manifest := templateArchiveManifest{
+		Format: templateArchiveFormat,
+		Template: Template{
+			ID:     "tpl_gzip_source",
+			Config: config,
+		},
+	}
+
+	manifestContents, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+
+	manifestContents = append(manifestContents, '\n')
+	entries := map[string][]byte{
+		templateArchiveManifestName: manifestContents,
+		envRootfsFileName:           []byte("rootfs"),
+		envSeedFileName:             []byte("seed"),
+		path.Join(snapshotDirName, snapshotConfigFileName): []byte(`{"disks":[{"path":"rootfs.img"}],"net":[{}]}`),
+		path.Join(snapshotDirName, snapshotStateFileName):  []byte(`{}`),
+		path.Join(snapshotDirName, snapshotMemoryFileName): []byte("memory"),
+	}
+
+	for name, contents := range entries {
+		if err := tarWriter.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(contents))}); err != nil {
+			t.Fatalf("write header %s: %v", name, err)
+		}
+
+		if _, err := tarWriter.Write(contents); err != nil {
+			t.Fatalf("write entry %s: %v", name, err)
+		}
+	}
+
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("close tar: %v", err)
+	}
+
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatalf("close gzip: %v", err)
 	}
 }
 

@@ -2,7 +2,6 @@ package cloudhypervisor
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +11,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 const (
@@ -49,12 +50,12 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 		return err
 	}
 
-	gzipWriter, err := gzip.NewWriterLevel(req.Writer, gzip.BestSpeed)
+	zstdWriter, err := zstd.NewWriter(req.Writer, zstd.WithEncoderLevel(zstd.SpeedDefault))
 	if err != nil {
 		return fmt.Errorf("create template archive compressor: %w", err)
 	}
 
-	tarWriter := tar.NewWriter(gzipWriter)
+	tarWriter := tar.NewWriter(zstdWriter)
 
 	manifest := templateArchiveManifest{
 		Format: templateArchiveFormat,
@@ -67,7 +68,7 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 
 	if err := writeTemplateArchiveJSON(ctx, tarWriter, templateArchiveManifestName, manifest); err != nil {
 		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
+		_ = zstdWriter.Close()
 
 		return err
 	}
@@ -75,19 +76,19 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 	for _, file := range preparedTemplateArchiveFiles(prepared.TemplateDir) {
 		if err := writeTemplateArchiveFile(ctx, tarWriter, file.archiveName, file.path); err != nil {
 			_ = tarWriter.Close()
-			_ = gzipWriter.Close()
+			_ = zstdWriter.Close()
 
 			return err
 		}
 	}
 
 	if err := tarWriter.Close(); err != nil {
-		_ = gzipWriter.Close()
+		_ = zstdWriter.Close()
 
 		return fmt.Errorf("close template archive: %w", err)
 	}
 
-	if err := gzipWriter.Close(); err != nil {
+	if err := zstdWriter.Close(); err != nil {
 		return fmt.Errorf("close template archive compressor: %w", err)
 	}
 
@@ -233,13 +234,13 @@ func writeTemplateArchiveFile(ctx context.Context, writer *tar.Writer, archiveNa
 }
 
 func extractTemplateArchive(ctx context.Context, reader io.Reader, templateDir string) (templateArchiveManifest, error) {
-	gzipReader, err := gzip.NewReader(reader)
+	zstdReader, err := zstd.NewReader(reader, zstd.WithDecoderLowmem(false), zstd.WithDecoderConcurrency(1))
 	if err != nil {
 		return templateArchiveManifest{}, fmt.Errorf("%w: open template archive: %w", ErrInvalidTemplateArchive, err)
 	}
-	defer func() { _ = gzipReader.Close() }()
+	defer zstdReader.Close()
 
-	tarReader := tar.NewReader(gzipReader)
+	tarReader := tar.NewReader(zstdReader)
 	state := newTemplateArchiveReadState(templateDir)
 
 	for {

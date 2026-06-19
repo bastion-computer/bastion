@@ -38,7 +38,7 @@ type ImportRequest struct {
 }
 
 // ArchiveContentType is the media type used for template import/export streams.
-const ArchiveContentType = "application/vnd.bastion.template+tar+gzip"
+const ArchiveContentType = "application/vnd.bastion.template+tar+zstd"
 
 // Stream event types used by POST /v1/templates.
 const (
