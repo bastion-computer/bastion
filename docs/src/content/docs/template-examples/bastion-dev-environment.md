@@ -4,10 +4,10 @@ description: An example of how we use Bastion to build Bastion.
 ---
 
 This example creates a development environment for working on Bastion itself. It
-installs mise, configures GitHub CLI, configures OpenCode, clones the Bastion
-repository, installs the repository tools, pulls the latest changes when each
-environment starts, and opens interactive SSH shells in the repository
-directory.
+installs mise and Docker, configures GitHub CLI, configures OpenCode, clones the
+Bastion repository, installs the repository tools, exposes the docs dev server,
+pulls the latest changes when each environment starts, and opens interactive SSH
+shells in the repository directory.
 
 ## Template
 
@@ -45,10 +45,16 @@ Create `template.json`:
       }
     }
   },
+  "tunnels": {
+    "docs": 4321
+  },
   "actions": {
     "init": [
       {
         "use": "setup_mise"
+      },
+      {
+        "use": "setup_docker"
       },
       {
         "use": "setup_github_cli",
