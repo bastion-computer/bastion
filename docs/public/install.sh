@@ -170,7 +170,12 @@ latest_prerelease_release_tag() {
   local url="https://api.github.com/repos/${REPO}/releases?per_page=100"
   local line
   local prerelease
+  local response
   local tag=""
+
+  if ! response="$(curl -fsSL "$url")"; then
+    fail "could not resolve latest Bastion prerelease from $url"
+  fi
 
   while IFS= read -r line; do
     case "$line" in
@@ -189,7 +194,7 @@ latest_prerelease_release_tag() {
         tag=""
         ;;
     esac
-  done < <(curl -fsSL "$url")
+  done <<<"$response"
 
   fail "could not resolve latest Bastion prerelease from $url"
 }
