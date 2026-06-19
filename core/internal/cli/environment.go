@@ -125,10 +125,10 @@ func newEnvironmentTunnelsCommand(opts *rootOptions) *cobra.Command {
 func environmentTunnelURL(apiURL, id, key, name string) string {
 	baseURL := strings.TrimRight(apiURL, "/")
 	if key != "" {
-		return baseURL + "/v1/environments/by-key/" + url.PathEscape(key) + "/tunnel/" + url.PathEscape(name)
+		return baseURL + "/v1/environments/by-key/" + url.PathEscape(key) + "/tunnels/" + url.PathEscape(name)
 	}
 
-	return baseURL + "/v1/environments/" + url.PathEscape(id) + "/tunnel/" + url.PathEscape(name)
+	return baseURL + "/v1/environments/" + url.PathEscape(id) + "/tunnels/" + url.PathEscape(name)
 }
 
 func newEnvironmentRemoveCommand(opts *rootOptions) *cobra.Command {

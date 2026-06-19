@@ -236,7 +236,7 @@ func TestEnvironmentTunnelsCommandPrintsTunnelURLs(t *testing.T) {
 		t.Fatalf("decode stdout: %v", err)
 	}
 
-	wantURL := server.URL + "/api/v1/environments/" + cliTestEnvironmentID + "/tunnel/" + cliTestTunnelName
+	wantURL := server.URL + "/api/v1/environments/" + cliTestEnvironmentID + "/tunnels/" + cliTestTunnelName
 	if len(got.Entries) != 1 || got.Entries[0].URL != wantURL {
 		t.Fatalf("tunnels output = %#v, want URL %s", got, wantURL)
 	}
@@ -276,7 +276,7 @@ func TestRootEnvironmentTunnelsUsesPersistedAPIURL(t *testing.T) {
 		t.Fatalf("decode stdout: %v", err)
 	}
 
-	wantURL := server.URL + "/v1/environments/by-key/" + cliTestEnvironmentKey + "/tunnel/" + cliTestTunnelName
+	wantURL := server.URL + "/v1/environments/by-key/" + cliTestEnvironmentKey + "/tunnels/" + cliTestTunnelName
 	if len(got.Entries) != 1 || got.Entries[0].URL != wantURL {
 		t.Fatalf("tunnels output = %#v, want persisted API URL %s", got, wantURL)
 	}
