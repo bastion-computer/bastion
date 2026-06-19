@@ -28,7 +28,7 @@ const (
 	// GuestProxyVsockPort is the fixed guest-side vsock port for HTTP tunnel proxying.
 	GuestProxyVsockPort = tunnel.GuestProxyVsockPort
 	// TemplateArchiveContentType is the media type used for streamed template backups.
-	TemplateArchiveContentType = "application/vnd.bastion.template+tar+gzip"
+	TemplateArchiveContentType = "application/vnd.bastion.template+tar+zstd"
 
 	// NetworkIndexLimit is the number of /30 VM networks available in 10.241.0.0/16.
 	NetworkIndexLimit = 16000

@@ -154,7 +154,7 @@ Creates and manages environment templates.
 bastion templates create [--key KEY] (--config JSON | --file PATH)
 bastion templates list [--limit N] [--cursor CURSOR]
 bastion templates get (--id ID | --key KEY)
-bastion templates export (--id ID | --key KEY) > template.tar.gz
+bastion templates export (--id ID | --key KEY) > template.tar.zst
 bastion templates import [--key KEY] --file PATH
 bastion templates remove (--id ID | --key KEY)
 ```

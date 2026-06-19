@@ -385,13 +385,13 @@ bastion templates get --id tpl_xxxxxx
 Export a prepared template archive by key:
 
 ```sh
-bastion templates export --key dev > dev-template.tar.gz
+bastion templates export --key dev > dev-template.tar.zst
 ```
 
 Export by ID:
 
 ```sh
-bastion templates export --id tpl_xxxxxx > dev-template.tar.gz
+bastion templates export --id tpl_xxxxxx > dev-template.tar.zst
 ```
 
 The archive contains the stored template config plus the prepared root disk,
@@ -401,13 +401,13 @@ a prepared template to another Bastion host without rerunning init actions.
 Import with a new key:
 
 ```sh
-bastion templates import --key dev-restored --file ./dev-template.tar.gz
+bastion templates import --key dev-restored --file ./dev-template.tar.zst
 ```
 
 Import without a key:
 
 ```sh
-bastion templates import --file ./dev-template.tar.gz
+bastion templates import --file ./dev-template.tar.zst
 ```
 
 Imports always create a new template ID. They do not preserve the exported ID or

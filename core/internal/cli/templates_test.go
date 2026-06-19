@@ -160,7 +160,7 @@ func TestTemplatesExportCommandWritesArchive(t *testing.T) {
 func TestTemplatesImportCommandUploadsArchiveFile(t *testing.T) {
 	t.Parallel()
 
-	archivePath := filepath.Join(t.TempDir(), "template.tar.gz")
+	archivePath := filepath.Join(t.TempDir(), "template.tar.zst")
 	if err := os.WriteFile(archivePath, []byte("template-archive"), 0o600); err != nil {
 		t.Fatalf("write archive file: %v", err)
 	}

@@ -265,10 +265,10 @@ Response:
 ```http
 GET /v1/templates/tpl_xxxxxx/export
 GET /v1/templates/by-key/dev/export
-Accept: application/vnd.bastion.template+tar+gzip
+Accept: application/vnd.bastion.template+tar+zstd
 ```
 
-The response body is a gzip-compressed tar archive containing the template config
+The response body is a zstd-compressed tar archive containing the template config
 and prepared VM artifacts. Use the by-key route only for templates that have a
 key.
 
@@ -276,7 +276,7 @@ key.
 
 ```http
 POST /v1/templates/import?key=dev-restored
-Content-Type: application/vnd.bastion.template+tar+gzip
+Content-Type: application/vnd.bastion.template+tar+zstd
 ```
 
 The `key` query parameter is optional. Imports create a new template ID and do
