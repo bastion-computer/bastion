@@ -18,6 +18,18 @@ matching `v*` is pushed.
 5. Verify the generated GitHub Release page includes the expected release notes
    and uploaded assets.
 
+## Prereleases
+
+Tags with a `-rc.*` suffix, such as `v0.12.0-rc.1`, create GitHub
+prerelease releases. They are not marked as the repository latest release.
+
+The public installer uses stable latest releases by default. To install the
+latest prerelease for testing, pass `--experimental`:
+
+```sh
+curl -fsSL https://bastion.computer/install.sh | bash -s -- --experimental
+```
+
 ## Release Workflow
 
 The workflow builds the core package binaries with `BASTION_VERSION` set to the

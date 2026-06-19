@@ -39,6 +39,13 @@ CLI. Use `bastion --api-url` to connect it to a remote Linux Bastion host API.
 If you only want the binaries, download the release archive from the
 [GitHub releases page](https://github.com/bastion-computer/bastion/releases).
 
+To test the latest release candidate before it becomes the latest stable
+release, pass `--experimental`:
+
+```sh
+curl -fsSL https://bastion.computer/install.sh | bash -s -- --experimental
+```
+
 ## Prepare the Host
 
 Check host dependencies:
