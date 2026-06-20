@@ -4,7 +4,12 @@ description: Local HTTP API endpoints exposed by Bastion.
 ---
 
 The host API is served by `bastion start api` on `http://localhost:3148` by default.
-The CLI is a client for this API.
+The cluster API is served by `bastion start cluster` on `http://localhost:3150`
+by default. The CLI is a client for these APIs.
+
+Cluster management endpoints use `/v1/cluster/...`. Host-compatible resource
+endpoints on the cluster API require a namespace prefix, for example
+`/v1/namespaces/team-a/environments`.
 
 ## Health
 
@@ -535,6 +540,95 @@ Interactive clients can request a PTY and include terminal metadata:
 The upgraded connection uses Bastion SSH frames for stdin, stdout, stderr,
 terminal resize, exit status, and errors. Prefer the `bastion ssh` CLI unless
 you are implementing a custom client.
+
+## Cluster Management
+
+Cluster management endpoints are served by the cluster API and are not scoped to
+a namespace.
+
+### Nodes
+
+```http
+POST /v1/cluster/nodes
+GET /v1/cluster/nodes?limit=20&cursor=<cursor>
+GET /v1/cluster/nodes/node_xxxxxx
+GET /v1/cluster/nodes/by-key/node-a
+DELETE /v1/cluster/nodes/node_xxxxxx
+DELETE /v1/cluster/nodes/by-key/node-a
+```
+
+Create request:
+
+```json
+{
+  "key": "node-a",
+  "apiUrl": "http://node-a.example:3148"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "node_xxxxxx",
+  "key": "node-a",
+  "apiUrl": "http://node-a.example:3148",
+  "createdAt": "<iso_timestamp>"
+}
+```
+
+### Namespaces
+
+```http
+POST /v1/cluster/namespaces
+GET /v1/cluster/namespaces?limit=20&cursor=<cursor>
+GET /v1/cluster/namespaces/ns_xxxxxx
+GET /v1/cluster/namespaces/by-key/team-a
+DELETE /v1/cluster/namespaces/ns_xxxxxx
+DELETE /v1/cluster/namespaces/by-key/team-a
+```
+
+Create request:
+
+```json
+{
+  "key": "team-a",
+  "limits": {
+    "vcpu": 8,
+    "memory": 17179869184,
+    "volume": 1099511627776
+  }
+}
+```
+
+Namespace keys cannot start with `ns_`. Limit fields are optional and use `0` for
+unlimited.
+
+### Cluster Utilization
+
+```http
+GET /v1/cluster/utilization
+```
+
+Returns the same utilization shape as `GET /v1/utilization`, aggregated by the
+cluster control plane.
+
+## Namespaced Cluster Resources
+
+The cluster API exposes host-compatible resource endpoints under a namespace
+path:
+
+```http
+GET /v1/namespaces/team-a/health
+GET /v1/namespaces/team-a/utilization
+POST /v1/namespaces/team-a/secrets
+POST /v1/namespaces/team-a/templates
+POST /v1/namespaces/team-a/environments
+```
+
+These routes return source IDs from cluster state. The cluster control plane
+creates derivative resources on worker nodes and forwards environment SSH,
+OpenCode agent, and tunnel requests to the owning node.
 
 ## Pagination
 

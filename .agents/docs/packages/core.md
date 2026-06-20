@@ -6,6 +6,7 @@ The core package lives in `core/`. On Linux it builds the `bastion` and `bastion
 
 - `bastion start api` runs the local host API service on `localhost:3148` by default.
 - `sudo bastion start daemon` runs privileged Cloud Hypervisor runtime operations behind a Unix socket.
+- `bastion start cluster` runs the cluster control plane on `localhost:3150` by default.
 - CLI commands operate locally when managing host/client configuration, or call the host API service and print JSON responses for product resources.
 
 ## Layout
@@ -45,6 +46,7 @@ Run package tasks from the repo root with mise:
 | ---- | ------- | ------- |
 | `mise run //core:dev:api` | `air -c .air.api.toml` | Start the host API with live reload. |
 | `mise run //core:dev:daemon` | `air -c .air.daemon.toml` | Start the daemon with live reload. |
+| `mise run //core:dev:cluster` | `air -c .air.cluster.toml` | Start the cluster API with live reload. |
 | `mise run //core:lint` | `golangci-lint run ./...` | Run Go linters. |
 | `mise run //core:format:check` | `gofmt -l .` check | Check Go formatting without writing files. |
 | `mise run //core:format:write` | `gofmt -w .` | Rewrite Go formatting. |
@@ -52,7 +54,7 @@ Run package tasks from the repo root with mise:
 | `mise run //core:test` | `go test ./...` | Run Go tests. |
 | `mise run //core:test:e2e` | Build binaries and run `core/e2e/*.sh` scripts | Run core E2E tests against a reachable local API/daemon. |
 
-Root aggregate tasks include this package, so `mise run dev:up`, `mise run lint`, `mise run format:check`, `mise run build`, and `mise run test` can all be run from the repository root. The root `dev:up` task opens a tmux session with dedicated panes for the API and daemon Air processes.
+Root aggregate tasks include this package, so `mise run dev:up`, `mise run lint`, `mise run format:check`, `mise run build`, and `mise run test` can all be run from the repository root. The root `dev:up` task starts Docker Compose Postgres/MinIO infrastructure and opens a tmux session with panes for the API, daemon, cluster API, Drizzle, docs, and a shell.
 
 Local builds report `dev` from `internal/config.Version`. Release builds can inject a version by setting `BASTION_VERSION` before running `mise run //core:build`.
 
@@ -72,6 +74,12 @@ The service uses Gin and wraps it in `http.Server` so timeouts and graceful shut
 
 Host-initiated guest proxy traffic must use `internal/tunnel.DialGuestProxy`; Cloud Hypervisor requires sending `CONNECT <port>\n` and consuming the `OK <host-port>\n` acknowledgement before speaking HTTP.
 
+## Cluster API
+
+`bastion start cluster` accepts `--addr`, `--database-url`, `--archive-bucket`, `--archive-endpoint`, `--archive-region`, `--archive-access-key-id`, `--archive-secret-access-key`, `--archive-force-path-style`, `--log-format`, and `--log-level`. It stores cluster state in Postgres and source template archives in an S3-compatible bucket. Development defaults in `.air.cluster.toml` target the root `compose.yml` services on `localhost:3152` for Postgres and `localhost:3153` for MinIO.
+
+Cluster routes live in `internal/clusterapi`. Cluster management APIs use `/v1/cluster/...`; host-compatible resource APIs require a namespace path such as `/v1/namespaces/:namespace/templates`. The CLI global `--namespace` flag and `BASTION_NAMESPACE` environment variable select this namespace when calling a cluster API.
+
 ## Database
 
 Core stores persistent data in SQLite at `<data-dir>/sqlite.db`.
@@ -87,19 +95,23 @@ The core migrations are the schema source of truth. Development tools such as Dr
 
 `internal/database` intentionally stays small: it opens SQLite, runs migrations, exposes context-aware query and transaction methods, and detects SQLite constraint errors. Service packages under `internal/services` own their own SQL and CRUD behavior.
 
+Cluster control-plane state uses Postgres through `internal/clusterapi.PostgresStore`; its migrations live under `core/internal/clusterapi/migrations`. Source template archives use `internal/clusterapi.ArchiveStore`, with S3-compatible storage in production/dev cluster startup and memory storage in tests.
+
 ## CLI
 
 Most client commands call the host API configured by `--api-url`, `BASTION_API_URL`, or a persisted override in `<data-dir>/client.json`. The default is `http://localhost:3148`. Server, system, version, and local client-configuration commands operate locally.
 
 Supported top-level commands are intentionally limited to the current product scope:
 
-- `bastion start api` and `bastion start daemon`
+- `bastion start api`, `bastion start daemon`, and `bastion start cluster`
 - `bastion system check`, `bastion system add cloud-hypervisor`, and `bastion system remove cloud-hypervisor`
 - `bastion utilization`
 - `bastion secrets ...`
 - `bastion templates ...`
 - `bastion env ...`
 - `bastion client set api-url URL`, `bastion client remove api-url`, and `bastion client config`
+- `bastion client set namespace NAMESPACE` and `bastion client remove namespace`
+- `bastion cluster nodes ...`, `bastion cluster namespaces ...`, and `bastion cluster utilization`
 - `bastion mux`
 - `bastion opencode (--id ID | --key KEY)`
 - `bastion proxy (--env-id ID | --env-key KEY) --name NAME [--port PORT]`

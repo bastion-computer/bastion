@@ -21,6 +21,26 @@ These settings apply to `bastion start api`.
 The host API creates the data directory if needed and stores SQLite data at
 `<data-dir>/sqlite.db`.
 
+## Cluster API
+
+These settings apply to `bastion start cluster`.
+
+| Flag                          | Environment                                 | Default          | Description                              |
+| ----------------------------- | ------------------------------------------- | ---------------- | ---------------------------------------- |
+| `--addr`                      | `BASTION_CLUSTER_ADDR`                      | `localhost:3150` | Cluster API listen address.              |
+| `--database-url`              | `BASTION_CLUSTER_DATABASE_URL`              |                  | Postgres database URL for cluster state. |
+| `--archive-bucket`            | `BASTION_CLUSTER_ARCHIVE_BUCKET`            |                  | S3-compatible template archive bucket.   |
+| `--archive-endpoint`          | `BASTION_CLUSTER_ARCHIVE_ENDPOINT`          |                  | S3-compatible endpoint URL.              |
+| `--archive-region`            | `BASTION_CLUSTER_ARCHIVE_REGION`            | `us-east-1`      | S3 region.                               |
+| `--archive-access-key-id`     | `BASTION_CLUSTER_ARCHIVE_ACCESS_KEY_ID`     |                  | Static S3 access key ID.                 |
+| `--archive-secret-access-key` | `BASTION_CLUSTER_ARCHIVE_SECRET_ACCESS_KEY` |                  | Static S3 secret access key.             |
+| `--archive-force-path-style`  | `BASTION_CLUSTER_ARCHIVE_FORCE_PATH_STYLE`  | endpoint-based   | Use path-style S3 bucket addressing.     |
+| `--log-format`                | `BASTION_CLUSTER_LOG_FORMAT`                | `json`           | `json` or `text`.                        |
+| `--log-level`                 | `BASTION_CLUSTER_LOG_LEVEL`                 | `info`           | `debug`, `info`, `warn`, or `error`.     |
+
+Cluster management routes use `/v1/cluster/...`. Regular resources use a
+namespace path, for example `/v1/namespaces/team-a/environments`.
+
 ## Systemd Services
 
 The installer creates `bastion-api.service` and `bastiond.service` by default.
@@ -42,10 +62,11 @@ daemon does not terminate Cloud Hypervisor VM child processes.
 
 These settings apply to CLI commands that call the host API.
 
-| Flag         | Environment        | Default                 | Description                                   |
-| ------------ | ------------------ | ----------------------- | --------------------------------------------- |
-| `--api-url`  | `BASTION_API_URL`  | `http://localhost:3148` | Host API base URL.                            |
-| `--data-dir` | `BASTION_DATA_DIR` | `~/.bastion`            | Directory containing persisted client config. |
+| Flag          | Environment         | Default                 | Description                                   |
+| ------------- | ------------------- | ----------------------- | --------------------------------------------- |
+| `--api-url`   | `BASTION_API_URL`   | `http://localhost:3148` | Host API base URL.                            |
+| `--data-dir`  | `BASTION_DATA_DIR`  | `~/.bastion`            | Directory containing persisted client config. |
+| `--namespace` | `BASTION_NAMESPACE` |                         | Cluster namespace ID or key.                  |
 
 The host API URL resolves in this order:
 
@@ -54,10 +75,18 @@ The host API URL resolves in this order:
 3. `<data-dir>/client.json`
 4. `http://localhost:3148`
 
+The namespace resolves in this order:
+
+1. `--namespace`
+2. `BASTION_NAMESPACE`
+3. `<data-dir>/client.json`
+4. empty
+
 Persist a remote API URL with:
 
 ```sh
 bastion client set api-url https://bastion.example
+bastion client set namespace team-a
 ```
 
 Inspect the resolved value and source with:

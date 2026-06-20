@@ -9,17 +9,18 @@ diagnostics are written to stderr.
 
 ## Global Flags
 
-| Flag         | Environment        | Default                 | Description                                          |
-| ------------ | ------------------ | ----------------------- | ---------------------------------------------------- |
-| `--api-url`  | `BASTION_API_URL`  | `http://localhost:3148` | Host API URL used by client commands.                |
-| `--data-dir` | `BASTION_DATA_DIR` | `~/.bastion`            | Persistent data directory and client config storage. |
+| Flag          | Environment         | Default                 | Description                                          |
+| ------------- | ------------------- | ----------------------- | ---------------------------------------------------- |
+| `--api-url`   | `BASTION_API_URL`   | `http://localhost:3148` | Host API URL used by client commands.                |
+| `--data-dir`  | `BASTION_DATA_DIR`  | `~/.bastion`            | Persistent data directory and client config storage. |
+| `--namespace` | `BASTION_NAMESPACE` |                         | Cluster namespace ID or key for resource commands.   |
 
 Client commands resolve `--api-url` in this order: explicit flag,
 `BASTION_API_URL`, `<data-dir>/client.json`, then the built-in default.
 
 ## `bastion start`
 
-Starts a Bastion process. Specify a process type: `api` or `daemon`.
+Starts a Bastion process. Specify a process type: `api`, `daemon`, or `cluster`.
 
 On macOS, `bastion start api` and `bastion start daemon` print a compatibility
 message. Use `--api-url` to connect the macOS CLI to a remote Linux Bastion host
@@ -63,6 +64,28 @@ sudo bastion start daemon [flags]
 The socket owner/group also owns per-VM proxy sockets used by OpenCode and
 environment tunnels, so it should match the user running `bastion start api`.
 
+### `bastion start cluster`
+
+Starts the cluster control plane. It requires Postgres for cluster state and an
+S3-compatible bucket for source template archives.
+
+```sh
+bastion start cluster [flags]
+```
+
+| Flag                          | Environment                                 | Default          | Description                                 |
+| ----------------------------- | ------------------------------------------- | ---------------- | ------------------------------------------- |
+| `--addr`                      | `BASTION_CLUSTER_ADDR`                      | `localhost:3150` | Cluster API listen address.                 |
+| `--database-url`              | `BASTION_CLUSTER_DATABASE_URL`              |                  | Postgres database URL.                      |
+| `--archive-bucket`            | `BASTION_CLUSTER_ARCHIVE_BUCKET`            |                  | S3-compatible bucket for template archives. |
+| `--archive-endpoint`          | `BASTION_CLUSTER_ARCHIVE_ENDPOINT`          |                  | S3-compatible endpoint URL.                 |
+| `--archive-region`            | `BASTION_CLUSTER_ARCHIVE_REGION`            | `us-east-1`      | S3 region.                                  |
+| `--archive-access-key-id`     | `BASTION_CLUSTER_ARCHIVE_ACCESS_KEY_ID`     |                  | Static S3 access key ID.                    |
+| `--archive-secret-access-key` | `BASTION_CLUSTER_ARCHIVE_SECRET_ACCESS_KEY` |                  | Static S3 secret access key.                |
+| `--archive-force-path-style`  | `BASTION_CLUSTER_ARCHIVE_FORCE_PATH_STYLE`  | endpoint-based   | Use path-style S3 addressing.               |
+| `--log-format`                | `BASTION_CLUSTER_LOG_FORMAT`                | `json`           | `json` or `text`.                           |
+| `--log-level`                 | `BASTION_CLUSTER_LOG_LEVEL`                 | `info`           | `debug`, `info`, `warn`, or `error`.        |
+
 ## `bastion system`
 
 Manages host dependencies and Cloud Hypervisor assets.
@@ -87,15 +110,19 @@ Manages persistent local CLI client configuration.
 
 ```sh
 bastion client [--data-dir DIR] set api-url URL
+bastion client [--data-dir DIR] set namespace NAMESPACE
 bastion client [--data-dir DIR] remove api-url
+bastion client [--data-dir DIR] remove namespace
 bastion client [--data-dir DIR] config
 ```
 
-| Command          | Description                                                           |
-| ---------------- | --------------------------------------------------------------------- |
-| `set api-url`    | Persist the host API URL used when no `--api-url` flag or env is set. |
-| `remove api-url` | Remove the persisted host API URL override.                           |
-| `config`         | Print resolved client flag values and their sources as JSON.          |
+| Command            | Description                                                                  |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `set api-url`      | Persist the host API URL used when no `--api-url` flag or env is set.        |
+| `set namespace`    | Persist the cluster namespace used when no `--namespace` flag or env is set. |
+| `remove api-url`   | Remove the persisted host API URL override.                                  |
+| `remove namespace` | Remove the persisted namespace override.                                     |
+| `config`           | Print resolved client flag values and their sources as JSON.                 |
 
 The override is stored in `<data-dir>/client.json`. Use this when connecting to
 a remote Bastion API often enough that passing `--api-url` every time is noisy:
@@ -111,6 +138,29 @@ Use `--data-dir` to keep separate client profiles:
 bastion client --data-dir ~/.bastion-remote set api-url https://bastion.example
 bastion --data-dir ~/.bastion-remote env list
 ```
+
+## `bastion cluster`
+
+Manages cluster nodes, namespaces, and aggregate utilization. These commands call
+`/v1/cluster/...` and do not use `--namespace`.
+
+```sh
+bastion cluster nodes create [--key KEY] --url URL
+bastion cluster nodes list [--limit N] [--cursor CURSOR]
+bastion cluster nodes get (--id ID | --key KEY)
+bastion cluster nodes remove (--id ID | --key KEY)
+
+bastion cluster namespaces create [--key KEY] [--vcpu N] [--memory BYTES] [--volume BYTES]
+bastion cluster namespaces list [--limit N] [--cursor CURSOR]
+bastion cluster namespaces get (--id ID | --key KEY)
+bastion cluster namespaces remove (--id ID | --key KEY)
+
+bastion cluster utilization
+```
+
+Namespace keys are optional and cannot start with `ns_`. For regular resource
+commands against a cluster, pass `--namespace team-a` or persist it with
+`bastion client set namespace team-a`.
 
 ## `bastion utilization`
 

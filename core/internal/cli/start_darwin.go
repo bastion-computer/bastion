@@ -19,6 +19,7 @@ func newStartCommand(_ *rootOptions) *cobra.Command {
 	cmd.AddCommand(
 		newUnsupportedStartAPICommand(),
 		newUnsupportedStartDaemonCommand(),
+		newUnsupportedStartClusterCommand(),
 	)
 
 	return cmd
@@ -60,6 +61,26 @@ func newUnsupportedStartDaemonCommand() *cobra.Command {
 	cmd.Flags().Int("socket-gid", 0, "GID that owns the Bastion daemon Unix socket")
 	cmd.Flags().Int("vm-uid", 0, "UID used for VM-owned runtime files")
 	cmd.Flags().Int("vm-gid", 0, "GID used for VM-owned runtime files")
+	cmd.Flags().StringVar(&logFormat, "log-format", logFormat, "log format: json or text")
+	cmd.Flags().StringVar(&logLevel, "log-level", logLevel, "minimum log level: debug, info, warn, or error")
+
+	return cmd
+}
+
+func newUnsupportedStartClusterCommand() *cobra.Command {
+	addr := config.EnvDefault("BASTION_CLUSTER_ADDR", config.DefaultClusterAddr)
+	databaseURL := config.EnvDefault("BASTION_CLUSTER_DATABASE_URL", "")
+	logFormat := config.EnvDefault("BASTION_CLUSTER_LOG_FORMAT", logging.DefaultFormat)
+	logLevel := config.EnvDefault("BASTION_CLUSTER_LOG_LEVEL", logging.DefaultLevel)
+
+	cmd := &cobra.Command{
+		Use:   startClusterUse,
+		Short: "Start the Bastion cluster control plane",
+		Args:  cobra.NoArgs,
+		RunE:  unsupportedStartProcess,
+	}
+	cmd.Flags().StringVar(&addr, "addr", addr, "cluster API listen address")
+	cmd.Flags().StringVar(&databaseURL, "database-url", databaseURL, "Postgres database URL for cluster state")
 	cmd.Flags().StringVar(&logFormat, "log-format", logFormat, "log format: json or text")
 	cmd.Flags().StringVar(&logLevel, "log-level", logLevel, "minimum log level: debug, info, warn, or error")
 

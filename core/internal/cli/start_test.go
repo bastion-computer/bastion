@@ -38,7 +38,7 @@ func TestStartCommandRequiresProcessSubcommand(t *testing.T) {
 func TestStartCommandIncludesProcessSubcommands(t *testing.T) {
 	t.Parallel()
 
-	for _, process := range []string{startAPIUse, startDaemonUse} {
+	for _, process := range []string{startAPIUse, startDaemonUse, startClusterUse} {
 		t.Run(process, func(t *testing.T) {
 			t.Parallel()
 
@@ -57,6 +57,45 @@ func TestStartCommandIncludesProcessSubcommands(t *testing.T) {
 				t.Fatalf("remaining args = %v, want none", remaining)
 			}
 		})
+	}
+}
+
+func TestStartClusterCommandIncludesArchiveStorageFlags(t *testing.T) {
+	t.Setenv("BASTION_CLUSTER_ARCHIVE_BUCKET", "archives")
+	t.Setenv("BASTION_CLUSTER_ARCHIVE_ENDPOINT", "http://localhost:9000")
+	t.Setenv("BASTION_CLUSTER_ARCHIVE_REGION", "us-east-1")
+	t.Setenv("BASTION_CLUSTER_ARCHIVE_ACCESS_KEY_ID", "minio")
+	t.Setenv("BASTION_CLUSTER_ARCHIVE_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("BASTION_CLUSTER_ARCHIVE_FORCE_PATH_STYLE", "true")
+
+	cmd := NewRootCommand()
+
+	clusterCmd, remaining, err := cmd.Find([]string{startUse, startClusterUse})
+	if err != nil {
+		t.Fatalf("find start cluster command: %v", err)
+	}
+
+	if len(remaining) != 0 {
+		t.Fatalf("remaining args = %v, want none", remaining)
+	}
+
+	want := map[string]string{
+		"archive-bucket":            "archives",
+		"archive-endpoint":          "http://localhost:9000",
+		"archive-region":            "us-east-1",
+		"archive-access-key-id":     "minio",
+		"archive-secret-access-key": "secret",
+		"archive-force-path-style":  "true",
+	}
+	for name, value := range want {
+		flag := clusterCmd.Flag(name)
+		if flag == nil {
+			t.Fatalf("start cluster flag %q is missing", name)
+		}
+
+		if flag.DefValue != value {
+			t.Fatalf("start cluster flag %q default = %q, want %q", name, flag.DefValue, value)
+		}
 	}
 }
 
