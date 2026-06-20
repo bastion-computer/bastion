@@ -834,23 +834,9 @@ func (h handler) createEnvironmentRecord(ctx context.Context, namespaceRef strin
 	}
 
 	api := h.newClient(node.APIURL)
-	if derivativeTemplateID == "" {
-		archive, err := h.archives.Get(ctx, sourceTemplate.ArchiveKey)
-		if err != nil {
-			return environment.Environment{}, err
-		}
-
-		imported, err := api.ImportTemplate(ctx, template.ImportRequest{Archive: bytes.NewReader(archive), ArchiveSize: int64(len(archive))})
-		if err != nil {
-			return environment.Environment{}, err
-		}
-
-		derivativeTemplateID = imported.ID
-		if err := h.store.SaveTemplateDerivative(ctx, sourceTemplate.ID, node.ID, derivativeTemplateID); err != nil {
-			_, _ = api.RemoveTemplate(context.Background(), derivativeTemplateID, "")
-
-			return environment.Environment{}, err
-		}
+	derivativeTemplateID, err = h.ensureEnvironmentDerivativeTemplate(ctx, api, namespace.ID, sourceTemplate, node, derivativeTemplateID)
+	if err != nil {
+		return environment.Environment{}, err
 	}
 
 	derivative, err := api.CreateEnvironment(ctx, environment.CreateRequest{TemplateID: derivativeTemplateID, Tags: req.Tags, Logs: req.Logs})
@@ -883,6 +869,68 @@ func (h handler) createEnvironmentRecord(ctx context.Context, namespaceRef strin
 		DerivativeTemplateID:    derivativeTemplateID,
 		DerivativeEnvironmentID: derivative.ID,
 	})
+}
+
+func (h handler) ensureEnvironmentDerivativeTemplate(ctx context.Context, api *client.Client, namespaceID string, sourceTemplate StoredTemplate, node cluster.Node, derivativeTemplateID string) (string, error) {
+	if derivativeTemplateID != "" {
+		return derivativeTemplateID, nil
+	}
+
+	archive, err := h.archives.Get(ctx, sourceTemplate.ArchiveKey)
+	if err != nil {
+		return "", err
+	}
+
+	derivativeSecrets, cleanupDerivativeSecretsOnFailure, err := h.prepareImportedTemplateArchive(ctx, api, namespaceID, sourceTemplate.Config, &archive)
+	if err != nil {
+		return "", err
+	}
+
+	defer func() {
+		if cleanupDerivativeSecretsOnFailure {
+			cleanupDerivativeSecrets(api, derivativeSecrets)
+		}
+	}()
+
+	imported, err := api.ImportTemplate(ctx, template.ImportRequest{Archive: bytes.NewReader(archive), ArchiveSize: int64(len(archive))})
+	if err != nil {
+		return "", err
+	}
+
+	if err := h.store.SaveTemplateDerivative(ctx, sourceTemplate.ID, node.ID, imported.ID); err != nil {
+		_, _ = api.RemoveTemplate(context.Background(), imported.ID, "")
+
+		return "", err
+	}
+
+	cleanupDerivativeSecretsOnFailure = false
+
+	return imported.ID, nil
+}
+
+func (h handler) prepareImportedTemplateArchive(ctx context.Context, api *client.Client, namespaceID string, sourceConfig json.RawMessage, archive *[]byte) ([]string, bool, error) {
+	refs, err := collectTemplateSecretReferences(sourceConfig)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if len(refs) == 0 {
+		return nil, false, nil
+	}
+
+	derivativeConfig, derivativeSecrets, err := h.prepareDerivativeTemplateConfig(ctx, api, namespaceID, sourceConfig)
+	if err != nil {
+		return derivativeSecrets, true, err
+	}
+
+	rewrittenArchive, err := rewriteTemplateArchiveConfig(ctx, *archive, derivativeConfig)
+	if err != nil {
+		return derivativeSecrets, true, err
+	}
+
+	*archive = rewrittenArchive
+
+	return derivativeSecrets, true, nil
 }
 
 func (h handler) selectEnvironmentNode(ctx context.Context, sourceTemplate StoredTemplate) (cluster.Node, string, error) {

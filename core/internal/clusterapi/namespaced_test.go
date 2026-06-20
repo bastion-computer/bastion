@@ -2,6 +2,8 @@
 package clusterapi_test
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -16,6 +18,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
+	"github.com/klauspost/compress/zstd"
 )
 
 func TestNamespacedTemplateCreateExportsAndCleansDerivative(t *testing.T) {
@@ -150,6 +153,74 @@ func TestNamespacedEnvironmentCreateImportsTemplateAndReturnsSourceIDs(t *testin
 	}
 }
 
+func TestNamespacedEnvironmentCreateRewritesImportedTemplateSecretReferences(t *testing.T) {
+	t.Parallel()
+
+	var createdSecrets atomic.Int64
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/secrets":
+			var req secret.CreateRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode derivative secret request: %v", err)
+			}
+
+			if req.Value != "source-secret" {
+				t.Fatalf("derivative secret value = %q, want source-secret", req.Value)
+			}
+
+			createdSecrets.Add(1)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(secret.Metadata{ID: "sec_node_b"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/templates/import":
+			config := readTemplateArchiveConfig(t, r.Body)
+			if !strings.Contains(string(config), "${{ secret.sec_node_b }}") || strings.Contains(string(config), "sec_node_a") || strings.Contains(string(config), "API_TOKEN") {
+				t.Fatalf("imported template config = %s, want node B derivative secret only", config)
+			}
+
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(template.Metadata{ID: "tpl_imported"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/environments":
+			streamEnvironmentResult(t, w, environment.Environment{ID: "env_derivative", Status: "running", TemplateID: "tpl_imported", CreatedAt: "node-created", UpdatedAt: "node-updated"})
+		default:
+			t.Fatalf("unexpected node request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	t.Cleanup(node.Close)
+
+	store := newNamespacedStore(t, node.URL)
+	archiveStore := clusterapi.NewMemoryArchiveStore()
+	archive := makeTemplateArchive(t, json.RawMessage(`{"agents":{"opencode":{"auth":{"anthropic":{"type":"api","key":"${{ secret.sec_node_a }}"}}}},"actions":{"init":[]}}`))
+	if err := archiveStore.Put(context.Background(), "templates/tpl_source.tar.zst", archive); err != nil {
+		t.Fatalf("put template archive: %v", err)
+	}
+
+	namespace, err := store.ResolveNamespace(context.Background(), "team-a")
+	if err != nil {
+		t.Fatalf("resolve namespace: %v", err)
+	}
+
+	secretKey := "API_TOKEN"
+	if _, err := store.CreateSecret(context.Background(), namespace.ID, secret.CreateRequest{Key: &secretKey, Value: "source-secret"}); err != nil {
+		t.Fatalf("create source secret: %v", err)
+	}
+
+	sourceConfig := json.RawMessage(`{"agents":{"opencode":{"auth":{"anthropic":{"type":"api","key":"${{ secret.API_TOKEN }}"}}}},"actions":{"init":[]}}`)
+	if _, err := store.CreateTemplate(context.Background(), namespace.ID, template.Template{ID: "tpl_source", Key: new("dev"), Config: sourceConfig, CreatedAt: "source-created"}, "templates/tpl_source.tar.zst"); err != nil {
+		t.Fatalf("create source template: %v", err)
+	}
+
+	router := clusterapi.NewRouter(store, nil, clusterapi.WithArchiveStore(archiveStore))
+	createRes := request(t, router, http.MethodPost, "/v1/namespaces/team-a/environments", environment.CreateRequest{TemplateKey: "dev"})
+	if createRes.Code != http.StatusOK {
+		t.Fatalf("create source environment status = %d, want streaming %d; body: %s", createRes.Code, http.StatusOK, createRes.Body.String())
+	}
+
+	if createdSecrets.Load() != 1 {
+		t.Fatalf("created derivative secrets = %d, want 1", createdSecrets.Load())
+	}
+}
+
 func TestNamespacedEnvironmentAgentProxyForwardsToOwningNode(t *testing.T) {
 	t.Parallel()
 
@@ -226,4 +297,81 @@ func streamEnvironmentResult(t *testing.T, w http.ResponseWriter, env environmen
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	_ = json.NewEncoder(w).Encode(environment.CreateStreamEvent{Type: environment.StreamEventResult, Environment: &env})
+}
+
+func makeTemplateArchive(t *testing.T, config json.RawMessage) []byte {
+	t.Helper()
+
+	var out bytes.Buffer
+	zstdWriter, err := zstd.NewWriter(&out, zstd.WithEncoderLevel(zstd.SpeedDefault))
+	if err != nil {
+		t.Fatalf("create archive compressor: %v", err)
+	}
+
+	tarWriter := tar.NewWriter(zstdWriter)
+	manifest := map[string]any{
+		"format": "bastion-template-v1",
+		"template": map[string]any{
+			"id":     "tpl_archived",
+			"config": config,
+		},
+	}
+	contents, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode archive manifest: %v", err)
+	}
+	contents = append(contents, '\n')
+
+	if err := tarWriter.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0o600, Size: int64(len(contents))}); err != nil {
+		t.Fatalf("write archive manifest header: %v", err)
+	}
+	if _, err := tarWriter.Write(contents); err != nil {
+		t.Fatalf("write archive manifest: %v", err)
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("close archive tar: %v", err)
+	}
+	if err := zstdWriter.Close(); err != nil {
+		t.Fatalf("close archive compressor: %v", err)
+	}
+
+	return out.Bytes()
+}
+
+func readTemplateArchiveConfig(t *testing.T, archive io.Reader) json.RawMessage {
+	t.Helper()
+
+	zstdReader, err := zstd.NewReader(archive)
+	if err != nil {
+		t.Fatalf("create archive reader: %v", err)
+	}
+	defer zstdReader.Close()
+
+	tarReader := tar.NewReader(zstdReader)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read archive entry: %v", err)
+		}
+		if header.Name != "manifest.json" {
+			continue
+		}
+
+		var manifest struct {
+			Template struct {
+				Config json.RawMessage `json:"config"`
+			} `json:"template"`
+		}
+		if err := json.NewDecoder(tarReader).Decode(&manifest); err != nil {
+			t.Fatalf("decode archive manifest: %v", err)
+		}
+
+		return manifest.Template.Config
+	}
+
+	t.Fatal("archive missing manifest")
+	return nil
 }
