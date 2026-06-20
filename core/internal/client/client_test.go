@@ -171,51 +171,6 @@ func TestListEnvironmentsIncludesTagFilters(t *testing.T) {
 	}
 }
 
-func TestNamespaceClientPaths(t *testing.T) {
-	t.Parallel()
-
-	paths := make([]string, 0, 3)
-	client := &Client{
-		baseURL:   clientTestBaseURL,
-		namespace: "team-a",
-		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			paths = append(paths, req.Method+" "+req.URL.String())
-
-			switch req.Method {
-			case http.MethodGet:
-				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[]}`), nil
-			case http.MethodPost:
-				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"sec_created","createdAt":"now"}`), nil
-			default:
-				t.Fatalf("unexpected method %s", req.Method)
-
-				return nil, nil
-			}
-		})},
-	}
-
-	if _, err := client.ListEnvironments(context.Background(), 10, "next", []string{"prod"}); err != nil {
-		t.Fatalf("list environments: %v", err)
-	}
-
-	if _, err := client.CreateSecret(context.Background(), secret.CreateRequest{Value: "secret-value"}); err != nil {
-		t.Fatalf("create secret: %v", err)
-	}
-
-	if _, err := client.GetEnvironmentTunnels(context.Background(), "env_123", ""); err != nil {
-		t.Fatalf("get tunnels: %v", err)
-	}
-
-	want := []string{
-		"GET http://bastion.test/v1/namespaces/team-a/environments?cursor=next&limit=10&tag=prod",
-		"POST http://bastion.test/v1/namespaces/team-a/secrets",
-		"GET http://bastion.test/v1/namespaces/team-a/environments/env_123/tunnels",
-	}
-	if !slices.Equal(paths, want) {
-		t.Fatalf("paths = %#v, want %#v", paths, want)
-	}
-}
-
 func TestEnvironmentByKeyPaths(t *testing.T) {
 	t.Parallel()
 

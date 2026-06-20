@@ -22,7 +22,6 @@ type proxyRunner func(context.Context, io.Writer, proxyOptions) error
 
 type proxyOptions struct {
 	apiURL         string
-	namespace      string
 	environmentID  string
 	environmentKey string
 	name           string
@@ -58,7 +57,6 @@ func newProxyCommandWithRunner(opts *rootOptions, runner proxyRunner) *cobra.Com
 			}
 
 			proxyOpts.apiURL = opts.apiURL
-			proxyOpts.namespace = opts.namespace
 
 			return runner(cmd.Context(), cmd.ErrOrStderr(), proxyOpts)
 		},
@@ -84,7 +82,7 @@ func runProxy(ctx context.Context, stderr io.Writer, opts proxyOptions) error {
 		return err
 	}
 
-	target, err := parseProxyTarget(environmentTunnelURL(opts.apiURL, opts.namespace, opts.environmentID, opts.environmentKey, opts.name))
+	target, err := parseProxyTarget(environmentTunnelURL(opts.apiURL, opts.environmentID, opts.environmentKey, opts.name))
 	if err != nil {
 		return fmt.Errorf("parse tunnel URL: %w", err)
 	}
@@ -132,7 +130,7 @@ func runProxy(ctx context.Context, stderr io.Writer, opts proxyOptions) error {
 }
 
 func validateProxyTunnel(ctx context.Context, opts proxyOptions) error {
-	tunnels, err := apiClient(&rootOptions{apiURL: opts.apiURL, namespace: opts.namespace}).GetEnvironmentTunnels(ctx, opts.environmentID, opts.environmentKey)
+	tunnels, err := apiClient(&rootOptions{apiURL: opts.apiURL}).GetEnvironmentTunnels(ctx, opts.environmentID, opts.environmentKey)
 	if err != nil {
 		return err
 	}

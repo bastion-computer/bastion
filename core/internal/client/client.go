@@ -17,7 +17,6 @@ import (
 	"strings"
 
 	"github.com/bastion-computer/bastion/core/internal/services"
-	"github.com/bastion-computer/bastion/core/internal/services/cluster"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
@@ -27,31 +26,15 @@ import (
 
 // Client wraps HTTP access to the Bastion API.
 type Client struct {
-	baseURL   string
-	namespace string
-	http      *http.Client
+	baseURL string
+	http    *http.Client
 }
-
-// Option configures a Bastion API client.
-type Option func(*Client)
 
 // New returns a Bastion API client for baseURL.
-func New(baseURL string, opts ...Option) *Client {
-	client := &Client{
+func New(baseURL string) *Client {
+	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{},
-	}
-	for _, opt := range opts {
-		opt(client)
-	}
-
-	return client
-}
-
-// WithNamespace configures the cluster namespace path segment for host-compatible resources.
-func WithNamespace(namespace string) Option {
-	return func(c *Client) {
-		c.namespace = namespace
 	}
 }
 
@@ -59,84 +42,6 @@ func WithNamespace(namespace string) Option {
 func (c *Client) GetUtilization(ctx context.Context) (utilization.Utilization, error) {
 	var out utilization.Utilization
 	return out, c.do(ctx, http.MethodGet, "/v1/utilization", nil, &out)
-}
-
-// CreateClusterNode registers a Bastion host API with the cluster.
-func (c *Client) CreateClusterNode(ctx context.Context, req cluster.CreateNodeRequest) (cluster.Node, error) {
-	var out cluster.Node
-	return out, c.clusterDo(ctx, http.MethodPost, "/v1/cluster/nodes", req, &out)
-}
-
-// ListClusterNodes returns registered cluster nodes.
-func (c *Client) ListClusterNodes(ctx context.Context, limit int, cursor string) (services.Page[cluster.Node], error) {
-	var out services.Page[cluster.Node]
-	return out, c.clusterDo(ctx, http.MethodGet, listPath("/v1/cluster/nodes", limit, cursor), nil, &out)
-}
-
-// GetClusterNode returns a cluster node by ID or key.
-func (c *Client) GetClusterNode(ctx context.Context, id, key string) (cluster.Node, error) {
-	var out cluster.Node
-
-	path, err := resourcePath("/v1/cluster/nodes", id, key)
-	if err != nil {
-		return out, err
-	}
-
-	return out, c.clusterDo(ctx, http.MethodGet, path, nil, &out)
-}
-
-// RemoveClusterNode removes a cluster node by ID or key.
-func (c *Client) RemoveClusterNode(ctx context.Context, id, key string) (cluster.Node, error) {
-	var out cluster.Node
-
-	path, err := resourcePath("/v1/cluster/nodes", id, key)
-	if err != nil {
-		return out, err
-	}
-
-	return out, c.clusterDo(ctx, http.MethodDelete, path, nil, &out)
-}
-
-// CreateClusterNamespace creates a tenant namespace.
-func (c *Client) CreateClusterNamespace(ctx context.Context, req cluster.CreateNamespaceRequest) (cluster.Namespace, error) {
-	var out cluster.Namespace
-	return out, c.clusterDo(ctx, http.MethodPost, "/v1/cluster/namespaces", req, &out)
-}
-
-// ListClusterNamespaces returns cluster namespaces.
-func (c *Client) ListClusterNamespaces(ctx context.Context, limit int, cursor string) (services.Page[cluster.Namespace], error) {
-	var out services.Page[cluster.Namespace]
-	return out, c.clusterDo(ctx, http.MethodGet, listPath("/v1/cluster/namespaces", limit, cursor), nil, &out)
-}
-
-// GetClusterNamespace returns a namespace by ID or key.
-func (c *Client) GetClusterNamespace(ctx context.Context, id, key string) (cluster.Namespace, error) {
-	var out cluster.Namespace
-
-	path, err := resourcePath("/v1/cluster/namespaces", id, key)
-	if err != nil {
-		return out, err
-	}
-
-	return out, c.clusterDo(ctx, http.MethodGet, path, nil, &out)
-}
-
-// RemoveClusterNamespace removes a namespace by ID or key.
-func (c *Client) RemoveClusterNamespace(ctx context.Context, id, key string) (cluster.Namespace, error) {
-	var out cluster.Namespace
-
-	path, err := resourcePath("/v1/cluster/namespaces", id, key)
-	if err != nil {
-		return out, err
-	}
-
-	return out, c.clusterDo(ctx, http.MethodDelete, path, nil, &out)
-}
-
-// GetClusterUtilization returns aggregate cluster utilization.
-func (c *Client) GetClusterUtilization(ctx context.Context) (utilization.Utilization, error) {
-	var out utilization.Utilization
-	return out, c.clusterDo(ctx, http.MethodGet, "/v1/cluster/utilization", nil, &out)
 }
 
 // CreateSecret stores a secret.
@@ -177,7 +82,7 @@ func (c *Client) RemoveSecret(ctx context.Context, id, key string) (secret.Metad
 
 // CreateTemplate stores a template.
 func (c *Client) CreateTemplate(ctx context.Context, req template.CreateRequest) (template.Metadata, error) {
-	return postHostStream(ctx, c.http, c.url("/v1/templates"), req, req.Logs, decodeCreateTemplateStream)
+	return postHostStream(ctx, c.http, c.baseURL+"/v1/templates", req, req.Logs, decodeCreateTemplateStream)
 }
 
 func decodeCreateTemplateStream(decoder *json.Decoder, logs io.Writer) (template.Metadata, error) {
@@ -245,7 +150,7 @@ func (c *Client) ExportTemplate(ctx context.Context, id, key string, archive io.
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path+"/export"), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path+"/export", nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -285,7 +190,7 @@ func (c *Client) ImportTemplate(ctx context.Context, importReq template.ImportRe
 		path += "?" + values.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url(path), importReq.Archive)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, importReq.Archive)
 	if err != nil {
 		return out, fmt.Errorf("create request: %w", err)
 	}
@@ -315,7 +220,7 @@ func (c *Client) ImportTemplate(ctx context.Context, importReq template.ImportRe
 
 // CreateEnvironment creates an environment from a template.
 func (c *Client) CreateEnvironment(ctx context.Context, createReq environment.CreateRequest) (environment.Environment, error) {
-	return postHostStream(ctx, c.http, c.url("/v1/environments"), createReq, createReq.Logs, decodeCreateEnvironmentStream)
+	return postHostStream(ctx, c.http, c.baseURL+"/v1/environments", createReq, createReq.Logs, decodeCreateEnvironmentStream)
 }
 
 func decodeCreateEnvironmentStream(decoder *json.Decoder, logs io.Writer) (environment.Environment, error) {
@@ -464,7 +369,7 @@ func (c *Client) OpenSSH(ctx context.Context, id string, tunnelReq sshtunnel.Req
 		return nil, fmt.Errorf("encode request: %w", err)
 	}
 
-	target, err := url.Parse(c.url("/v1/environments/" + url.PathEscape(id) + "/ssh"))
+	target, err := url.Parse(c.baseURL + "/v1/environments/" + url.PathEscape(id) + "/ssh")
 	if err != nil {
 		return nil, fmt.Errorf("parse host API URL: %w", err)
 	}
@@ -530,7 +435,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		body = bytes.NewReader(contents)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.url(path), body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -560,55 +465,15 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	return nil
 }
 
-func (c *Client) clusterDo(ctx context.Context, method, path string, in, out any) error {
-	if err := c.do(ctx, method, path, in, out); err != nil {
-		var statusErr StatusError
-		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
-			return fmt.Errorf("cluster API is not reachable: %w", err)
-		}
-
-		return err
-	}
-
-	return nil
-}
-
-func (c *Client) url(path string) string {
-	return c.baseURL + c.apiPath(path)
-}
-
-func (c *Client) apiPath(path string) string {
-	if c.namespace == "" || !strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/v1/cluster") {
-		return path
-	}
-
-	return "/v1/namespaces/" + url.PathEscape(c.namespace) + strings.TrimPrefix(path, "/v1")
-}
-
-// StatusError describes a non-2xx host API response.
-type StatusError struct {
-	StatusCode int
-	Status     string
-	Message    string
-}
-
-func (e StatusError) Error() string {
-	if e.Message == "" {
-		return "host API returned " + e.Status
-	}
-
-	return fmt.Sprintf("host API returned %s: %s", e.Status, e.Message)
-}
-
 func decodeHostStatusError(res *http.Response) error {
 	var apiErr struct {
 		Error string `json:"error"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil || apiErr.Error == "" {
-		return StatusError{StatusCode: res.StatusCode, Status: res.Status}
+		return fmt.Errorf("host API returned %s", res.Status)
 	}
 
-	return StatusError{StatusCode: res.StatusCode, Status: res.Status, Message: apiErr.Error}
+	return fmt.Errorf("host API returned %s: %s", res.Status, apiErr.Error)
 }
 
 func httpStatus(status int) string {

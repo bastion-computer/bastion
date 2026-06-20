@@ -37,7 +37,7 @@ func newOpenCodeCommandWithRunner(opts *rootOptions, runner openCodeRunner) *cob
 				return err
 			}
 
-			proxyURL := openCodeProxyURL(opts.apiURL, opts.namespace, id, key)
+			proxyURL := openCodeProxyURL(opts.apiURL, id, key)
 
 			return runner(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), proxyURL)
 		},
@@ -67,17 +67,11 @@ func runOpenCodeAttach(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 	return nil
 }
 
-func openCodeProxyURL(apiURL, namespace, id, key string) string {
+func openCodeProxyURL(apiURL, id, key string) string {
 	baseURL := strings.TrimRight(apiURL, "/")
-	prefix := "/v1"
-
-	if namespace != "" {
-		prefix += "/namespaces/" + url.PathEscape(namespace)
-	}
-
 	if key != "" {
-		return baseURL + prefix + "/environments/by-key/" + url.PathEscape(key) + "/agents/opencode"
+		return baseURL + "/v1/environments/by-key/" + url.PathEscape(key) + "/agents/opencode"
 	}
 
-	return baseURL + prefix + "/environments/" + url.PathEscape(id) + "/agents/opencode"
+	return baseURL + "/v1/environments/" + url.PathEscape(id) + "/agents/opencode"
 }

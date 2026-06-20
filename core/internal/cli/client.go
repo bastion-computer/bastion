@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"net/url"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -29,31 +28,19 @@ func newClientSetCommand(opts *rootOptions) *cobra.Command {
 		Use:   setUse,
 		Short: "Set local CLI client configuration overrides",
 	}
-	cmd.AddCommand(newClientSetAPIURLCommand(opts), newClientSetNamespaceCommand(opts))
+	cmd.AddCommand(newClientSetAPIURLCommand(opts))
 
 	return cmd
 }
 
-func newClientSetNamespaceCommand(opts *rootOptions) *cobra.Command {
-	return newClientSetValueCommand(opts, rootFlagNamespace+" NAMESPACE", "Persist the cluster namespace used by client commands", validateClientNamespace, func(cfg *config.ClientConfig, value string) {
-		cfg.Namespace = value
-	})
-}
-
 func newClientSetAPIURLCommand(opts *rootOptions) *cobra.Command {
-	return newClientSetValueCommand(opts, rootFlagAPIURL+" URL", "Persist the host API URL used by client commands", validateClientAPIURL, func(cfg *config.ClientConfig, value string) {
-		cfg.APIURL = value
-	})
-}
-
-func newClientSetValueCommand(opts *rootOptions, use, short string, validate func(string) error, set func(*config.ClientConfig, string)) *cobra.Command {
 	return &cobra.Command{
-		Use:   use,
-		Short: short,
+		Use:   rootFlagAPIURL + " URL",
+		Short: "Persist the host API URL used by client commands",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			value := args[0]
-			if err := validate(value); err != nil {
+			apiURL := args[0]
+			if err := validateClientAPIURL(apiURL); err != nil {
 				return err
 			}
 
@@ -62,7 +49,7 @@ func newClientSetValueCommand(opts *rootOptions, use, short string, validate fun
 				return err
 			}
 
-			set(&clientConfig, value)
+			clientConfig.APIURL = apiURL
 
 			return config.SaveClientConfig(opts.dataDir, clientConfig)
 		},
@@ -74,27 +61,9 @@ func newClientRemoveCommand(opts *rootOptions) *cobra.Command {
 		Use:   removeUse,
 		Short: "Remove local CLI client configuration overrides",
 	}
-	cmd.AddCommand(newClientRemoveAPIURLCommand(opts), newClientRemoveNamespaceCommand(opts))
+	cmd.AddCommand(newClientRemoveAPIURLCommand(opts))
 
 	return cmd
-}
-
-func newClientRemoveNamespaceCommand(opts *rootOptions) *cobra.Command {
-	return &cobra.Command{
-		Use:   rootFlagNamespace,
-		Short: "Remove the persisted cluster namespace override",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			clientConfig, err := config.LoadClientConfig(opts.dataDir)
-			if err != nil {
-				return err
-			}
-
-			clientConfig.Namespace = ""
-
-			return config.SaveClientConfig(opts.dataDir, clientConfig)
-		},
-	}
 }
 
 func newClientRemoveAPIURLCommand(opts *rootOptions) *cobra.Command {
@@ -147,18 +116,6 @@ func validateClientAPIURL(value string) error {
 
 	if parsed.Host == "" {
 		return errors.New("api-url must include a host")
-	}
-
-	return nil
-}
-
-func validateClientNamespace(value string) error {
-	if strings.TrimSpace(value) == "" {
-		return errors.New("namespace is required")
-	}
-
-	if strings.Contains(value, "/") {
-		return errors.New("namespace cannot contain slash")
 	}
 
 	return nil
