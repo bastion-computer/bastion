@@ -1,8 +1,7 @@
 package cli
 
 const (
-	startUse        = "start"
-	startAPIUse     = "api"
-	startDaemonUse  = "daemon"
-	startClusterUse = "cluster"
+	startUse       = "start"
+	startAPIUse    = "api"
+	startDaemonUse = "daemon"
 )

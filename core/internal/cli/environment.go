@@ -115,26 +115,20 @@ func newEnvironmentTunnelsCommand(opts *rootOptions) *cobra.Command {
 		}
 
 		for i := range tunnels.Entries {
-			tunnels.Entries[i].URL = environmentTunnelURL(opts.apiURL, opts.namespace, id, key, tunnels.Entries[i].Name)
+			tunnels.Entries[i].URL = environmentTunnelURL(opts.apiURL, id, key, tunnels.Entries[i].Name)
 		}
 
 		return tunnels, nil
 	})
 }
 
-func environmentTunnelURL(apiURL, namespace, id, key, name string) string {
+func environmentTunnelURL(apiURL, id, key, name string) string {
 	baseURL := strings.TrimRight(apiURL, "/")
-	prefix := "/v1"
-
-	if namespace != "" {
-		prefix += "/namespaces/" + url.PathEscape(namespace)
-	}
-
 	if key != "" {
-		return baseURL + prefix + "/environments/by-key/" + url.PathEscape(key) + "/tunnels/" + url.PathEscape(name)
+		return baseURL + "/v1/environments/by-key/" + url.PathEscape(key) + "/tunnels/" + url.PathEscape(name)
 	}
 
-	return baseURL + prefix + "/environments/" + url.PathEscape(id) + "/tunnels/" + url.PathEscape(name)
+	return baseURL + "/v1/environments/" + url.PathEscape(id) + "/tunnels/" + url.PathEscape(name)
 }
 
 func newEnvironmentRemoveCommand(opts *rootOptions) *cobra.Command {

@@ -59,7 +59,6 @@ fi
 go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
 go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy
 bash ./e2e/client-test.sh
-bash ./e2e/cluster-test.sh
 bash ./e2e/env-test.sh
 bash ./e2e/backup-restore-test.sh
 bash ./e2e/ssh-test.sh
@@ -74,7 +73,3 @@ run = "air -c .air.api.toml"
 [tasks."dev:daemon"]
 description = "Run the daemon with Air live reload"
 run = "air -c .air.daemon.toml"
-
-[tasks."dev:cluster"]
-description = "Run the cluster API with Air live reload"
-run = "air -c .air.cluster.toml"

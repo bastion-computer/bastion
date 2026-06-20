@@ -118,7 +118,7 @@ func TestSecretsCommandsUseResourcePaths(t *testing.T) {
 		cmd  *cobra.Command
 		args []string
 	}{
-		{cmd: newSecretsListCommand(&rootOptions{apiURL: server.URL}), args: []string{cliTestLimitFlag, "5", cliTestCursorFlag, cliTestNextCursor}},
+		{cmd: newSecretsListCommand(&rootOptions{apiURL: server.URL}), args: []string{"--limit", "5", "--cursor", cliTestNextCursor}},
 		{cmd: newSecretsGetCommand(&rootOptions{apiURL: server.URL}), args: []string{cliTestKeyFlag, cliTestSecretKey}},
 		{cmd: newSecretsRemoveCommand(&rootOptions{apiURL: server.URL}), args: []string{cliTestIDFlag, cliTestSecretID}},
 	}

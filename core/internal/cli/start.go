@@ -17,7 +17,6 @@ import (
 	presetactions "github.com/bastion-computer/bastion/core/actions"
 	"github.com/bastion-computer/bastion/core/internal/api"
 	ch "github.com/bastion-computer/bastion/core/internal/cloudhypervisor"
-	"github.com/bastion-computer/bastion/core/internal/clusterapi"
 	"github.com/bastion-computer/bastion/core/internal/config"
 	"github.com/bastion-computer/bastion/core/internal/database"
 	"github.com/bastion-computer/bastion/core/internal/logging"
@@ -36,7 +35,6 @@ func newStartCommand(opts *rootOptions) *cobra.Command {
 	cmd.AddCommand(
 		newStartAPICommand(opts),
 		newStartDaemonCommand(opts),
-		newStartClusterCommand(opts),
 	)
 
 	return cmd
@@ -89,71 +87,6 @@ func newStartAPICommand(opts *rootOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&addr, "addr", addr, "host API listen address")
 	cmd.Flags().StringVar(&bastiondSocket, "bastiond-socket", bastiondSocket, "daemon Unix socket path")
-	cmd.Flags().StringVar(&logFormat, "log-format", logFormat, "log format: json or text")
-	cmd.Flags().StringVar(&logLevel, "log-level", logLevel, "minimum log level: debug, info, warn, or error")
-
-	return cmd
-}
-
-func newStartClusterCommand(_ *rootOptions) *cobra.Command {
-	addr := config.EnvDefault("BASTION_CLUSTER_ADDR", config.DefaultClusterAddr)
-	databaseURL := config.EnvDefault("BASTION_CLUSTER_DATABASE_URL", "")
-	archiveBucket := config.EnvDefault("BASTION_CLUSTER_ARCHIVE_BUCKET", "")
-	archiveEndpoint := config.EnvDefault("BASTION_CLUSTER_ARCHIVE_ENDPOINT", "")
-	archiveRegion := config.EnvDefault("BASTION_CLUSTER_ARCHIVE_REGION", clusterapi.DefaultS3ArchiveRegion)
-	archiveAccessKeyID := config.EnvDefault("BASTION_CLUSTER_ARCHIVE_ACCESS_KEY_ID", "")
-	archiveSecretAccessKey := config.EnvDefault("BASTION_CLUSTER_ARCHIVE_SECRET_ACCESS_KEY", "")
-	archiveForcePathStyle := envBool("BASTION_CLUSTER_ARCHIVE_FORCE_PATH_STYLE", archiveEndpoint != "")
-	logFormat := config.EnvDefault("BASTION_CLUSTER_LOG_FORMAT", logging.DefaultFormat)
-	logLevel := config.EnvDefault("BASTION_CLUSTER_LOG_LEVEL", logging.DefaultLevel)
-
-	cmd := &cobra.Command{
-		Use:   startClusterUse,
-		Short: "Start the Bastion cluster control plane",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			logger, err := logging.New(cmd.ErrOrStderr(), logFormat, logLevel)
-			if err != nil {
-				return err
-			}
-
-			archiveStore, err := clusterapi.NewS3ArchiveStore(cmd.Context(), clusterapi.S3ArchiveStoreConfig{
-				Bucket:          archiveBucket,
-				Endpoint:        archiveEndpoint,
-				Region:          archiveRegion,
-				AccessKeyID:     archiveAccessKeyID,
-				SecretAccessKey: archiveSecretAccessKey,
-				ForcePathStyle:  archiveForcePathStyle,
-			})
-			if err != nil {
-				return err
-			}
-
-			store, err := clusterapi.OpenPostgresStore(cmd.Context(), databaseURL)
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-
-			logger.InfoContext(cmd.Context(), "cluster API listening",
-				slog.String("addr", addr),
-				slog.String("archive_bucket", archiveBucket),
-				slog.String("archive_endpoint", archiveEndpoint),
-				slog.String("log_format", logFormat),
-				slog.String("log_level", logLevel),
-			)
-
-			return clusterapi.Run(cmd.Context(), addr, store, logger, clusterapi.WithArchiveStore(archiveStore))
-		},
-	}
-	cmd.Flags().StringVar(&addr, "addr", addr, "cluster API listen address")
-	cmd.Flags().StringVar(&databaseURL, "database-url", databaseURL, "Postgres database URL for cluster state")
-	cmd.Flags().StringVar(&archiveBucket, "archive-bucket", archiveBucket, "S3-compatible bucket for template archives")
-	cmd.Flags().StringVar(&archiveEndpoint, "archive-endpoint", archiveEndpoint, "S3-compatible endpoint URL for template archives")
-	cmd.Flags().StringVar(&archiveRegion, "archive-region", archiveRegion, "S3 region for template archives")
-	cmd.Flags().StringVar(&archiveAccessKeyID, "archive-access-key-id", archiveAccessKeyID, "S3 access key ID for template archives")
-	cmd.Flags().StringVar(&archiveSecretAccessKey, "archive-secret-access-key", archiveSecretAccessKey, "S3 secret access key for template archives")
-	cmd.Flags().BoolVar(&archiveForcePathStyle, "archive-force-path-style", archiveForcePathStyle, "use path-style S3 bucket addressing for template archives")
 	cmd.Flags().StringVar(&logFormat, "log-format", logFormat, "log format: json or text")
 	cmd.Flags().StringVar(&logLevel, "log-level", logLevel, "minimum log level: debug, info, warn, or error")
 
@@ -243,20 +176,6 @@ func envInt(name string, fallback int) int {
 	}
 
 	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return fallback
-	}
-
-	return parsed
-}
-
-func envBool(name string, fallback bool) bool {
-	value := os.Getenv(name)
-	if value == "" {
-		return fallback
-	}
-
-	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return fallback
 	}

@@ -48,42 +48,6 @@ func TestClientSetAPIURLPersistsOverride(t *testing.T) {
 	}
 }
 
-func TestClientSetNamespacePersistsOverride(t *testing.T) {
-	t.Setenv("BASTION_API_URL", "")
-	t.Setenv("BASTION_DATA_DIR", "")
-	t.Setenv("BASTION_NAMESPACE", "")
-
-	dataDir := t.TempDir()
-	cmd := NewRootCommand()
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{clientUse, cliTestDataDirFlag, dataDir, setUse, rootFlagNamespace, cliTestNamespaceKey})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-
-	got := readClientConfigFile(t, dataDir)
-	if got.Namespace != cliTestNamespaceKey {
-		t.Fatalf("namespace = %q, want %s", got.Namespace, cliTestNamespaceKey)
-	}
-}
-
-func TestClientSetNamespaceRejectsBlank(t *testing.T) {
-	t.Setenv("BASTION_API_URL", "")
-	t.Setenv("BASTION_DATA_DIR", "")
-	t.Setenv("BASTION_NAMESPACE", "")
-
-	cmd := NewRootCommand()
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{clientUse, cliTestDataDirFlag, t.TempDir(), setUse, rootFlagNamespace, ""})
-
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("set blank namespace error = nil, want invalid namespace")
-	}
-}
-
 func TestClientRemoveAPIURLClearsOverride(t *testing.T) {
 	t.Setenv("BASTION_API_URL", "")
 	t.Setenv("BASTION_DATA_DIR", "")
@@ -116,42 +80,6 @@ func TestClientRemoveAPIURLClearsOverride(t *testing.T) {
 
 	if got.APIURL != "" {
 		t.Fatalf("apiUrl = %q, want empty", got.APIURL)
-	}
-}
-
-func TestClientRemoveNamespaceClearsOverride(t *testing.T) {
-	t.Setenv("BASTION_API_URL", "")
-	t.Setenv("BASTION_DATA_DIR", "")
-	t.Setenv("BASTION_NAMESPACE", "")
-
-	dataDir := t.TempDir()
-	writeClientConfigFile(t, dataDir, testClientConfig{Namespace: cliTestNamespaceKey})
-
-	cmd := NewRootCommand()
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{clientUse, cliTestDataDirFlag, dataDir, removeUse, rootFlagNamespace})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-
-	contents, err := os.ReadFile(clientConfigTestPath(dataDir))
-	if os.IsNotExist(err) {
-		return
-	}
-
-	if err != nil {
-		t.Fatalf("read client config: %v", err)
-	}
-
-	var got testClientConfig
-	if err := json.Unmarshal(contents, &got); err != nil {
-		t.Fatalf("decode client config: %v", err)
-	}
-
-	if got.Namespace != "" {
-		t.Fatalf("namespace = %q, want empty", got.Namespace)
 	}
 }
 
@@ -193,40 +121,6 @@ func TestClientConfigShowsPersistedAPIURL(t *testing.T) {
 	}
 }
 
-func TestClientConfigShowsPersistedNamespace(t *testing.T) {
-	t.Setenv("BASTION_API_URL", "")
-	t.Setenv("BASTION_DATA_DIR", "")
-	t.Setenv("BASTION_NAMESPACE", "")
-
-	dataDir := t.TempDir()
-	writeClientConfigFile(t, dataDir, testClientConfig{Namespace: cliTestNamespaceKey})
-
-	var stdout bytes.Buffer
-
-	cmd := NewRootCommand()
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{clientUse, cliTestDataDirFlag, dataDir, rootOptionSourceConfig})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-
-	var got struct {
-		Namespace struct {
-			Value  string `json:"value"`
-			Source string `json:"source"`
-		} `json:"namespace"`
-	}
-	if err := json.NewDecoder(&stdout).Decode(&got); err != nil {
-		t.Fatalf("decode stdout: %v", err)
-	}
-
-	if got.Namespace.Value != cliTestNamespaceKey || got.Namespace.Source != "config" {
-		t.Fatalf("namespace = %#v, want config value %s", got.Namespace, cliTestNamespaceKey)
-	}
-}
-
 func TestClientConfigRejectsInvalidAPIURL(t *testing.T) {
 	t.Setenv("BASTION_API_URL", "")
 	t.Setenv("BASTION_DATA_DIR", "")
@@ -250,31 +144,6 @@ func TestRootCommandUsesPersistedAPIURL(t *testing.T) {
 
 	dataDir := t.TempDir()
 	writeClientConfigFile(t, dataDir, testClientConfig{APIURL: server.URL})
-
-	runRootEnvironmentListCommand(t, []string{cliTestDataDirFlag, dataDir, environmentUse, listUse})
-}
-
-func TestRootCommandUsesNamespaceFlag(t *testing.T) {
-	t.Setenv("BASTION_API_URL", "")
-	t.Setenv("BASTION_DATA_DIR", "")
-	t.Setenv("BASTION_NAMESPACE", "")
-
-	server := newEnvironmentListAPIURLTestServerForPath(t, "/v1/namespaces/"+cliTestNamespaceKey+"/environments")
-	t.Cleanup(server.Close)
-
-	runRootEnvironmentListCommand(t, []string{"--" + rootFlagAPIURL, server.URL, "--" + rootFlagNamespace, cliTestNamespaceKey, environmentUse, listUse})
-}
-
-func TestRootCommandUsesPersistedNamespace(t *testing.T) {
-	t.Setenv("BASTION_API_URL", "")
-	t.Setenv("BASTION_DATA_DIR", "")
-	t.Setenv("BASTION_NAMESPACE", "")
-
-	server := newEnvironmentListAPIURLTestServerForPath(t, "/v1/namespaces/"+cliTestNamespaceKey+"/environments")
-	t.Cleanup(server.Close)
-
-	dataDir := t.TempDir()
-	writeClientConfigFile(t, dataDir, testClientConfig{APIURL: server.URL, Namespace: cliTestNamespaceKey})
 
 	runRootEnvironmentListCommand(t, []string{cliTestDataDirFlag, dataDir, environmentUse, listUse})
 }
@@ -324,8 +193,7 @@ func TestRootCommandDataDirEnvironmentLocatesPersistedAPIURL(t *testing.T) {
 }
 
 type testClientConfig struct {
-	APIURL    string `json:"apiUrl,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
+	APIURL string `json:"apiUrl,omitempty"`
 }
 
 func clientConfigTestPath(dataDir string) string {
@@ -364,15 +232,9 @@ func writeClientConfigFile(t *testing.T, dataDir string, cfg testClientConfig) {
 func newEnvironmentListAPIURLTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	return newEnvironmentListAPIURLTestServerForPath(t, cliTestEnvironmentsPath)
-}
-
-func newEnvironmentListAPIURLTestServerForPath(t *testing.T, wantPath string) *httptest.Server {
-	t.Helper()
-
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != wantPath {
-			t.Fatalf("request = %s %s, want GET %s", r.Method, r.URL.Path, wantPath)
+		if r.Method != http.MethodGet || r.URL.Path != cliTestEnvironmentsPath {
+			t.Fatalf("request = %s %s, want GET %s", r.Method, r.URL.Path, cliTestEnvironmentsPath)
 		}
 
 		page := services.Page[environment.Environment]{Entries: []environment.Environment{{ID: cliTestEnvironmentID, Status: cliTestRunningStatus}}}

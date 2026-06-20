@@ -12,14 +12,8 @@ import (
 // DefaultAddr is the local Bastion API listen address.
 const DefaultAddr = "localhost:3148"
 
-// DefaultClusterAddr is the local Bastion cluster API listen address.
-const DefaultClusterAddr = "localhost:3150"
-
 // DefaultAPIURL is the local Bastion API endpoint used by the CLI.
 const DefaultAPIURL = "http://" + DefaultAddr
-
-// DefaultClusterAPIURL is the local Bastion cluster API endpoint.
-const DefaultClusterAPIURL = "http://" + DefaultClusterAddr
 
 // DefaultBastiondSocket is the Unix socket used by the privileged daemon.
 const DefaultBastiondSocket = "/run/bastion/bastiond.sock"

@@ -30,7 +30,7 @@ type (
 )
 
 func apiClient(opts *rootOptions) *client.Client {
-	return client.New(opts.apiURL, client.WithNamespace(opts.namespace))
+	return client.New(opts.apiURL)
 }
 
 func writeJSON(w io.Writer, value any) error {

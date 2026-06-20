@@ -13,14 +13,12 @@ import (
 type rootOptions struct {
 	apiURL       string
 	dataDir      string
-	namespace    string
 	clientConfig rootClientConfig
 }
 
 type rootClientConfig struct {
-	DataDir   string          `json:"dataDir"`
-	APIURL    rootOptionValue `json:"apiUrl"`
-	Namespace rootOptionValue `json:"namespace"`
+	DataDir string          `json:"dataDir"`
+	APIURL  rootOptionValue `json:"apiUrl"`
 }
 
 type rootOptionValue struct {
@@ -34,9 +32,8 @@ const (
 	rootOptionSourceFlag        = "flag"
 	rootOptionSourceConfig      = "config"
 
-	rootFlagAPIURL    = "api-url"
-	rootFlagDataDir   = "data-dir"
-	rootFlagNamespace = "namespace"
+	rootFlagAPIURL  = "api-url"
+	rootFlagDataDir = "data-dir"
 )
 
 // Execute runs the Bastion root command.
@@ -50,9 +47,8 @@ func Execute(ctx context.Context) error {
 // NewRootCommand builds the Bastion root command tree.
 func NewRootCommand() *cobra.Command {
 	opts := &rootOptions{
-		apiURL:    config.EnvDefault("BASTION_API_URL", config.DefaultAPIURL),
-		dataDir:   config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
-		namespace: config.EnvDefault("BASTION_NAMESPACE", ""),
+		apiURL:  config.EnvDefault("BASTION_API_URL", config.DefaultAPIURL),
+		dataDir: config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
 	}
 	cmd := &cobra.Command{
 		Use:           "bastion",
@@ -76,12 +72,10 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd.PersistentFlags().StringVar(&opts.apiURL, rootFlagAPIURL, opts.apiURL, "host API URL")
 	cmd.PersistentFlags().StringVar(&opts.dataDir, rootFlagDataDir, opts.dataDir, "directory for persistent data")
-	cmd.PersistentFlags().StringVar(&opts.namespace, rootFlagNamespace, opts.namespace, "cluster namespace ID or key")
 	cmd.AddCommand(
 		newStartCommand(opts),
 		newSystemCommand(opts),
 		newClientCommand(opts),
-		newClusterCommand(opts),
 		newSecretsCommand(opts),
 		newUtilizationCommand(opts),
 		newTemplatesCommand(opts),
@@ -103,7 +97,7 @@ func shouldResolveClientConfig(cmd *cobra.Command) bool {
 	}
 
 	switch topLevel.Name() {
-	case clusterUse, secretsUse, utilizationUse, "templates", environmentUse, "mux", "opencode", proxyUse, "ssh":
+	case secretsUse, utilizationUse, "templates", environmentUse, "mux", "opencode", proxyUse, "ssh":
 		return true
 	case clientUse:
 		return cmd.Name() == rootOptionSourceConfig
@@ -127,17 +121,15 @@ func resolveClientConfig(cmd *cobra.Command, opts *rootOptions) (rootClientConfi
 	}
 
 	apiURL := config.DefaultAPIURL
-	apiURLSource := rootOptionSourceDefault
-	namespace := ""
-	namespaceSource := rootOptionSourceDefault
+	source := rootOptionSourceDefault
 
 	switch {
 	case rootPersistentFlagChanged(cmd, rootFlagAPIURL):
 		apiURL = opts.apiURL
-		apiURLSource = rootOptionSourceFlag
+		source = rootOptionSourceFlag
 	case os.Getenv("BASTION_API_URL") != "":
 		apiURL = os.Getenv("BASTION_API_URL")
-		apiURLSource = rootOptionSourceEnvironment
+		source = rootOptionSourceEnvironment
 	default:
 		clientConfig, err := config.LoadClientConfig(dataDir)
 		if err != nil {
@@ -150,47 +142,17 @@ func resolveClientConfig(cmd *cobra.Command, opts *rootOptions) (rootClientConfi
 			}
 
 			apiURL = clientConfig.APIURL
-			apiURLSource = rootOptionSourceConfig
-		}
-	}
-
-	switch {
-	case rootPersistentFlagChanged(cmd, rootFlagNamespace):
-		namespace = opts.namespace
-		namespaceSource = rootOptionSourceFlag
-	case os.Getenv("BASTION_NAMESPACE") != "":
-		namespace = os.Getenv("BASTION_NAMESPACE")
-		namespaceSource = rootOptionSourceEnvironment
-	default:
-		clientConfig, err := config.LoadClientConfig(dataDir)
-		if err != nil {
-			return rootClientConfig{}, err
-		}
-
-		if clientConfig.Namespace != "" {
-			namespace = clientConfig.Namespace
-			namespaceSource = rootOptionSourceConfig
-		}
-	}
-
-	if namespace != "" {
-		if err := validateClientNamespace(namespace); err != nil {
-			return rootClientConfig{}, fmt.Errorf("client config namespace: %w", err)
+			source = rootOptionSourceConfig
 		}
 	}
 
 	opts.apiURL = apiURL
-	opts.namespace = namespace
 
 	return rootClientConfig{
 		DataDir: dataDir,
 		APIURL: rootOptionValue{
 			Value:  apiURL,
-			Source: apiURLSource,
-		},
-		Namespace: rootOptionValue{
-			Value:  namespace,
-			Source: namespaceSource,
+			Source: source,
 		},
 	}, nil
 }
