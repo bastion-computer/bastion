@@ -15,7 +15,9 @@ IMPORTANT RULES:
 - If asked to implement a new feature, how would I run it as a user? What is the expected inputs and outputs? After implementing the feature, does it do what is expected?
 - If asked to fix a bug, how can I reproduce this bug as a user? After implementing the fix, does the bug still occur when going through the reproducible steps?
 
-5. If an end-to-end verification cannot run because of environment limits, missing credentials, or unsafe side effects, report the exact blocker and the strongest verification that did run.
+5. The E2E test suite is a core guard rail for this codebase. Always aim for complete coverage and ensure they are always passing.
+
+6. Once plans have been approved, you have full ownership of implementation. You are expected to work autonomously, and over longer durations if neccessary, to deliver work that is considered done according to the agreed upon spec and plan.
 
 ## Table of Contents
 
