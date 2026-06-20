@@ -1,5 +1,9 @@
 [tasks.dev]
-description = "Run Drizzle Studio for local SQLite debugging"
+description = "Run Drizzle Studio for local node SQLite debugging"
+run = [{ tasks = ["dev:node"] }]
+
+[tasks."dev:node"]
+description = "Run Drizzle Studio for local node SQLite debugging"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
@@ -17,7 +21,30 @@ while [ ! -f "$db_path" ]; do
   fi
 done
 
-bun run dev
+bun run dev:node
+'''
+
+[tasks."dev:cluster"]
+description = "Run Drizzle Studio for local cluster Postgres debugging"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+host="127.0.0.1"
+port="3152"
+timeout=60
+waited=0
+
+while ! (:</dev/tcp/$host/$port) 2>/dev/null; do
+  sleep 1
+  waited=$((waited + 1))
+  if [ "$waited" -ge "$timeout" ]; then
+    printf 'Timeout waiting for Postgres at %s:%s\n' "$host" "$port" >&2
+    exit 1
+  fi
+done
+
+bun run dev:cluster
 '''
 
 [tasks."format:check"]

@@ -115,7 +115,7 @@ func TestProxyHandlerForwardsRequestsToTunnelURL(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	proxy := httptest.NewServer(newProxyHandler(mustParseProxyTarget(t, environmentTunnelURL(upstream.URL+"/api/", cliTestEnvironmentID, "", cliTestTunnelName)), &logs))
+	proxy := httptest.NewServer(newProxyHandler(mustParseProxyTarget(t, environmentTunnelURL(upstream.URL+"/api/", "", cliTestEnvironmentID, "", cliTestTunnelName)), &logs))
 	t.Cleanup(proxy.Close)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, proxy.URL+"/assets/app.js?mode=dev", strings.NewReader(proxyTestRequestBody))

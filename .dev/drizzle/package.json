@@ -3,12 +3,15 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "drizzle-kit studio --port 3149",
+    "dev": "bun run dev:node",
+    "dev:node": "drizzle-kit studio --config drizzle.node.config.ts --port 3149",
+    "dev:cluster": "drizzle-kit studio --config drizzle.cluster.config.ts --port 3151",
     "format:check": "prettier --check '**'",
     "format:write": "prettier --write '**'"
   },
   "dependencies": {
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "^0.45.1",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "better-sqlite3": "^12.9.0",

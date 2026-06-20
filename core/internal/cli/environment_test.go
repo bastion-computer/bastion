@@ -186,7 +186,7 @@ func TestEnvironmentListCommandSendsTagFilters(t *testing.T) {
 	cmd := newEnvironmentListCommand(&rootOptions{apiURL: server.URL})
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--limit", "5", "--cursor", cliTestNextCursor, "-t", cliTestProdTag, "--tag", cliTestGPUTag})
+	cmd.SetArgs([]string{cliTestLimitFlag, "5", cliTestCursorFlag, cliTestNextCursor, "-t", cliTestProdTag, "--tag", cliTestGPUTag})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
