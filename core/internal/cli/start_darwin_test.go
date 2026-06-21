@@ -30,3 +30,22 @@ func TestStartDaemonUnsupportedMatchesAPIOnDarwin(t *testing.T) {
 		t.Fatalf("daemon output = %q, want api output %q", outputs[startDaemonUse], outputs[startAPIUse])
 	}
 }
+
+func TestStartClusterCommandExistsOnDarwin(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRootCommand()
+
+	clusterCmd, remaining, err := cmd.Find([]string{startUse, startClusterUse})
+	if err != nil {
+		t.Fatalf("find start cluster command: %v", err)
+	}
+
+	if clusterCmd.Name() != startClusterUse {
+		t.Fatalf("command = %q, want %q", clusterCmd.Name(), startClusterUse)
+	}
+
+	if len(remaining) != 0 {
+		t.Fatalf("remaining args = %v, want none", remaining)
+	}
+}

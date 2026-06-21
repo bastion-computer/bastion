@@ -58,6 +58,7 @@ fi
 
 go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
 go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy
+bash ./e2e/cluster-test.sh
 bash ./e2e/client-test.sh
 bash ./e2e/env-test.sh
 bash ./e2e/backup-restore-test.sh
@@ -69,6 +70,74 @@ bash ./e2e/nested-test.sh
 [tasks."dev:api"]
 description = "Run the host API with Air live reload"
 run = "air -c .air.api.toml"
+
+[tasks."dev:cluster-db"]
+description = "Run the cluster Postgres dev database"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "${BASTION_CLUSTER_DATABASE_URL:-}" ]; then
+  printf 'Using external BASTION_CLUSTER_DATABASE_URL.\n'
+  exit 0
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  printf 'docker is required for the cluster Postgres dev database.\n' >&2
+  exit 1
+fi
+
+container="${BASTION_CLUSTER_DB_CONTAINER:-bastion-cluster-dev}"
+
+if docker inspect "$container" >/dev/null 2>&1; then
+  if [ "$(docker inspect -f '{{.State.Running}}' "$container")" != "true" ]; then
+    docker start "$container" >/dev/null
+  fi
+else
+  docker run -d \
+    --name "$container" \
+    -e POSTGRES_USER=bastion \
+    -e POSTGRES_PASSWORD=bastion \
+    -e POSTGRES_DB=bastion_cluster \
+    -p 127.0.0.1:3151:5432 \
+    postgres:18 >/dev/null
+fi
+
+i=0
+until docker exec "$container" pg_isready -U bastion -d bastion_cluster >/dev/null 2>&1; do
+  i=$((i + 1))
+  if [ "$i" -gt 60 ]; then
+    printf 'cluster Postgres dev database did not become ready.\n' >&2
+    exit 1
+  fi
+  sleep 0.5
+done
+
+printf 'Cluster Postgres dev database is ready at postgres://bastion:bastion@localhost:3151/bastion_cluster?sslmode=disable\n'
+'''
+
+[tasks."dev:cluster-db:down"]
+description = "Stop the cluster Postgres dev database"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "${BASTION_CLUSTER_DATABASE_URL:-}" ]; then
+  printf 'Leaving external BASTION_CLUSTER_DATABASE_URL running.\n'
+  exit 0
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  exit 0
+fi
+
+container="${BASTION_CLUSTER_DB_CONTAINER:-bastion-cluster-dev}"
+docker rm -f "$container" >/dev/null 2>&1 || true
+'''
+
+[tasks."dev:cluster"]
+description = "Run the cluster API with Air live reload"
+run = "air -c .air.cluster.toml"
 
 [tasks."dev:daemon"]
 description = "Run the daemon with Air live reload"

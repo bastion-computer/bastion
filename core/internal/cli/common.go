@@ -13,6 +13,7 @@ import (
 
 const (
 	clientUse      = "client"
+	clusterUse     = "cluster"
 	environmentUse = "env"
 	listUse        = "list"
 	proxyUse       = "proxy"

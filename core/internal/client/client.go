@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/bastion-computer/bastion/core/internal/services"
+	"github.com/bastion-computer/bastion/core/internal/services/cluster"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
@@ -42,6 +43,84 @@ func New(baseURL string) *Client {
 func (c *Client) GetUtilization(ctx context.Context) (utilization.Utilization, error) {
 	var out utilization.Utilization
 	return out, c.do(ctx, http.MethodGet, "/v1/utilization", nil, &out)
+}
+
+// GetHealth returns current API health.
+func (c *Client) GetHealth(ctx context.Context) (cluster.Health, error) {
+	var out cluster.Health
+	return out, c.do(ctx, http.MethodGet, "/v1/health", nil, &out)
+}
+
+// CreateClusterNode adds a Bastion API node to the cluster.
+func (c *Client) CreateClusterNode(ctx context.Context, req cluster.CreateNodeRequest) (cluster.Node, error) {
+	var out cluster.Node
+	return out, c.do(ctx, http.MethodPost, "/v1/cluster/nodes", req, &out)
+}
+
+// ListClusterNodes returns cluster nodes.
+func (c *Client) ListClusterNodes(ctx context.Context, limit int, cursor string) (services.Page[cluster.Node], error) {
+	var out services.Page[cluster.Node]
+	return out, c.do(ctx, http.MethodGet, listPath("/v1/cluster/nodes", limit, cursor), nil, &out)
+}
+
+// GetClusterNode returns a cluster node by ID or key.
+func (c *Client) GetClusterNode(ctx context.Context, id, key string) (cluster.Node, error) {
+	var out cluster.Node
+
+	path, err := resourcePath("/v1/cluster/nodes", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
+// RemoveClusterNode deletes a cluster node.
+func (c *Client) RemoveClusterNode(ctx context.Context, id, key string) (cluster.Node, error) {
+	var out cluster.Node
+
+	path, err := resourcePath("/v1/cluster/nodes", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
+}
+
+// CreateClusterNamespace creates a cluster namespace.
+func (c *Client) CreateClusterNamespace(ctx context.Context, req cluster.CreateNamespaceRequest) (cluster.Namespace, error) {
+	var out cluster.Namespace
+	return out, c.do(ctx, http.MethodPost, "/v1/cluster/namespaces", req, &out)
+}
+
+// ListClusterNamespaces returns cluster namespaces.
+func (c *Client) ListClusterNamespaces(ctx context.Context, limit int, cursor string) (services.Page[cluster.Namespace], error) {
+	var out services.Page[cluster.Namespace]
+	return out, c.do(ctx, http.MethodGet, listPath("/v1/cluster/namespaces", limit, cursor), nil, &out)
+}
+
+// GetClusterNamespace returns a cluster namespace by ID or key.
+func (c *Client) GetClusterNamespace(ctx context.Context, id, key string) (cluster.Namespace, error) {
+	var out cluster.Namespace
+
+	path, err := resourcePath("/v1/cluster/namespaces", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
+// RemoveClusterNamespace deletes a cluster namespace.
+func (c *Client) RemoveClusterNamespace(ctx context.Context, id, key string) (cluster.Namespace, error) {
+	var out cluster.Namespace
+
+	path, err := resourcePath("/v1/cluster/namespaces", id, key)
+	if err != nil {
+		return out, err
+	}
+
+	return out, c.do(ctx, http.MethodDelete, path, nil, &out)
 }
 
 // CreateSecret stores a secret.

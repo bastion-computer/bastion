@@ -11,13 +11,14 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/logging"
 )
 
-func newStartCommand(_ *rootOptions) *cobra.Command {
+func newStartCommand(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   startUse,
 		Short: "Start a Bastion process",
 	}
 	cmd.AddCommand(
 		newUnsupportedStartAPICommand(),
+		newStartClusterCommand(opts),
 		newUnsupportedStartDaemonCommand(),
 	)
 
