@@ -11,7 +11,9 @@ const clientConfigFile = "client.json"
 
 // ClientConfig contains persisted CLI client option overrides.
 type ClientConfig struct {
-	APIURL string `json:"apiUrl,omitempty"`
+	APIURL       string `json:"apiUrl,omitempty"`
+	NamespaceID  string `json:"namespaceId,omitempty"`
+	NamespaceKey string `json:"namespaceKey,omitempty"`
 }
 
 // ClientConfigPath returns the path to the persisted client config file.
@@ -83,5 +85,5 @@ func SaveClientConfig(dataDir string, cfg ClientConfig) error {
 
 // Empty reports whether the client config contains no overrides.
 func (cfg ClientConfig) Empty() bool {
-	return cfg.APIURL == ""
+	return cfg.APIURL == "" && cfg.NamespaceID == "" && cfg.NamespaceKey == ""
 }

@@ -85,10 +85,11 @@ Host-initiated guest proxy traffic must use `internal/tunnel.DialGuestProxy`; Cl
 
 - `--addr`: listen address. Defaults to `localhost:3150` and can be set with `BASTION_CLUSTER_ADDR`.
 - `--database-url`: Postgres connection URL. Defaults to `postgres://bastion:bastion@localhost:3151/bastion_cluster?sslmode=disable`, can be set with `BASTION_CLUSTER_DATABASE_URL`, and falls back to `DATABASE_URL` when set.
+- `--s3-bucket`, `--s3-endpoint`, `--s3-region`, `--s3-access-key-id`, `--s3-secret-access-key`, and `--s3-use-path-style`: S3-compatible storage for cluster template archives. Environment variables are `BASTION_CLUSTER_S3_BUCKET`, `BASTION_CLUSTER_S3_ENDPOINT`, `BASTION_CLUSTER_S3_REGION`, `BASTION_CLUSTER_S3_ACCESS_KEY_ID`, `BASTION_CLUSTER_S3_SECRET_ACCESS_KEY`, and `BASTION_CLUSTER_S3_USE_PATH_STYLE`; access key flags also fall back to `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
 - `--log-format`: log handler format. Defaults to `json` and can be set with `BASTION_CLUSTER_LOG_FORMAT` or `BASTION_LOG_FORMAT`; supported values are `json` and `text`.
 - `--log-level`: minimum log level. Defaults to `info` and can be set with `BASTION_CLUSTER_LOG_LEVEL` or `BASTION_LOG_LEVEL`; supported values are `debug`, `info`, `warn`, and `error`.
 
-The cluster service is supported on Linux and macOS. It exposes `/v1/cluster/nodes`, `/v1/cluster/namespaces`, `/v1/health`, and `/v1/utilization`. Aggregate health and utilization call each registered node's Bastion API URL.
+The cluster service is supported on Linux and macOS. It exposes `/v1/cluster/nodes`, `/v1/cluster/namespaces`, `/v1/health`, `/v1/utilization`, plus namespace-scoped `/v1/secrets` and `/v1/templates` routes. Aggregate health and utilization call each registered node's Bastion API URL. Cluster `secrets` and `templates` routes require exactly one `namespace-id` or `namespace-key` query parameter, store source resources in Postgres, and use temporary node derivatives plus S3-compatible archives for template creation/export/import.
 
 ## Database
 
@@ -109,7 +110,7 @@ The cluster control plane stores persistent data in Postgres. `internal/clusterd
 
 ## CLI
 
-Most client commands call the host API configured by `--api-url`, `BASTION_API_URL`, or a persisted override in `<data-dir>/client.json`. The default is `http://localhost:3148`. Cluster commands use the same client URL plumbing, but their default is `http://localhost:3150` when no flag, environment value, or persisted override is set. Server, system, version, and local client-configuration commands operate locally.
+Most client commands call the host API configured by `--api-url`, `BASTION_API_URL`, or a persisted override in `<data-dir>/client.json`. The default is `http://localhost:3148`. Cluster commands use the same client URL plumbing, but their default is `http://localhost:3150` when no flag, environment value, or persisted override is set. `secrets` and `templates` commands can attach a cluster namespace with `--namespace-id`, `--namespace-key`, `BASTION_NAMESPACE_ID`, `BASTION_NAMESPACE_KEY`, or persisted client config. Server, system, version, and local client-configuration commands operate locally.
 
 Supported top-level commands are intentionally limited to the current product scope:
 
@@ -120,7 +121,7 @@ Supported top-level commands are intentionally limited to the current product sc
 - `bastion secrets ...`
 - `bastion templates ...`
 - `bastion env ...`
-- `bastion client set api-url URL`, `bastion client remove api-url`, and `bastion client config`
+- `bastion client set api-url URL`, `bastion client set namespace-id ID`, `bastion client set namespace-key KEY`, matching `bastion client remove ...` commands, and `bastion client config`
 - `bastion mux`
 - `bastion opencode (--id ID | --key KEY)`
 - `bastion proxy (--env-id ID | --env-key KEY) --name NAME [--port PORT]`

@@ -31,7 +31,7 @@ type (
 )
 
 func apiClient(opts *rootOptions) *client.Client {
-	return client.New(opts.apiURL)
+	return client.New(opts.apiURL, client.WithNamespace(opts.namespaceID, opts.namespaceKey))
 }
 
 func writeJSON(w io.Writer, value any) error {

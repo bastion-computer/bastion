@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"net/url"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -28,9 +29,61 @@ func newClientSetCommand(opts *rootOptions) *cobra.Command {
 		Use:   setUse,
 		Short: "Set local CLI client configuration overrides",
 	}
-	cmd.AddCommand(newClientSetAPIURLCommand(opts))
+	cmd.AddCommand(
+		newClientSetAPIURLCommand(opts),
+		newClientSetNamespaceIDCommand(opts),
+		newClientSetNamespaceKeyCommand(opts),
+	)
 
 	return cmd
+}
+
+func newClientSetNamespaceIDCommand(opts *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   rootFlagNamespaceID + " ID",
+		Short: "Persist the cluster namespace ID used by resource commands",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			namespaceID := args[0]
+			if err := validateClientNamespace(rootFlagNamespaceID, namespaceID); err != nil {
+				return err
+			}
+
+			clientConfig, err := config.LoadClientConfig(opts.dataDir)
+			if err != nil {
+				return err
+			}
+
+			clientConfig.NamespaceID = namespaceID
+			clientConfig.NamespaceKey = ""
+
+			return config.SaveClientConfig(opts.dataDir, clientConfig)
+		},
+	}
+}
+
+func newClientSetNamespaceKeyCommand(opts *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   rootFlagNamespaceKey + " KEY",
+		Short: "Persist the cluster namespace key used by resource commands",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			namespaceKey := args[0]
+			if err := validateClientNamespace(rootFlagNamespaceKey, namespaceKey); err != nil {
+				return err
+			}
+
+			clientConfig, err := config.LoadClientConfig(opts.dataDir)
+			if err != nil {
+				return err
+			}
+
+			clientConfig.NamespaceID = ""
+			clientConfig.NamespaceKey = namespaceKey
+
+			return config.SaveClientConfig(opts.dataDir, clientConfig)
+		},
+	}
 }
 
 func newClientSetAPIURLCommand(opts *rootOptions) *cobra.Command {
@@ -61,9 +114,49 @@ func newClientRemoveCommand(opts *rootOptions) *cobra.Command {
 		Use:   removeUse,
 		Short: "Remove local CLI client configuration overrides",
 	}
-	cmd.AddCommand(newClientRemoveAPIURLCommand(opts))
+	cmd.AddCommand(
+		newClientRemoveAPIURLCommand(opts),
+		newClientRemoveNamespaceIDCommand(opts),
+		newClientRemoveNamespaceKeyCommand(opts),
+	)
 
 	return cmd
+}
+
+func newClientRemoveNamespaceIDCommand(opts *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   rootFlagNamespaceID,
+		Short: "Remove the persisted cluster namespace ID override",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			clientConfig, err := config.LoadClientConfig(opts.dataDir)
+			if err != nil {
+				return err
+			}
+
+			clientConfig.NamespaceID = ""
+
+			return config.SaveClientConfig(opts.dataDir, clientConfig)
+		},
+	}
+}
+
+func newClientRemoveNamespaceKeyCommand(opts *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   rootFlagNamespaceKey,
+		Short: "Remove the persisted cluster namespace key override",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			clientConfig, err := config.LoadClientConfig(opts.dataDir)
+			if err != nil {
+				return err
+			}
+
+			clientConfig.NamespaceKey = ""
+
+			return config.SaveClientConfig(opts.dataDir, clientConfig)
+		},
+	}
 }
 
 func newClientRemoveAPIURLCommand(opts *rootOptions) *cobra.Command {
@@ -116,6 +209,14 @@ func validateClientAPIURL(value string) error {
 
 	if parsed.Host == "" {
 		return errors.New("api-url must include a host")
+	}
+
+	return nil
+}
+
+func validateClientNamespace(name, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return errors.New(name + " cannot be blank")
 	}
 
 	return nil
