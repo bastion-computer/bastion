@@ -34,6 +34,7 @@ func newStartCommand(opts *rootOptions) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newStartAPICommand(opts),
+		newStartClusterCommand(opts),
 		newStartDaemonCommand(opts),
 	)
 

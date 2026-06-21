@@ -53,6 +53,8 @@ dev_up() {
 
   vm_network_prefix="$(dev_vm_network_prefix)"
 
+  mise run //core:dev:cluster-db
+
   if tmux has-session -t "$session" 2>/dev/null; then
     attach_session
     return
@@ -60,12 +62,14 @@ dev_up() {
 
   api_pane="$(tmux new-session -d -P -F '#{pane_id}' -s "$session" -n dev -c "$root" 'mise run //core:dev:api')"
   bastiond_pane="$(tmux split-window -d -h -P -F '#{pane_id}' -t "$api_pane" -c "$root" "BASTION_VM_NETWORK_PREFIX='$vm_network_prefix' sudo -E mise run //core:dev:daemon")"
+  cluster_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$api_pane" -c "$root" 'mise run //core:dev:cluster')"
   drizzle_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$bastiond_pane" -c "$root" 'mise run //.dev/drizzle:dev')"
-  docs_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$api_pane" -c "$root" 'mise run //docs:dev')"
+  docs_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$cluster_pane" -c "$root" 'mise run //docs:dev')"
   shell_pane="$(tmux split-window -d -v -P -F '#{pane_id}' -t "$drizzle_pane" -c "$root" 'mise exec -- bash -l')"
 
   tmux select-pane -t "$api_pane" -T 'api'
   tmux select-pane -t "$bastiond_pane" -T 'bastiond'
+  tmux select-pane -t "$cluster_pane" -T 'cluster'
   tmux select-pane -t "$drizzle_pane" -T 'drizzle'
   tmux select-pane -t "$docs_pane" -T 'docs'
   tmux select-pane -t "$shell_pane" -T 'shell'
@@ -84,6 +88,7 @@ dev_down() {
 
   if ! tmux has-session -t "$session" 2>/dev/null; then
     printf 'No tmux session named %s is running.\n' "$session"
+    mise run //core:dev:cluster-db:down >/dev/null 2>&1 || true
     return
   fi
 
@@ -95,10 +100,12 @@ dev_down() {
   if [ "$current_session" = "$session" ]; then
     printf 'Stopping tmux session %s.\n' "$session"
     nohup bash -c 'sleep 0.1; tmux kill-session -t "$1"' bash "$session" >/dev/null 2>&1 &
+    mise run //core:dev:cluster-db:down >/dev/null 2>&1 || true
     return
   fi
 
   tmux kill-session -t "$session"
+  mise run //core:dev:cluster-db:down >/dev/null 2>&1 || true
   printf 'Stopped tmux session %s.\n' "$session"
 }
 

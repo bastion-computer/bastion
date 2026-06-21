@@ -76,6 +76,7 @@ func NewRootCommand() *cobra.Command {
 		newStartCommand(opts),
 		newSystemCommand(opts),
 		newClientCommand(opts),
+		newClusterCommand(opts),
 		newSecretsCommand(opts),
 		newUtilizationCommand(opts),
 		newTemplatesCommand(opts),
@@ -97,7 +98,7 @@ func shouldResolveClientConfig(cmd *cobra.Command) bool {
 	}
 
 	switch topLevel.Name() {
-	case secretsUse, utilizationUse, "templates", environmentUse, "mux", "opencode", proxyUse, "ssh":
+	case clusterUse, secretsUse, utilizationUse, "templates", environmentUse, "mux", "opencode", proxyUse, "ssh":
 		return true
 	case clientUse:
 		return cmd.Name() == rootOptionSourceConfig
@@ -120,7 +121,7 @@ func resolveClientConfig(cmd *cobra.Command, opts *rootOptions) (rootClientConfi
 		return rootClientConfig{}, err
 	}
 
-	apiURL := config.DefaultAPIURL
+	apiURL := defaultAPIURL(cmd)
 	source := rootOptionSourceDefault
 
 	switch {
@@ -155,6 +156,14 @@ func resolveClientConfig(cmd *cobra.Command, opts *rootOptions) (rootClientConfi
 			Source: source,
 		},
 	}, nil
+}
+
+func defaultAPIURL(cmd *cobra.Command) string {
+	if topLevel := topLevelCommand(cmd); topLevel != nil && topLevel.Name() == clusterUse {
+		return config.DefaultClusterAPIURL
+	}
+
+	return config.DefaultAPIURL
 }
 
 func rootPersistentFlagChanged(cmd *cobra.Command, name string) bool {

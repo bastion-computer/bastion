@@ -2,11 +2,12 @@ This package contains the Go implementation of Bastion's host API service and CL
 
 ## Overview
 
-The core package lives in `core/`. On Linux it builds the `bastion` and `bastion-guest-proxy` binaries; on Darwin it builds the client-only `bastion` binary. The `bastion` binary is responsible for process entrypoints and client commands:
+The core package lives in `core/`. On Linux it builds the `bastion` and `bastion-guest-proxy` binaries; on Darwin it builds the `bastion` binary with client commands and the cluster control plane, while host API/daemon VM runtime support remains Linux-only. The `bastion` binary is responsible for process entrypoints and client commands:
 
 - `bastion start api` runs the local host API service on `localhost:3148` by default.
+- `bastion start cluster` runs the cluster control plane service on `localhost:3150` by default.
 - `sudo bastion start daemon` runs privileged Cloud Hypervisor runtime operations behind a Unix socket.
-- CLI commands operate locally when managing host/client configuration, or call the host API service and print JSON responses for product resources.
+- CLI commands operate locally when managing host/client configuration, or call the configured host/cluster API service and print JSON responses for product resources.
 
 ## Layout
 
@@ -18,7 +19,9 @@ The core package lives in `core/`. On Linux it builds the `bastion` and `bastion
 | `pkg/sshtunnel` | Public SSH tunnel framing protocol shared by CLI/API SSH streams. |
 | `internal/cli` | Cobra command tree and CLI output handling. |
 | `internal/api` | Gin router assembly and HTTP server setup. Route definitions live here. |
+| `internal/clusterapi` | Gin router assembly and HTTP server setup for the cluster control plane. |
 | `internal/client` | HTTP client used by CLI commands to call the host API. |
+| `internal/clusterdb` | Postgres client setup and migration handling for the cluster control plane. |
 | `internal/config` | Environment defaults and local path handling. |
 | `internal/database` | SQLite client setup, query helpers, transactions, and migration handling. |
 | `internal/failure` | Shared domain error sentinels mapped by the API layer. |
@@ -29,11 +32,13 @@ The core package lives in `core/`. On Linux it builds the `bastion` and `bastion
 | `internal/services/template` | Template request/response types and persistence service. |
 | `internal/services/environment` | Environment request/response types and persistence service. |
 | `internal/services/secret` | Secret request/response types and persistence service. |
+| `internal/services/cluster` | Cluster node, namespace, health, and utilization services. |
 | `internal/services/utilization` | Host capacity and live environment resource usage service. |
 | `internal/tunnel` | Shared guest-proxy tunnel constants and Cloud Hypervisor vsock dial helpers. |
 | `internal/schema` | Embedded JSON Schema documents and validation helpers. |
 | `internal/system` | Host setup/check commands for Cloud Hypervisor assets and utilities. |
 | `internal/migrations` | Embedded SQL migrations applied by core. |
+| `internal/clustermigrations` | Embedded Postgres migrations applied by the cluster control plane. |
 
 Implementation packages should stay under `internal/` unless another Go module has a concrete need to import them.
 
@@ -44,15 +49,17 @@ Run package tasks from the repo root with mise:
 | Task | Command | Purpose |
 | ---- | ------- | ------- |
 | `mise run //core:dev:api` | `air -c .air.api.toml` | Start the host API with live reload. |
+| `mise run //core:dev:cluster-db` | Docker `postgres:18` container | Start the local cluster Postgres database on `localhost:3151`. |
+| `mise run //core:dev:cluster` | `air -c .air.cluster.toml` | Start the cluster control plane with live reload. |
 | `mise run //core:dev:daemon` | `air -c .air.daemon.toml` | Start the daemon with live reload. |
 | `mise run //core:lint` | `golangci-lint run ./...` | Run Go linters. |
 | `mise run //core:format:check` | `gofmt -l .` check | Check Go formatting without writing files. |
 | `mise run //core:format:write` | `gofmt -w .` | Rewrite Go formatting. |
 | `mise run //core:build` | `go build -o ./tmp/bastion ./cmd/bastion` and, on Linux, `go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy` | Build the CLI and supported runtime binaries. |
 | `mise run //core:test` | `go test ./...` | Run Go tests. |
-| `mise run //core:test:e2e` | Build binaries and run `core/e2e/*.sh` scripts | Run core E2E tests against a reachable local API/daemon. |
+| `mise run //core:test:e2e` | Build binaries and run `core/e2e/*.sh` scripts | Run core E2E tests, including the self-starting cluster E2E and the host API/daemon E2E scripts. |
 
-Root aggregate tasks include this package, so `mise run dev:up`, `mise run lint`, `mise run format:check`, `mise run build`, and `mise run test` can all be run from the repository root. The root `dev:up` task opens a tmux session with dedicated panes for the API and daemon Air processes.
+Root aggregate tasks include this package, so `mise run dev:up`, `mise run lint`, `mise run format:check`, `mise run build`, and `mise run test` can all be run from the repository root. The root `dev:up` task starts the local cluster Postgres container and opens a tmux session with dedicated panes for the API, cluster control plane, and daemon Air processes.
 
 Local builds report `dev` from `internal/config.Version`. Release builds can inject a version by setting `BASTION_VERSION` before running `mise run //core:build`.
 
@@ -72,9 +79,20 @@ The service uses Gin and wraps it in `http.Server` so timeouts and graceful shut
 
 Host-initiated guest proxy traffic must use `internal/tunnel.DialGuestProxy`; Cloud Hypervisor requires sending `CONNECT <port>\n` and consuming the `OK <host-port>\n` acknowledgement before speaking HTTP.
 
+## Cluster Service
+
+`bastion start cluster` accepts:
+
+- `--addr`: listen address. Defaults to `localhost:3150` and can be set with `BASTION_CLUSTER_ADDR`.
+- `--database-url`: Postgres connection URL. Defaults to `postgres://bastion:bastion@localhost:3151/bastion_cluster?sslmode=disable`, can be set with `BASTION_CLUSTER_DATABASE_URL`, and falls back to `DATABASE_URL` when set.
+- `--log-format`: log handler format. Defaults to `json` and can be set with `BASTION_CLUSTER_LOG_FORMAT` or `BASTION_LOG_FORMAT`; supported values are `json` and `text`.
+- `--log-level`: minimum log level. Defaults to `info` and can be set with `BASTION_CLUSTER_LOG_LEVEL` or `BASTION_LOG_LEVEL`; supported values are `debug`, `info`, `warn`, and `error`.
+
+The cluster service is supported on Linux and macOS. It exposes `/v1/cluster/nodes`, `/v1/cluster/namespaces`, `/v1/health`, and `/v1/utilization`. Aggregate health and utilization call each registered node's Bastion API URL.
+
 ## Database
 
-Core stores persistent data in SQLite at `<data-dir>/sqlite.db`.
+The host API stores persistent data in SQLite at `<data-dir>/sqlite.db`.
 
 - The default data directory is `~/.bastion`.
 - The development data directory is `.bastion` via the Air configuration.
@@ -87,14 +105,17 @@ The core migrations are the schema source of truth. Development tools such as Dr
 
 `internal/database` intentionally stays small: it opens SQLite, runs migrations, exposes context-aware query and transaction methods, and detects SQLite constraint errors. Service packages under `internal/services` own their own SQL and CRUD behavior.
 
+The cluster control plane stores persistent data in Postgres. `internal/clusterdb.Open()` connects with `pgx`, runs embedded migrations from `internal/clustermigrations`, and fails startup if migration or connectivity checks fail. In development, `mise run //core:dev:cluster-db` starts a Docker `postgres:18` container on `localhost:3151`.
+
 ## CLI
 
-Most client commands call the host API configured by `--api-url`, `BASTION_API_URL`, or a persisted override in `<data-dir>/client.json`. The default is `http://localhost:3148`. Server, system, version, and local client-configuration commands operate locally.
+Most client commands call the host API configured by `--api-url`, `BASTION_API_URL`, or a persisted override in `<data-dir>/client.json`. The default is `http://localhost:3148`. Cluster commands use the same client URL plumbing, but their default is `http://localhost:3150` when no flag, environment value, or persisted override is set. Server, system, version, and local client-configuration commands operate locally.
 
 Supported top-level commands are intentionally limited to the current product scope:
 
-- `bastion start api` and `bastion start daemon`
+- `bastion start api`, `bastion start cluster`, and `bastion start daemon`
 - `bastion system check`, `bastion system add cloud-hypervisor`, and `bastion system remove cloud-hypervisor`
+- `bastion cluster nodes ...` and `bastion cluster namespaces ...`
 - `bastion utilization`
 - `bastion secrets ...`
 - `bastion templates ...`

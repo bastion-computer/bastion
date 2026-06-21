@@ -38,7 +38,7 @@ func TestStartCommandRequiresProcessSubcommand(t *testing.T) {
 func TestStartCommandIncludesProcessSubcommands(t *testing.T) {
 	t.Parallel()
 
-	for _, process := range []string{startAPIUse, startDaemonUse} {
+	for _, process := range []string{startAPIUse, startClusterUse, startDaemonUse} {
 		t.Run(process, func(t *testing.T) {
 			t.Parallel()
 

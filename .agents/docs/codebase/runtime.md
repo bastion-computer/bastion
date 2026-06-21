@@ -53,17 +53,18 @@ Use package-qualified tasks such as `mise run //core:test`, `mise run //docs:dev
 
 The `core/` package owns the product runtime. On Linux it builds two binaries:
 
-- `bastion`: CLI, host API service, and privileged daemon entrypoint.
+- `bastion`: CLI, host API service, cluster control plane service, and privileged daemon entrypoint.
 - `bastion-guest-proxy`: guest-side vsock HTTP proxy installed into templates.
 
-On Darwin, `mise run //core:build` builds only the client CLI `bastion` binary and removes any stale Linux runtime binaries, because host runtime support is Linux-only.
+On Darwin, `mise run //core:build` builds the `bastion` binary with client commands and the cluster control plane. The host API, daemon, guest proxy, and VM runtime remain Linux-only, so the Darwin build removes any stale Linux runtime binaries.
 
 Core uses standard Go tooling and libraries, including:
 
 - Gin for HTTP routing in both the host API and daemon.
 - Cobra for CLI commands.
-- SQLite through `github.com/mattn/go-sqlite3` with CGO enabled.
-- Embedded SQL migrations under `core/internal/migrations`.
+- SQLite through `github.com/mattn/go-sqlite3` with CGO enabled for the host API.
+- Postgres through `github.com/jackc/pgx` for the cluster control plane.
+- Embedded SQL migrations under `core/internal/migrations` and `core/internal/clustermigrations`.
 - Cloud Hypervisor orchestration under `core/internal/cloudhypervisor`.
 
 Do not apply Bun server/API conventions to `core`. For example, do not replace Gin with `Bun.serve()`, Go SQLite with `bun:sqlite`, or Go build/test flows with Bun commands.
@@ -84,7 +85,8 @@ Use package scripts through mise tasks where available. If a package does not de
 Use the APIs and storage layers already established by each package:
 
 - `core/` HTTP APIs use Gin handlers and services in Go.
-- `core/` persistent state is SQLite at `<data-dir>/sqlite.db`, managed by Go migrations.
+- `core/` host API persistent state is SQLite at `<data-dir>/sqlite.db`, managed by Go migrations.
+- `core/` cluster control plane persistent state is Postgres, managed by embedded Go migrations.
 - `.dev/drizzle/` may depend on `better-sqlite3` because Drizzle Kit uses it for local inspection; it does not own the production schema.
 - `docs/` APIs/pages use Astro conventions.
 

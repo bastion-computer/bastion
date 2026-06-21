@@ -1,0 +1,12 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/bastion ./cmd/bastion"
+entrypoint = ["./tmp/bastion", "start", "cluster", "--addr", "localhost:3150", "--database-url", "postgres://bastion:bastion@localhost:3151/bastion_cluster?sslmode=disable", "--log-format", "text", "--log-level", "debug"]
+include_dir = ["cmd", "internal"]
+include_ext = ["go"]
+exclude_dir = ["tmp"]
+
+[misc]
+startup_banner = ""

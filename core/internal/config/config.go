@@ -15,6 +15,15 @@ const DefaultAddr = "localhost:3148"
 // DefaultAPIURL is the local Bastion API endpoint used by the CLI.
 const DefaultAPIURL = "http://" + DefaultAddr
 
+// DefaultClusterAddr is the local Bastion cluster API listen address.
+const DefaultClusterAddr = "localhost:3150"
+
+// DefaultClusterAPIURL is the local Bastion cluster API endpoint used by cluster CLI commands.
+const DefaultClusterAPIURL = "http://" + DefaultClusterAddr
+
+// DefaultClusterDatabaseURL is the local development Postgres database for the cluster control plane.
+const DefaultClusterDatabaseURL = "postgres://bastion:bastion@localhost:3151/bastion_cluster?sslmode=disable" //nolint:gosec // Local development-only Postgres credentials.
+
 // DefaultBastiondSocket is the Unix socket used by the privileged daemon.
 const DefaultBastiondSocket = "/run/bastion/bastiond.sock"
 
