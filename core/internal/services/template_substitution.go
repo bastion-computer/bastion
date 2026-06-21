@@ -18,6 +18,22 @@ type TemplateSecretResolver func(context.Context, string) (string, error)
 
 // SubstituteTemplateSecrets resolves ${{ secret.KEY }} and ${{ secret.ID }} expressions in template JSON strings.
 func SubstituteTemplateSecrets(ctx context.Context, config json.RawMessage, resolve TemplateSecretResolver) (json.RawMessage, error) {
+	return rewriteTemplateSecretExpressions(ctx, config, resolve)
+}
+
+// RewriteTemplateSecretReferences rewrites ${{ secret.KEY }} and ${{ secret.ID }} references without resolving their values.
+func RewriteTemplateSecretReferences(ctx context.Context, config json.RawMessage, rewrite TemplateSecretResolver) (json.RawMessage, error) {
+	return rewriteTemplateSecretExpressions(ctx, config, func(ctx context.Context, reference string) (string, error) {
+		rewritten, err := rewrite(ctx, reference)
+		if err != nil {
+			return "", err
+		}
+
+		return "${{ secret." + rewritten + " }}", nil
+	})
+}
+
+func rewriteTemplateSecretExpressions(ctx context.Context, config json.RawMessage, resolve TemplateSecretResolver) (json.RawMessage, error) {
 	var value any
 
 	decoder := json.NewDecoder(bytes.NewReader(config))

@@ -143,6 +143,108 @@ func TestImportTemplateUploadsArchive(t *testing.T) {
 	}
 }
 
+func TestNamespaceQueryParamsApplyToSecretAndTemplateRequests(t *testing.T) {
+	t.Parallel()
+
+	paths := make([]string, 0, 4)
+	secretKey := "client-secret"
+	templateKey := "dev"
+	client := &Client{
+		baseURL:     clientTestBaseURL,
+		namespaceID: "ns_123",
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			paths = append(paths, req.Method+" "+req.URL.String())
+
+			switch req.URL.Path {
+			case "/v1/secrets":
+				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"sec_created","key":"client-secret","createdAt":"now"}`), nil
+			case "/v1/templates":
+				var body bytes.Buffer
+				if err := json.NewEncoder(&body).Encode(template.CreateStreamEvent{Type: template.StreamEventResult, Template: &template.Metadata{ID: "tpl_created", Key: &templateKey}}); err != nil {
+					t.Fatalf("encode template stream: %v", err)
+				}
+
+				return &http.Response{StatusCode: http.StatusOK, Status: clientTestOKStatus, Body: io.NopCloser(&body)}, nil
+			case "/v1/templates/by-key/dev/export":
+				return &http.Response{StatusCode: http.StatusOK, Status: clientTestOKStatus, Body: io.NopCloser(bytes.NewBufferString("template-archive"))}, nil
+			case "/v1/templates/import":
+				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"tpl_imported","key":"dev","createdAt":"now"}`), nil
+			default:
+				t.Fatalf("unexpected path %s", req.URL.Path)
+
+				return nil, nil
+			}
+		})},
+	}
+
+	if _, err := client.CreateSecret(context.Background(), secret.CreateRequest{Key: &secretKey, Value: "secret-value"}); err != nil {
+		t.Fatalf("create secret: %v", err)
+	}
+
+	if _, err := client.CreateTemplate(context.Background(), template.CreateRequest{Key: &templateKey, Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)}); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	var exported bytes.Buffer
+	if err := client.ExportTemplate(context.Background(), "", templateKey, &exported); err != nil {
+		t.Fatalf("export template: %v", err)
+	}
+
+	if _, err := client.ImportTemplate(context.Background(), template.ImportRequest{Key: &templateKey, Archive: strings.NewReader("template-archive"), ArchiveSize: int64(len("template-archive"))}); err != nil {
+		t.Fatalf("import template: %v", err)
+	}
+
+	want := []string{
+		"POST http://bastion.test/v1/secrets?namespace-id=ns_123",
+		"POST http://bastion.test/v1/templates?namespace-id=ns_123",
+		"GET http://bastion.test/v1/templates/by-key/dev/export?namespace-id=ns_123",
+		"POST http://bastion.test/v1/templates/import?key=dev&namespace-id=ns_123",
+	}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("paths = %#v, want %#v", paths, want)
+	}
+}
+
+func TestNamespaceQueryParamsUseNamespaceKey(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{
+		baseURL:      clientTestBaseURL,
+		namespaceKey: "team-a",
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Query().Get("namespace-key") != "team-a" || req.URL.Query().Get("namespace-id") != "" {
+				t.Fatalf("query = %v, want namespace-key only", req.URL.Query())
+			}
+
+			return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[]}`), nil
+		})},
+	}
+
+	if _, err := client.ListTemplates(context.Background(), 20, ""); err != nil {
+		t.Fatalf("list templates: %v", err)
+	}
+}
+
+func TestNamespaceQueryParamsDoNotApplyToClusterRequests(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{
+		baseURL:     clientTestBaseURL,
+		namespaceID: "ns_123",
+		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Query().Get("namespace-id") != "" || req.URL.Query().Get("namespace-key") != "" {
+				t.Fatalf("cluster request query = %q, want no namespace", req.URL.RawQuery)
+			}
+
+			return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[]}`), nil
+		})},
+	}
+
+	if _, err := client.ListClusterNamespaces(context.Background(), 20, ""); err != nil {
+		t.Fatalf("list cluster namespaces: %v", err)
+	}
+}
+
 func TestListEnvironmentsIncludesTagFilters(t *testing.T) {
 	t.Parallel()
 

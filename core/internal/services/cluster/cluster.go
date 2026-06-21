@@ -2,11 +2,13 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,12 +19,15 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/clusterdb"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services"
+	"github.com/bastion-computer/bastion/core/internal/services/secret"
+	"github.com/bastion-computer/bastion/core/internal/services/template"
 	"github.com/bastion-computer/bastion/core/internal/services/utilization"
 )
 
 const (
 	nodeIDPrefix      = "node"
 	namespaceIDPrefix = "ns"
+	nodeClientTimeout = 30 * time.Minute
 )
 
 // Health describes aggregate cluster health.
@@ -60,6 +65,11 @@ type CreateNamespaceRequest struct {
 type NodeClient interface {
 	Health(context.Context, string) error
 	Utilization(context.Context, string) (utilization.Utilization, error)
+	CreateSecret(context.Context, string, secret.CreateRequest) (secret.Metadata, error)
+	RemoveSecret(context.Context, string, string) error
+	CreateTemplate(context.Context, string, template.CreateRequest) (template.Metadata, error)
+	ExportTemplate(context.Context, string, string, io.Writer) error
+	RemoveTemplate(context.Context, string, string) error
 }
 
 // Option configures the cluster service.
@@ -67,19 +77,20 @@ type Option func(*Service)
 
 // Service manages cluster control plane state.
 type Service struct {
-	db         *clusterdb.Client
-	nodeClient NodeClient
+	db           *clusterdb.Client
+	nodeClient   NodeClient
+	archiveStore TemplateArchiveStore
 }
 
 // NewService returns a cluster service backed by db.
 func NewService(db *clusterdb.Client, opts ...Option) *Service {
-	service := &Service{db: db, nodeClient: HTTPNodeClient{Client: &http.Client{Timeout: 10 * time.Second}}}
+	service := &Service{db: db, nodeClient: HTTPNodeClient{Client: &http.Client{Timeout: nodeClientTimeout}}}
 	for _, opt := range opts {
 		opt(service)
 	}
 
 	if service.nodeClient == nil {
-		service.nodeClient = HTTPNodeClient{Client: &http.Client{Timeout: 10 * time.Second}}
+		service.nodeClient = HTTPNodeClient{Client: &http.Client{Timeout: nodeClientTimeout}}
 	}
 
 	return service
@@ -89,6 +100,13 @@ func NewService(db *clusterdb.Client, opts ...Option) *Service {
 func WithNodeClient(client NodeClient) Option {
 	return func(s *Service) {
 		s.nodeClient = client
+	}
+}
+
+// WithTemplateArchiveStore configures persistent storage for cluster template exports.
+func WithTemplateArchiveStore(store TemplateArchiveStore) Option {
+	return func(s *Service) {
+		s.archiveStore = store
 	}
 }
 
@@ -425,18 +443,64 @@ func (c HTTPNodeClient) Utilization(ctx context.Context, nodeURL string) (utiliz
 	return out, c.getJSON(ctx, nodeURL, "/v1/utilization", &out)
 }
 
-func (c HTTPNodeClient) getJSON(ctx context.Context, nodeURL, path string, out any) error {
-	httpClient := c.Client
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 10 * time.Second}
+// CreateSecret creates a derivative secret on one underlying node.
+func (c HTTPNodeClient) CreateSecret(ctx context.Context, nodeURL string, req secret.CreateRequest) (secret.Metadata, error) {
+	var out secret.Metadata
+	return out, c.doJSON(ctx, http.MethodPost, nodeURL, "/v1/secrets", req, &out)
+}
+
+// RemoveSecret removes a derivative secret from one underlying node.
+func (c HTTPNodeClient) RemoveSecret(ctx context.Context, nodeURL, secretID string) error {
+	return c.doJSON(ctx, http.MethodDelete, nodeURL, "/v1/secrets/"+url.PathEscape(secretID), nil, nil)
+}
+
+// CreateTemplate creates a derivative template on one underlying node.
+func (c HTTPNodeClient) CreateTemplate(ctx context.Context, nodeURL string, req template.CreateRequest) (template.Metadata, error) {
+	return c.postStream(ctx, nodeURL, "/v1/templates", req, req.Logs)
+}
+
+// ExportTemplate exports a derivative template from one underlying node.
+func (c HTTPNodeClient) ExportTemplate(ctx context.Context, nodeURL, templateID string, archive io.Writer) error {
+	if archive == nil {
+		return errors.New("template archive writer is required")
 	}
 
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(nodeURL, "/")+"/v1/templates/"+url.PathEscape(templateID)+"/export", nil)
+	if err != nil {
+		return fmt.Errorf("create node request: %w", err)
+	}
+
+	req.Header.Set("Accept", template.ArchiveContentType)
+
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("call node API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return decodeNodeStatusError(res)
+	}
+
+	if _, err := io.Copy(archive, res.Body); err != nil {
+		return fmt.Errorf("read node template archive: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveTemplate removes a derivative template from one underlying node.
+func (c HTTPNodeClient) RemoveTemplate(ctx context.Context, nodeURL, templateID string) error {
+	return c.doJSON(ctx, http.MethodDelete, nodeURL, "/v1/templates/"+url.PathEscape(templateID), nil, nil)
+}
+
+func (c HTTPNodeClient) getJSON(ctx context.Context, nodeURL, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(nodeURL, "/")+path, nil)
 	if err != nil {
 		return fmt.Errorf("create node request: %w", err)
 	}
 
-	res, err := httpClient.Do(req)
+	res, err := c.httpClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("call node API: %w", err)
 	}
@@ -451,4 +515,138 @@ func (c HTTPNodeClient) getJSON(ctx context.Context, nodeURL, path string, out a
 	}
 
 	return nil
+}
+
+func (c HTTPNodeClient) doJSON(ctx context.Context, method, nodeURL, path string, in, out any) error {
+	var body io.Reader
+
+	if in != nil {
+		contents, err := json.Marshal(in)
+		if err != nil {
+			return fmt.Errorf("encode node request: %w", err)
+		}
+
+		body = bytes.NewReader(contents)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(nodeURL, "/")+path, body)
+	if err != nil {
+		return fmt.Errorf("create node request: %w", err)
+	}
+
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("call node API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return decodeNodeStatusError(res)
+	}
+
+	if out == nil {
+		return nil
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode node response: %w", err)
+	}
+
+	return nil
+}
+
+func (c HTTPNodeClient) postStream(ctx context.Context, nodeURL, path string, in any, logs io.Writer) (template.Metadata, error) {
+	var out template.Metadata
+
+	contents, err := json.Marshal(in)
+	if err != nil {
+		return out, fmt.Errorf("encode node request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(nodeURL, "/")+path, bytes.NewReader(contents))
+	if err != nil {
+		return out, fmt.Errorf("create node request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call node API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeNodeStatusError(res)
+	}
+
+	decoder := json.NewDecoder(res.Body)
+
+	for {
+		created, done, err := readTemplateCreateStreamEvent(decoder, logs)
+		if err != nil {
+			return out, err
+		}
+
+		if done {
+			return created, nil
+		}
+	}
+}
+
+func readTemplateCreateStreamEvent(decoder *json.Decoder, logs io.Writer) (template.Metadata, bool, error) {
+	var event template.CreateStreamEvent
+
+	if err := decoder.Decode(&event); err != nil {
+		if errors.Is(err, io.EOF) {
+			return template.Metadata{}, false, errors.New("node API stream ended before template creation completed")
+		}
+
+		return template.Metadata{}, false, fmt.Errorf("decode node template stream: %w", err)
+	}
+
+	switch event.Type {
+	case template.StreamEventLog:
+		if logs != nil && event.Log != "" {
+			if _, err := logs.Write([]byte(event.Log)); err != nil {
+				return template.Metadata{}, false, fmt.Errorf("stream node template logs: %w", err)
+			}
+		}
+
+		return template.Metadata{}, false, nil
+	case template.StreamEventResult:
+		if event.Template == nil {
+			return template.Metadata{}, false, errors.New("node API stream result missing template")
+		}
+
+		return *event.Template, true, nil
+	case template.StreamEventError:
+		return template.Metadata{}, false, fmt.Errorf("node API template creation failed: %s", event.Error)
+	default:
+		return template.Metadata{}, false, fmt.Errorf("node API template stream returned unknown event type %q", event.Type)
+	}
+}
+
+func (c HTTPNodeClient) httpClient() *http.Client {
+	if c.Client != nil {
+		return c.Client
+	}
+
+	return &http.Client{Timeout: nodeClientTimeout}
+}
+
+func decodeNodeStatusError(res *http.Response) error {
+	var apiErr struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil || apiErr.Error == "" {
+		return fmt.Errorf("node API returned %s", res.Status)
+	}
+
+	return fmt.Errorf("node API returned %s: %s", res.Status, apiErr.Error)
 }

@@ -27,15 +27,33 @@ import (
 
 // Client wraps HTTP access to the Bastion API.
 type Client struct {
-	baseURL string
-	http    *http.Client
+	baseURL      string
+	namespaceID  string
+	namespaceKey string
+	http         *http.Client
 }
 
+// Option configures a Bastion API client.
+type Option func(*Client)
+
 // New returns a Bastion API client for baseURL.
-func New(baseURL string) *Client {
-	return &Client{
+func New(baseURL string, opts ...Option) *Client {
+	client := &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{},
+	}
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	return client
+}
+
+// WithNamespace configures cluster namespace query parameters for resource requests.
+func WithNamespace(id, key string) Option {
+	return func(c *Client) {
+		c.namespaceID = id
+		c.namespaceKey = key
 	}
 }
 
@@ -161,7 +179,7 @@ func (c *Client) RemoveSecret(ctx context.Context, id, key string) (secret.Metad
 
 // CreateTemplate stores a template.
 func (c *Client) CreateTemplate(ctx context.Context, req template.CreateRequest) (template.Metadata, error) {
-	return postHostStream(ctx, c.http, c.baseURL+"/v1/templates", req, req.Logs, decodeCreateTemplateStream)
+	return postHostStream(ctx, c.http, c.baseURL+c.withNamespace("/v1/templates"), req, req.Logs, decodeCreateTemplateStream)
 }
 
 func decodeCreateTemplateStream(decoder *json.Decoder, logs io.Writer) (template.Metadata, error) {
@@ -229,7 +247,7 @@ func (c *Client) ExportTemplate(ctx context.Context, id, key string, archive io.
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path+"/export", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+c.withNamespace(path+"/export"), nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -269,7 +287,7 @@ func (c *Client) ImportTemplate(ctx context.Context, importReq template.ImportRe
 		path += "?" + values.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, importReq.Archive)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+c.withNamespace(path), importReq.Archive)
 	if err != nil {
 		return out, fmt.Errorf("create request: %w", err)
 	}
@@ -514,7 +532,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		body = bytes.NewReader(contents)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+c.withNamespace(path), body)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -542,6 +560,32 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	}
 
 	return nil
+}
+
+func (c *Client) withNamespace(path string) string {
+	if c.namespaceID == "" && c.namespaceKey == "" {
+		return path
+	}
+
+	if !strings.HasPrefix(path, "/v1/secrets") && !strings.HasPrefix(path, "/v1/templates") {
+		return path
+	}
+
+	parsed, err := url.Parse(path)
+	if err != nil {
+		return path
+	}
+
+	query := parsed.Query()
+	if c.namespaceID != "" {
+		query.Set("namespace-id", c.namespaceID)
+	} else if c.namespaceKey != "" {
+		query.Set("namespace-key", c.namespaceKey)
+	}
+
+	parsed.RawQuery = query.Encode()
+
+	return parsed.String()
 }
 
 func decodeHostStatusError(res *http.Response) error {

@@ -31,7 +31,7 @@ Every task must identify and run the closest user-facing verification path befor
 Use these common paths:
 
 - Core CLI/API/storage behavior: targeted Go tests, then the relevant `core/e2e/*.sh` script against a local API/daemon.
-- Core cluster control plane behavior: `cd core && bash ./e2e/cluster-test.sh`, which starts its own Postgres 18 container, cluster server, and fake underlying nodes.
+- Core cluster control plane behavior: `cd core && bash ./e2e/cluster-test.sh`, which starts its own Postgres 18 container, MinIO S3-compatible storage, cluster server, and a VM-backed Bastion node through the local host API/daemon.
 - Core client configuration behavior: `cd core && bash ./e2e/client-test.sh`.
 - Core template/environment lifecycle behavior: `cd core && bash ./e2e/env-test.sh`.
 - Core template backup/restore behavior: `cd core && bash ./e2e/backup-restore-test.sh`.
@@ -59,7 +59,7 @@ Core E2E workflow:
 E2E notes:
 
 - The scripts default to `BASTION_API_URL=http://localhost:3148`; override `BASTION_API_URL` only when intentionally targeting a different API.
-- `cluster-test.sh` uses `bastion --api-url http://<cluster-server>` because cluster CLI commands use the same client URL plumbing as other CLI commands. It starts Docker `postgres:18` unless `BASTION_CLUSTER_DATABASE_URL` points to an existing Postgres database.
+- `cluster-test.sh` uses `bastion --api-url http://<cluster-server>` because cluster CLI commands use the same client URL plumbing as other CLI commands. It starts Docker `postgres:18` unless `BASTION_CLUSTER_DATABASE_URL` points to an existing Postgres database, starts Docker MinIO for template archives, and requires a reachable local host API/daemon at `BASTION_HOST_API_URL` or `BASTION_API_URL` (default `http://localhost:3148`) to boot a VM-backed cluster node.
 - The install E2E uses the docs dev server and repo-managed Bun, creates a local `dev` release archive from `core/tmp`, and points `install.sh` at that local archive so unreleased installer changes are tested before a GitHub release exists.
 - `mise run //core:test:e2e` builds the CLI/daemon and runs all E2E scripts, but it still expects a reachable local API/daemon. Prefer the explicit workflow above when debugging because it keeps API and daemon logs in `/tmp/opencode/bastion-logs/`.
 - Nested E2E requires `/dev/kvm`, Cloud Hypervisor assets, working TAP/iptables setup, and enough disk/network time to download inner assets. It chooses the inner daemon network prefix from the current default route so nested child VMs do not collide with the parent VM route.

@@ -24,13 +24,21 @@ func init() {
 type RouterOption func(*routerConfig)
 
 type routerConfig struct {
-	nodeClient clusterservice.NodeClient
+	nodeClient   clusterservice.NodeClient
+	archiveStore clusterservice.TemplateArchiveStore
 }
 
 // WithNodeClient configures how aggregate routes call underlying Bastion API nodes.
 func WithNodeClient(client clusterservice.NodeClient) RouterOption {
 	return func(cfg *routerConfig) {
 		cfg.nodeClient = client
+	}
+}
+
+// WithTemplateArchiveStore configures template archive storage for cluster resource routes.
+func WithTemplateArchiveStore(store clusterservice.TemplateArchiveStore) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.archiveStore = store
 	}
 }
 
@@ -56,6 +64,10 @@ func NewRouter(db *clusterdb.Client, logger *slog.Logger, opts ...RouterOption) 
 		serviceOptions = append(serviceOptions, clusterservice.WithNodeClient(cfg.nodeClient))
 	}
 
+	if cfg.archiveStore != nil {
+		serviceOptions = append(serviceOptions, clusterservice.WithTemplateArchiveStore(cfg.archiveStore))
+	}
+
 	router := gin.New()
 	router.Use(requestIDMiddleware(), slogMiddleware(logger), recoveryMiddleware(logger))
 
@@ -64,6 +76,25 @@ func NewRouter(db *clusterdb.Client, logger *slog.Logger, opts ...RouterOption) 
 	v1 := router.Group("/v1")
 	v1.GET("/health", handler.Health)
 	v1.GET("/utilization", handler.Utilization)
+
+	secretRoutes := v1.Group("/secrets")
+	secretRoutes.POST("", handler.CreateSecret)
+	secretRoutes.GET("", handler.ListSecrets)
+	secretRoutes.GET("/:id", handler.GetSecretByID)
+	secretRoutes.GET("/by-key/:key", handler.GetSecretByKey)
+	secretRoutes.DELETE("/:id", handler.RemoveSecretByID)
+	secretRoutes.DELETE("/by-key/:key", handler.RemoveSecretByKey)
+
+	templateRoutes := v1.Group("/templates")
+	templateRoutes.POST("", handler.CreateTemplate)
+	templateRoutes.GET("", handler.ListTemplates)
+	templateRoutes.POST("/import", handler.ImportTemplate)
+	templateRoutes.GET("/:id/export", handler.ExportTemplateByID)
+	templateRoutes.GET("/:id", handler.GetTemplateByID)
+	templateRoutes.GET("/by-key/:key/export", handler.ExportTemplateByKey)
+	templateRoutes.GET("/by-key/:key", handler.GetTemplateByKey)
+	templateRoutes.DELETE("/:id", handler.RemoveTemplateByID)
+	templateRoutes.DELETE("/by-key/:key", handler.RemoveTemplateByKey)
 
 	clusterRoutes := v1.Group("/cluster")
 	nodeRoutes := clusterRoutes.Group("/nodes")

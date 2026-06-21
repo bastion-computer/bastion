@@ -13,12 +13,16 @@ import (
 type rootOptions struct {
 	apiURL       string
 	dataDir      string
+	namespaceID  string
+	namespaceKey string
 	clientConfig rootClientConfig
 }
 
 type rootClientConfig struct {
-	DataDir string          `json:"dataDir"`
-	APIURL  rootOptionValue `json:"apiUrl"`
+	DataDir      string          `json:"dataDir"`
+	APIURL       rootOptionValue `json:"apiUrl"`
+	NamespaceID  rootOptionValue `json:"namespaceId"`
+	NamespaceKey rootOptionValue `json:"namespaceKey"`
 }
 
 type rootOptionValue struct {
@@ -32,8 +36,10 @@ const (
 	rootOptionSourceFlag        = "flag"
 	rootOptionSourceConfig      = "config"
 
-	rootFlagAPIURL  = "api-url"
-	rootFlagDataDir = "data-dir"
+	rootFlagAPIURL       = "api-url"
+	rootFlagDataDir      = "data-dir"
+	rootFlagNamespaceID  = "namespace-id"
+	rootFlagNamespaceKey = "namespace-key"
 )
 
 // Execute runs the Bastion root command.
@@ -47,8 +53,10 @@ func Execute(ctx context.Context) error {
 // NewRootCommand builds the Bastion root command tree.
 func NewRootCommand() *cobra.Command {
 	opts := &rootOptions{
-		apiURL:  config.EnvDefault("BASTION_API_URL", config.DefaultAPIURL),
-		dataDir: config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
+		apiURL:       config.EnvDefault("BASTION_API_URL", config.DefaultAPIURL),
+		dataDir:      config.EnvDefault("BASTION_DATA_DIR", config.DefaultDataDir()),
+		namespaceID:  os.Getenv("BASTION_NAMESPACE_ID"),
+		namespaceKey: os.Getenv("BASTION_NAMESPACE_KEY"),
 	}
 	cmd := &cobra.Command{
 		Use:           "bastion",
@@ -72,6 +80,8 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd.PersistentFlags().StringVar(&opts.apiURL, rootFlagAPIURL, opts.apiURL, "host API URL")
 	cmd.PersistentFlags().StringVar(&opts.dataDir, rootFlagDataDir, opts.dataDir, "directory for persistent data")
+	cmd.PersistentFlags().StringVar(&opts.namespaceID, rootFlagNamespaceID, opts.namespaceID, "cluster namespace ID for resource commands")
+	cmd.PersistentFlags().StringVar(&opts.namespaceKey, rootFlagNamespaceKey, opts.namespaceKey, "cluster namespace key for resource commands")
 	cmd.AddCommand(
 		newStartCommand(opts),
 		newSystemCommand(opts),
@@ -121,6 +131,11 @@ func resolveClientConfig(cmd *cobra.Command, opts *rootOptions) (rootClientConfi
 		return rootClientConfig{}, err
 	}
 
+	clientConfig, err := config.LoadClientConfig(dataDir)
+	if err != nil {
+		return rootClientConfig{}, err
+	}
+
 	apiURL := defaultAPIURL(cmd)
 	source := rootOptionSourceDefault
 
@@ -132,11 +147,6 @@ func resolveClientConfig(cmd *cobra.Command, opts *rootOptions) (rootClientConfi
 		apiURL = os.Getenv("BASTION_API_URL")
 		source = rootOptionSourceEnvironment
 	default:
-		clientConfig, err := config.LoadClientConfig(dataDir)
-		if err != nil {
-			return rootClientConfig{}, err
-		}
-
 		if clientConfig.APIURL != "" {
 			if err := validateClientAPIURL(clientConfig.APIURL); err != nil {
 				return rootClientConfig{}, fmt.Errorf("client config api-url: %w", err)
@@ -147,7 +157,14 @@ func resolveClientConfig(cmd *cobra.Command, opts *rootOptions) (rootClientConfi
 		}
 	}
 
+	namespaceID, namespaceIDSource, namespaceKey, namespaceKeySource, err := resolveNamespaceConfig(cmd, opts, clientConfig)
+	if err != nil {
+		return rootClientConfig{}, err
+	}
+
 	opts.apiURL = apiURL
+	opts.namespaceID = namespaceID
+	opts.namespaceKey = namespaceKey
 
 	return rootClientConfig{
 		DataDir: dataDir,
@@ -155,7 +172,63 @@ func resolveClientConfig(cmd *cobra.Command, opts *rootOptions) (rootClientConfi
 			Value:  apiURL,
 			Source: source,
 		},
+		NamespaceID: rootOptionValue{
+			Value:  namespaceID,
+			Source: namespaceIDSource,
+		},
+		NamespaceKey: rootOptionValue{
+			Value:  namespaceKey,
+			Source: namespaceKeySource,
+		},
 	}, nil
+}
+
+func resolveNamespaceConfig(cmd *cobra.Command, opts *rootOptions, clientConfig config.ClientConfig) (string, string, string, string, error) {
+	flagIDChanged := rootPersistentFlagChanged(cmd, rootFlagNamespaceID)
+	flagKeyChanged := rootPersistentFlagChanged(cmd, rootFlagNamespaceKey)
+	envID := os.Getenv("BASTION_NAMESPACE_ID")
+	envKey := os.Getenv("BASTION_NAMESPACE_KEY")
+
+	var id, key, source string
+
+	switch {
+	case flagIDChanged || flagKeyChanged:
+		if flagIDChanged {
+			id = opts.namespaceID
+		}
+
+		if flagKeyChanged {
+			key = opts.namespaceKey
+		}
+
+		source = rootOptionSourceFlag
+	case envID != "" || envKey != "":
+		id = envID
+		key = envKey
+		source = rootOptionSourceEnvironment
+	case clientConfig.NamespaceID != "" || clientConfig.NamespaceKey != "":
+		id = clientConfig.NamespaceID
+		key = clientConfig.NamespaceKey
+		source = rootOptionSourceConfig
+	default:
+		return "", rootOptionSourceDefault, "", rootOptionSourceDefault, nil
+	}
+
+	if id != "" && key != "" {
+		return "", "", "", "", fmt.Errorf("specify only one of %s or %s", rootFlagNamespaceID, rootFlagNamespaceKey)
+	}
+
+	idSource := rootOptionSourceDefault
+	if id != "" {
+		idSource = source
+	}
+
+	keySource := rootOptionSourceDefault
+	if key != "" {
+		keySource = source
+	}
+
+	return id, idSource, key, keySource, nil
 }
 
 func defaultAPIURL(cmd *cobra.Command) string {

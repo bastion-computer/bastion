@@ -48,6 +48,56 @@ func TestClientSetAPIURLPersistsOverride(t *testing.T) {
 	}
 }
 
+func TestClientSetNamespacePersistsOverrideAndClearsOtherNamespace(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		existing testClientConfig
+		flag     string
+		value    string
+		wantID   string
+		wantKey  string
+	}{
+		{
+			name:     "id clears key",
+			existing: testClientConfig{NamespaceKey: cliTestClusterNamespaceKey},
+			flag:     rootFlagNamespaceID,
+			value:    cliTestClusterNamespaceID,
+			wantID:   cliTestClusterNamespaceID,
+		},
+		{
+			name:     "key clears id",
+			existing: testClientConfig{NamespaceID: cliTestClusterNamespaceID},
+			flag:     rootFlagNamespaceKey,
+			value:    cliTestClusterNamespaceKey,
+			wantKey:  cliTestClusterNamespaceKey,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("BASTION_API_URL", "")
+			t.Setenv("BASTION_DATA_DIR", "")
+			t.Setenv("BASTION_NAMESPACE_ID", "")
+			t.Setenv("BASTION_NAMESPACE_KEY", "")
+
+			dataDir := t.TempDir()
+			writeClientConfigFile(t, dataDir, tc.existing)
+
+			cmd := NewRootCommand()
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{clientUse, cliTestDataDirFlag, dataDir, setUse, tc.flag, tc.value})
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+
+			got := readClientConfigFile(t, dataDir)
+			if got.NamespaceID != tc.wantID || got.NamespaceKey != tc.wantKey {
+				t.Fatalf("namespace config = id %q key %q, want id %q key %q", got.NamespaceID, got.NamespaceKey, tc.wantID, tc.wantKey)
+			}
+		})
+	}
+}
+
 func TestClientRemoveAPIURLClearsOverride(t *testing.T) {
 	t.Setenv("BASTION_API_URL", "")
 	t.Setenv("BASTION_DATA_DIR", "")
@@ -80,6 +130,43 @@ func TestClientRemoveAPIURLClearsOverride(t *testing.T) {
 
 	if got.APIURL != "" {
 		t.Fatalf("apiUrl = %q, want empty", got.APIURL)
+	}
+}
+
+func TestClientRemoveNamespaceClearsOverride(t *testing.T) {
+	t.Setenv("BASTION_API_URL", "")
+	t.Setenv("BASTION_DATA_DIR", "")
+	t.Setenv("BASTION_NAMESPACE_ID", "")
+	t.Setenv("BASTION_NAMESPACE_KEY", "")
+
+	dataDir := t.TempDir()
+	writeClientConfigFile(t, dataDir, testClientConfig{NamespaceID: cliTestClusterNamespaceID})
+
+	cmd := NewRootCommand()
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{clientUse, cliTestDataDirFlag, dataDir, removeUse, rootFlagNamespaceID})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	contents, err := os.ReadFile(clientConfigTestPath(dataDir))
+	if os.IsNotExist(err) {
+		return
+	}
+
+	if err != nil {
+		t.Fatalf("read client config: %v", err)
+	}
+
+	var got testClientConfig
+	if err := json.Unmarshal(contents, &got); err != nil {
+		t.Fatalf("decode client config: %v", err)
+	}
+
+	if got.NamespaceID != "" || got.NamespaceKey != "" {
+		t.Fatalf("namespace config = id %q key %q, want empty", got.NamespaceID, got.NamespaceKey)
 	}
 }
 
@@ -118,6 +205,82 @@ func TestClientConfigShowsPersistedAPIURL(t *testing.T) {
 
 	if got.APIURL.Value != cliTestRemoteAPIURL || got.APIURL.Source != "config" {
 		t.Fatalf("apiUrl = %#v, want config value %q", got.APIURL, cliTestRemoteAPIURL)
+	}
+}
+
+func TestClientConfigShowsNamespaceSourcePrecedence(t *testing.T) {
+	t.Setenv("BASTION_API_URL", "")
+	t.Setenv("BASTION_DATA_DIR", "")
+	t.Setenv("BASTION_NAMESPACE_ID", "ns_env")
+	t.Setenv("BASTION_NAMESPACE_KEY", "")
+
+	dataDir := t.TempDir()
+	writeClientConfigFile(t, dataDir, testClientConfig{NamespaceID: "ns_config"})
+
+	var stdout bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{clientUse, cliTestDataDirFlag, dataDir, rootOptionSourceConfig})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	var got struct {
+		NamespaceID struct {
+			Value  string `json:"value"`
+			Source string `json:"source"`
+		} `json:"namespaceId"`
+	}
+	if err := json.NewDecoder(&stdout).Decode(&got); err != nil {
+		t.Fatalf("decode stdout: %v", err)
+	}
+
+	if got.NamespaceID.Value != "ns_env" || got.NamespaceID.Source != rootOptionSourceEnvironment {
+		t.Fatalf("namespaceId = %#v, want environment ns_env", got.NamespaceID)
+	}
+
+	stdout.Reset()
+
+	cmd = NewRootCommand()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--" + rootFlagNamespaceKey, "team-flag", clientUse, cliTestDataDirFlag, dataDir, rootOptionSourceConfig})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute with flag: %v", err)
+	}
+
+	var flagGot struct {
+		NamespaceKey struct {
+			Value  string `json:"value"`
+			Source string `json:"source"`
+		} `json:"namespaceKey"`
+	}
+	if err := json.NewDecoder(&stdout).Decode(&flagGot); err != nil {
+		t.Fatalf("decode flag stdout: %v", err)
+	}
+
+	if flagGot.NamespaceKey.Value != "team-flag" || flagGot.NamespaceKey.Source != rootOptionSourceFlag {
+		t.Fatalf("namespaceKey = %#v, want flag team-flag", flagGot.NamespaceKey)
+	}
+}
+
+func TestRootCommandRejectsMultipleNamespaces(t *testing.T) {
+	t.Setenv("BASTION_API_URL", "")
+	t.Setenv("BASTION_DATA_DIR", "")
+	t.Setenv("BASTION_NAMESPACE_ID", "ns_env")
+	t.Setenv("BASTION_NAMESPACE_KEY", "team-env")
+
+	cmd := NewRootCommand()
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{clientUse, rootOptionSourceConfig})
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("execute error = nil, want namespace conflict")
 	}
 }
 
@@ -193,7 +356,9 @@ func TestRootCommandDataDirEnvironmentLocatesPersistedAPIURL(t *testing.T) {
 }
 
 type testClientConfig struct {
-	APIURL string `json:"apiUrl,omitempty"`
+	APIURL       string `json:"apiUrl,omitempty"`
+	NamespaceID  string `json:"namespaceId,omitempty"`
+	NamespaceKey string `json:"namespaceKey,omitempty"`
 }
 
 func clientConfigTestPath(dataDir string) string {

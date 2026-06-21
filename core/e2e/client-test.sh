@@ -55,6 +55,26 @@ assert_config_api_url() {
   fi
 }
 
+assert_config_namespace_id() {
+  local output=$1
+  local value=$2
+  local source=$3
+
+  if ! jq -e --arg value "$value" --arg source "$source" '.namespaceId.value == $value and .namespaceId.source == $source' <<<"$output" >/dev/null; then
+    fail "client config namespaceId is $(jq -c '.namespaceId' <<<"$output"), want value=$value source=$source"
+  fi
+}
+
+assert_config_namespace_key() {
+  local output=$1
+  local value=$2
+  local source=$3
+
+  if ! jq -e --arg value "$value" --arg source "$source" '.namespaceKey.value == $value and .namespaceKey.source == $source' <<<"$output" >/dev/null; then
+    fail "client config namespaceKey is $(jq -c '.namespaceKey' <<<"$output"), want value=$value source=$source"
+  fi
+}
+
 run_client_config_case() {
   local output
   local bad_api_url="http://127.0.0.1:1"
@@ -79,6 +99,30 @@ run_client_config_case() {
   output="$(run_configured_cli client config)"
   assert_config_api_url "$output" "http://localhost:3148" "default"
   log "removed persisted client API URL"
+
+  run_configured_cli client set namespace-id ns_client_e2e
+  output="$(run_configured_cli client config)"
+  assert_config_namespace_id "$output" "ns_client_e2e" "config"
+  assert_config_namespace_key "$output" "" "default"
+  log "persisted client namespace ID"
+
+  run_configured_cli client set namespace-key team-client-e2e
+  output="$(run_configured_cli client config)"
+  assert_config_namespace_id "$output" "" "default"
+  assert_config_namespace_key "$output" "team-client-e2e" "config"
+  log "persisted client namespace key"
+
+  env BASTION_NAMESPACE_ID=ns_env_e2e BASTION_NAMESPACE_KEY= "$BASTION" --data-dir "$DATA_DIR" client config | jq -e '.namespaceId.value == "ns_env_e2e" and .namespaceId.source == "environment"' >/dev/null
+  log "BASTION_NAMESPACE_ID overrides persisted namespace"
+
+  env BASTION_NAMESPACE_ID=ns_env_e2e BASTION_NAMESPACE_KEY= "$BASTION" --data-dir "$DATA_DIR" --namespace-key team-flag-e2e client config | jq -e '.namespaceKey.value == "team-flag-e2e" and .namespaceKey.source == "flag" and .namespaceId.value == ""' >/dev/null
+  log "explicit --namespace-key overrides namespace environment"
+
+  run_configured_cli client remove namespace-key
+  output="$(run_configured_cli client config)"
+  assert_config_namespace_id "$output" "" "default"
+  assert_config_namespace_key "$output" "" "default"
+  log "removed persisted client namespace"
 }
 
 main() {
