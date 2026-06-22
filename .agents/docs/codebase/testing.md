@@ -22,8 +22,6 @@ ALWAYS verify the code has been linted, format-checked, built, typechecked where
 
 Use `mise run format:write` to rewrite formatting locally. CI uses `mise run format:check`.
 
-If an environment limitation prevents running one of these commands, report the exact blocker and run the closest narrower check that is safe.
-
 ## End-to-End Verification
 
 Every task must identify and run the closest user-facing verification path before finishing. Prefer the narrowest E2E path that proves the changed behavior, then run broader checks when the change crosses package/runtime boundaries.
