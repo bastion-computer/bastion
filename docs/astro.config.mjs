@@ -105,6 +105,7 @@ export default defineConfig({
             { label: "System Setup", slug: "guides/system" },
             { label: "Templates", slug: "guides/templates" },
             { label: "Environments", slug: "guides/environments" },
+            { label: "Cluster", slug: "guides/cluster" },
             { label: "SSH", slug: "guides/ssh" },
           ],
         },
