@@ -188,7 +188,7 @@ bastion templates remove --key hello
 
 Read the [Templates guide](/guides/templates/) to define reusable environments,
 the [Environments guide](/guides/environments/) to manage VM lifecycle, and the
-[Custom Actions guide](/ecosystem/custom-actions/) to package shared setup
+[Custom Actions guide](/actions/custom-actions/) to package shared setup
 steps.
 
 For a full practical walkthrough, use the
