@@ -58,6 +58,8 @@ func (h Handler) RemoveSecretByKey(c *gin.Context) {
 }
 
 // CreateTemplate handles source template creation requests.
+//
+//nolint:dupl // Mirrors environment stream handling while keeping template-specific types explicit.
 func (h Handler) CreateTemplate(c *gin.Context) {
 	var req template.CreateRequest
 	if !handlers.BindJSON(c, &req) {

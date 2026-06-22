@@ -199,7 +199,7 @@ func runMux(cmd *cobra.Command, opts *rootOptions, tmux tmuxRunner) error {
 		return fmt.Errorf("resolve bastion executable: %w", err)
 	}
 
-	_, _, err = ensureMuxSession(cmd.Context(), tmux, executable, opts.apiURL)
+	_, _, err = ensureMuxSession(cmd.Context(), tmux, executable, opts.apiURL, opts.namespaceID, opts.namespaceKey)
 	if err != nil {
 		return err
 	}
@@ -217,17 +217,17 @@ func runMux(cmd *cobra.Command, opts *rootOptions, tmux tmuxRunner) error {
 	return err
 }
 
-func ensureMuxSession(ctx context.Context, tmux tmuxRunner, executable, apiURL string) (bool, muxTarget, error) {
+func ensureMuxSession(ctx context.Context, tmux tmuxRunner, executable, apiURL, namespaceID, namespaceKey string) (bool, muxTarget, error) {
 	if tmuxHasSession(ctx, tmux) {
-		return false, muxTarget{session: muxSessionName}, configureMuxSession(ctx, tmux, executable, apiURL)
+		return false, muxTarget{session: muxSessionName}, configureMuxSession(ctx, tmux, executable, apiURL, namespaceID, namespaceKey)
 	}
 
-	target, err := createMuxSession(ctx, tmux, executable, apiURL)
+	target, err := createMuxSession(ctx, tmux, executable, apiURL, namespaceID, namespaceKey)
 	if err != nil {
 		return false, muxTarget{}, err
 	}
 
-	if err := configureMuxSession(ctx, tmux, executable, apiURL); err != nil {
+	if err := configureMuxSession(ctx, tmux, executable, apiURL, namespaceID, namespaceKey); err != nil {
 		return false, muxTarget{}, err
 	}
 
@@ -240,8 +240,8 @@ func tmuxHasSession(ctx context.Context, tmux tmuxRunner) bool {
 	return err == nil
 }
 
-func createMuxSession(ctx context.Context, tmux tmuxRunner, executable, apiURL string) (muxTarget, error) {
-	output, err := tmux.run(ctx, "new-session", "-d", "-P", "-F", "#{window_id}\t#{pane_id}", "-s", muxSessionName, "-n", "select", muxPendingShellCommand(executable, apiURL))
+func createMuxSession(ctx context.Context, tmux tmuxRunner, executable, apiURL, namespaceID, namespaceKey string) (muxTarget, error) {
+	output, err := tmux.run(ctx, "new-session", "-d", "-P", "-F", "#{window_id}\t#{pane_id}", "-s", muxSessionName, "-n", "select", muxPendingShellCommand(executable, apiURL, namespaceID, namespaceKey))
 	if err != nil {
 		return muxTarget{}, err
 	}
@@ -254,10 +254,12 @@ func createMuxSession(ctx context.Context, tmux tmuxRunner, executable, apiURL s
 	return muxTarget{session: muxSessionName, window: fields[0], pane: fields[1]}, nil
 }
 
-func configureMuxSession(ctx context.Context, tmux tmuxRunner, executable, apiURL string) error {
+func configureMuxSession(ctx context.Context, tmux tmuxRunner, executable, apiURL, namespaceID, namespaceKey string) error {
 	commands := [][]string{
 		{"set-environment", "-t", muxSessionName, "BASTION_API_URL", apiURL},
-		{"set-option", "-q", "-t", muxSessionName, "@bastion_mux_pending_command", muxPendingShellCommand(executable, apiURL)},
+		{"set-environment", "-t", muxSessionName, "BASTION_NAMESPACE_ID", namespaceID},
+		{"set-environment", "-t", muxSessionName, "BASTION_NAMESPACE_KEY", namespaceKey},
+		{"set-option", "-q", "-t", muxSessionName, "@bastion_mux_pending_command", muxPendingShellCommand(executable, apiURL, namespaceID, namespaceKey)},
 	}
 
 	for _, args := range commands {
@@ -543,8 +545,33 @@ func muxSameEnvironmentCount(windowList, environmentID, targetWindow string) int
 	return count
 }
 
-func muxPendingShellCommand(executable, apiURL string) string {
-	return "BASTION_API_URL=" + shellQuote(apiURL) + " " + shellCommand(executable, "mux", "pending")
+func muxPendingShellCommand(executable, apiURL string, namespace ...string) string {
+	namespaceID, namespaceKey := namespaceValues(namespace)
+	prefix := "BASTION_API_URL=" + shellQuote(apiURL)
+
+	if namespaceID != "" {
+		prefix += " BASTION_NAMESPACE_ID=" + shellQuote(namespaceID)
+	}
+
+	if namespaceKey != "" {
+		prefix += " BASTION_NAMESPACE_KEY=" + shellQuote(namespaceKey)
+	}
+
+	return prefix + " " + shellCommand(executable, "mux", "pending")
+}
+
+func namespaceValues(namespace []string) (string, string) {
+	var namespaceID, namespaceKey string
+
+	if len(namespace) > 0 {
+		namespaceID = namespace[0]
+	}
+
+	if len(namespace) > 1 {
+		namespaceKey = namespace[1]
+	}
+
+	return namespaceID, namespaceKey
 }
 
 func muxConnectMenuTargetShellCommand(executable string, target muxTarget, environmentID, name string) string {

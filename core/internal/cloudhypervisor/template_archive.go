@@ -18,6 +18,7 @@ import (
 const (
 	templateArchiveFormat       = "bastion-template-v1"
 	templateArchiveManifestName = "manifest.json"
+	templateArchiveSSHKeyName   = "ssh_key"
 	templateArchiveManifestMax  = 1 << 20
 )
 
@@ -30,6 +31,8 @@ type templateArchiveManifest struct {
 }
 
 // ExportTemplate streams a compressed archive containing template metadata and prepared artifacts.
+//
+//nolint:gocyclo // Coordinates validation, compression, manifest writing, artifact files, and key portability cleanup.
 func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) error {
 	m = m.withDefaults()
 
@@ -48,6 +51,16 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 	prepared, err := loadPreparedTemplate(m.DataDir, req.Template.ID)
 	if err != nil {
 		return err
+	}
+
+	sshKeyPath := prepared.SSHKeyPath
+	if sshKeyPath == "" {
+		assetSet, err := loadAssets(m.DataDir)
+		if err != nil {
+			return err
+		}
+
+		sshKeyPath = assetSet.sshKey
 	}
 
 	zstdWriter, err := zstd.NewWriter(req.Writer, zstd.WithEncoderLevel(zstd.SpeedDefault))
@@ -80,6 +93,13 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 
 			return err
 		}
+	}
+
+	if err := writeTemplateArchiveFile(ctx, tarWriter, templateArchiveSSHKeyName, sshKeyPath); err != nil {
+		_ = tarWriter.Close()
+		_ = zstdWriter.Close()
+
+		return err
 	}
 
 	if err := tarWriter.Close(); err != nil {
@@ -160,16 +180,32 @@ type templateArchiveFile struct {
 	archiveName string
 	path        string
 	mode        os.FileMode
+	required    bool
 }
 
 func preparedTemplateArchiveFiles(templateDir string) []templateArchiveFile {
 	return []templateArchiveFile{
-		{archiveName: envRootfsFileName, path: filepath.Join(templateDir, envRootfsFileName), mode: 0o400},
-		{archiveName: envSeedFileName, path: filepath.Join(templateDir, envSeedFileName), mode: 0o600},
-		{archiveName: path.Join(snapshotDirName, snapshotConfigFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotConfigFileName), mode: 0o600},
-		{archiveName: path.Join(snapshotDirName, snapshotStateFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotStateFileName), mode: 0o600},
-		{archiveName: path.Join(snapshotDirName, snapshotMemoryFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotMemoryFileName), mode: 0o600},
+		{archiveName: envRootfsFileName, path: filepath.Join(templateDir, envRootfsFileName), mode: 0o400, required: true},
+		{archiveName: envSeedFileName, path: filepath.Join(templateDir, envSeedFileName), mode: 0o600, required: true},
+		{archiveName: path.Join(snapshotDirName, snapshotConfigFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotConfigFileName), mode: 0o600, required: true},
+		{archiveName: path.Join(snapshotDirName, snapshotStateFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotStateFileName), mode: 0o600, required: true},
+		{archiveName: path.Join(snapshotDirName, snapshotMemoryFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotMemoryFileName), mode: 0o600, required: true},
 	}
+}
+
+func templateArchiveFiles(templateDir string) []templateArchiveFile {
+	return append(preparedTemplateArchiveFiles(templateDir), templateArchiveFile{archiveName: templateArchiveSSHKeyName, path: filepath.Join(templateDir, templateArchiveSSHKeyName), mode: 0o600})
+}
+
+func preparedTemplateSSHKeyPath(templateDir string) string {
+	keyPath := filepath.Join(templateDir, templateArchiveSSHKeyName)
+
+	info, err := os.Stat(keyPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return ""
+	}
+
+	return keyPath
 }
 
 func writeTemplateArchiveJSON(ctx context.Context, writer *tar.Writer, name string, value any) error {
@@ -265,7 +301,7 @@ type templateArchiveReadState struct {
 
 func newTemplateArchiveReadState(templateDir string) templateArchiveReadState {
 	expectedFiles := make(map[string]templateArchiveFile)
-	for _, file := range preparedTemplateArchiveFiles(templateDir) {
+	for _, file := range templateArchiveFiles(templateDir) {
 		expectedFiles[file.archiveName] = file
 	}
 
@@ -338,7 +374,7 @@ func (s templateArchiveReadState) validate() (templateArchiveManifest, error) {
 	}
 
 	for name := range s.expectedFiles {
-		if !s.seen[name] {
+		if s.expectedFiles[name].required && !s.seen[name] {
 			return templateArchiveManifest{}, fmt.Errorf("%w: template archive missing %s", ErrInvalidTemplateArchive, name)
 		}
 	}

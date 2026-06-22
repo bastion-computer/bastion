@@ -2,13 +2,16 @@
 package cluster
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,9 +22,11 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/clusterdb"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services"
+	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 	"github.com/bastion-computer/bastion/core/internal/services/utilization"
+	"github.com/bastion-computer/bastion/core/pkg/sshtunnel"
 )
 
 const (
@@ -68,8 +73,13 @@ type NodeClient interface {
 	CreateSecret(context.Context, string, secret.CreateRequest) (secret.Metadata, error)
 	RemoveSecret(context.Context, string, string) error
 	CreateTemplate(context.Context, string, template.CreateRequest) (template.Metadata, error)
+	ImportTemplate(context.Context, string, template.ImportRequest) (template.Metadata, error)
 	ExportTemplate(context.Context, string, string, io.Writer) error
 	RemoveTemplate(context.Context, string, string) error
+	CreateEnvironment(context.Context, string, environment.CreateRequest) (environment.Environment, error)
+	GetEnvironment(context.Context, string, string) (environment.Environment, error)
+	RemoveEnvironment(context.Context, string, string) (environment.Environment, error)
+	OpenSSH(context.Context, string, string, sshtunnel.Request) (io.ReadWriteCloser, error)
 }
 
 // Option configures the cluster service.
@@ -489,9 +499,124 @@ func (c HTTPNodeClient) ExportTemplate(ctx context.Context, nodeURL, templateID 
 	return nil
 }
 
+// ImportTemplate imports a prepared derivative template archive into one underlying node.
+func (c HTTPNodeClient) ImportTemplate(ctx context.Context, nodeURL string, req template.ImportRequest) (template.Metadata, error) {
+	var out template.Metadata
+	if req.Archive == nil {
+		return out, errors.New("template archive reader is required")
+	}
+
+	target := strings.TrimRight(nodeURL, "/") + "/v1/templates/import"
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, target, req.Archive)
+	if err != nil {
+		return out, fmt.Errorf("create node request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", template.ArchiveContentType)
+
+	if req.ArchiveSize > 0 {
+		httpReq.ContentLength = req.ArchiveSize
+	}
+
+	res, err := c.httpClient().Do(httpReq)
+	if err != nil {
+		return out, fmt.Errorf("call node API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeNodeStatusError(res)
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return out, fmt.Errorf("decode node response: %w", err)
+	}
+
+	return out, nil
+}
+
 // RemoveTemplate removes a derivative template from one underlying node.
 func (c HTTPNodeClient) RemoveTemplate(ctx context.Context, nodeURL, templateID string) error {
 	return c.doJSON(ctx, http.MethodDelete, nodeURL, "/v1/templates/"+url.PathEscape(templateID), nil, nil)
+}
+
+// CreateEnvironment creates a derivative environment on one underlying node.
+func (c HTTPNodeClient) CreateEnvironment(ctx context.Context, nodeURL string, req environment.CreateRequest) (environment.Environment, error) {
+	return c.postEnvironmentStream(ctx, nodeURL, "/v1/environments", req, req.Logs)
+}
+
+// GetEnvironment returns a derivative environment from one underlying node.
+func (c HTTPNodeClient) GetEnvironment(ctx context.Context, nodeURL, environmentID string) (environment.Environment, error) {
+	var out environment.Environment
+	return out, c.doJSON(ctx, http.MethodGet, nodeURL, "/v1/environments/"+url.PathEscape(environmentID), nil, &out)
+}
+
+// RemoveEnvironment removes a derivative environment from one underlying node.
+func (c HTTPNodeClient) RemoveEnvironment(ctx context.Context, nodeURL, environmentID string) (environment.Environment, error) {
+	var out environment.Environment
+	return out, c.doJSON(ctx, http.MethodDelete, nodeURL, "/v1/environments/"+url.PathEscape(environmentID), nil, &out)
+}
+
+// OpenSSH opens an upgraded SSH stream to a derivative environment on one underlying node.
+func (c HTTPNodeClient) OpenSSH(ctx context.Context, nodeURL, environmentID string, tunnelReq sshtunnel.Request) (io.ReadWriteCloser, error) {
+	contents, err := json.Marshal(tunnelReq)
+	if err != nil {
+		return nil, fmt.Errorf("encode node request: %w", err)
+	}
+
+	target, err := url.Parse(strings.TrimRight(nodeURL, "/") + "/v1/environments/" + url.PathEscape(environmentID) + "/ssh")
+	if err != nil {
+		return nil, fmt.Errorf("parse node API URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(contents))
+	if err != nil {
+		return nil, fmt.Errorf("create node request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", sshtunnel.Protocol)
+
+	conn, err := dialNodeHTTP(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := req.Write(conn); err != nil {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("write node SSH upgrade request: %w", err)
+	}
+
+	reader := bufio.NewReader(conn)
+
+	res, err := http.ReadResponse(reader, req)
+	if err != nil {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("read node SSH upgrade response: %w", err)
+	}
+
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		defer func() { _ = res.Body.Close() }()
+		defer func() { _ = conn.Close() }()
+
+		if res.StatusCode >= http.StatusBadRequest {
+			return nil, decodeNodeStatusError(res)
+		}
+
+		return nil, fmt.Errorf("node API returned %s, want %d Switching Protocols", res.Status, http.StatusSwitchingProtocols)
+	}
+
+	if !strings.EqualFold(res.Header.Get("Upgrade"), sshtunnel.Protocol) {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("node API returned unexpected SSH upgrade protocol %q", res.Header.Get("Upgrade"))
+	}
+
+	return &nodeUpgradedConn{Conn: conn, reader: reader}, nil
 }
 
 func (c HTTPNodeClient) getJSON(ctx context.Context, nodeURL, path string, out any) error {
@@ -559,6 +684,7 @@ func (c HTTPNodeClient) doJSON(ctx context.Context, method, nodeURL, path string
 	return nil
 }
 
+//nolint:dupl // Template and environment streams carry distinct event/result types.
 func (c HTTPNodeClient) postStream(ctx context.Context, nodeURL, path string, in any, logs io.Writer) (template.Metadata, error) {
 	var out template.Metadata
 
@@ -599,6 +725,81 @@ func (c HTTPNodeClient) postStream(ctx context.Context, nodeURL, path string, in
 	}
 }
 
+//nolint:dupl // Mirrors template stream handling while preserving environment-specific result typing.
+func (c HTTPNodeClient) postEnvironmentStream(ctx context.Context, nodeURL, path string, in any, logs io.Writer) (environment.Environment, error) {
+	var out environment.Environment
+
+	contents, err := json.Marshal(in)
+	if err != nil {
+		return out, fmt.Errorf("encode node request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(nodeURL, "/")+path, bytes.NewReader(contents))
+	if err != nil {
+		return out, fmt.Errorf("create node request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call node API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeNodeStatusError(res)
+	}
+
+	decoder := json.NewDecoder(res.Body)
+	for {
+		created, done, err := readEnvironmentCreateStreamEvent(decoder, logs)
+		if err != nil {
+			return out, err
+		}
+
+		if done {
+			return created, nil
+		}
+	}
+}
+
+//nolint:dupl // Stream event shape intentionally matches template creation with different payload types.
+func readEnvironmentCreateStreamEvent(decoder *json.Decoder, logs io.Writer) (environment.Environment, bool, error) {
+	var event environment.CreateStreamEvent
+
+	if err := decoder.Decode(&event); err != nil {
+		if errors.Is(err, io.EOF) {
+			return environment.Environment{}, false, errors.New("node API stream ended before environment creation completed")
+		}
+
+		return environment.Environment{}, false, fmt.Errorf("decode node environment stream: %w", err)
+	}
+
+	switch event.Type {
+	case environment.StreamEventLog:
+		if logs != nil && event.Log != "" {
+			if _, err := logs.Write([]byte(event.Log)); err != nil {
+				return environment.Environment{}, false, fmt.Errorf("stream node environment logs: %w", err)
+			}
+		}
+
+		return environment.Environment{}, false, nil
+	case environment.StreamEventResult:
+		if event.Environment == nil {
+			return environment.Environment{}, false, errors.New("node API stream result missing environment")
+		}
+
+		return *event.Environment, true, nil
+	case environment.StreamEventError:
+		return environment.Environment{}, false, fmt.Errorf("node API environment creation failed: %s", event.Error)
+	default:
+		return environment.Environment{}, false, fmt.Errorf("node API environment stream returned unknown event type %q", event.Type)
+	}
+}
+
+//nolint:dupl // Stream event shape intentionally matches environment creation with different payload types.
 func readTemplateCreateStreamEvent(decoder *json.Decoder, logs io.Writer) (template.Metadata, bool, error) {
 	var event template.CreateStreamEvent
 
@@ -645,8 +846,74 @@ func decodeNodeStatusError(res *http.Response) error {
 		Error string `json:"error"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil || apiErr.Error == "" {
-		return fmt.Errorf("node API returned %s", res.Status)
+		return wrapNodeStatusError(res.StatusCode, fmt.Errorf("node API returned %s", res.Status))
 	}
 
-	return fmt.Errorf("node API returned %s: %s", res.Status, apiErr.Error)
+	return wrapNodeStatusError(res.StatusCode, fmt.Errorf("node API returned %s: %s", res.Status, apiErr.Error))
+}
+
+func wrapNodeStatusError(status int, err error) error {
+	switch status {
+	case http.StatusBadRequest:
+		return fmt.Errorf("%w: %w", failure.ErrInvalid, err)
+	case http.StatusNotFound:
+		return fmt.Errorf("%w: %w", failure.ErrNotFound, err)
+	case http.StatusConflict:
+		return fmt.Errorf("%w: %w", failure.ErrConflict, err)
+	case http.StatusFailedDependency:
+		return fmt.Errorf("%w: %w", failure.ErrFailedDependency, err)
+	default:
+		return err
+	}
+}
+
+func dialNodeHTTP(ctx context.Context, target *url.URL) (net.Conn, error) {
+	host := target.Hostname()
+	port := target.Port()
+
+	if port == "" {
+		switch target.Scheme {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		}
+	}
+
+	addr := net.JoinHostPort(host, port)
+	dialer := net.Dialer{}
+
+	switch target.Scheme {
+	case "http":
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			return nil, fmt.Errorf("dial node API: %w", err)
+		}
+
+		return conn, nil
+	case "https":
+		tlsDialer := tls.Dialer{NetDialer: &dialer, Config: &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}}
+
+		conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			return nil, fmt.Errorf("dial node API: %w", err)
+		}
+
+		return conn, nil
+	default:
+		return nil, fmt.Errorf("unsupported node API scheme %q", target.Scheme)
+	}
+}
+
+type nodeUpgradedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *nodeUpgradedConn) Read(p []byte) (int, error) {
+	if c.reader.Buffered() > 0 {
+		return c.reader.Read(p)
+	}
+
+	return c.Conn.Read(p)
 }

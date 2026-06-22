@@ -284,12 +284,26 @@ func (s *Service) RemoveTemplate(ctx context.Context, namespaceSelector Namespac
 		return template.Template{}, err
 	}
 
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return template.Template{}, fmt.Errorf("begin cluster template removal: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `DELETE FROM cluster_templates WHERE id = $1`, removed.ID); err != nil {
+		if clusterdb.IsForeignKeyViolation(err) {
+			return template.Template{}, fmt.Errorf("%w: template is in use", failure.ErrFailedDependency)
+		}
+
+		return template.Template{}, fmt.Errorf("remove cluster template: %w", err)
+	}
+
 	if err := s.archiveStore.Delete(ctx, archiveKey); err != nil {
 		return template.Template{}, fmt.Errorf("remove template archive: %w", err)
 	}
 
-	if _, err := s.db.Exec(ctx, `DELETE FROM cluster_templates WHERE id = $1`, removed.ID); err != nil {
-		return template.Template{}, fmt.Errorf("remove cluster template: %w", err)
+	if err := tx.Commit(ctx); err != nil {
+		return template.Template{}, fmt.Errorf("commit cluster template removal: %w", err)
 	}
 
 	return removed, nil

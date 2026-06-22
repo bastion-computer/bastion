@@ -1,11 +1,15 @@
+//nolint:wsl_v5 // Upgrade proxying keeps response/cleanup steps adjacent to preserve stream-handling readability.
 package environments
 
 import (
+	"bufio"
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -58,8 +62,144 @@ func serveTunnelProxy(c *gin.Context, vsockSocketPath string, targetPort int) {
 		proxyPath = "/"
 	}
 
+	if upgradeType(c.Request.Header) != "" {
+		serveTunnelUpgrade(c, vsockSocketPath, targetPort, proxyPath)
+
+		return
+	}
+
 	proxy := newTunnelProxy(c, vsockSocketPath, targetPort, proxyPath)
 	proxy.ServeHTTP(agentProxyResponseWriter{ResponseWriter: c.Writer}, c.Request)
+}
+
+func serveTunnelUpgrade(c *gin.Context, vsockSocketPath string, targetPort int, proxyPath string) {
+	backendConn, err := tunnel.DialGuestProxy(c.Request.Context(), vsockSocketPath)
+	if err != nil {
+		_ = c.Error(err)
+		http.Error(c.Writer, err.Error(), http.StatusBadGateway)
+
+		return
+	}
+
+	outReq := c.Request.Clone(c.Request.Context())
+	outReq.URL.Scheme = "http"
+	outReq.URL.Host = "bastion-guest-proxy"
+	outReq.URL.Path = proxyPath
+	outReq.URL.RawPath = ""
+	outReq.RequestURI = ""
+	outReq.Header = c.Request.Header.Clone()
+	outReq.Header.Del(tunnel.TargetPortHeader)
+	outReq.Header.Set(tunnel.TargetPortHeader, strconv.Itoa(targetPort))
+
+	if err := outReq.Write(backendConn); err != nil {
+		_ = backendConn.Close()
+		_ = c.Error(err)
+		http.Error(c.Writer, err.Error(), http.StatusBadGateway)
+
+		return
+	}
+
+	backendReader := bufio.NewReader(backendConn)
+	res, err := http.ReadResponse(backendReader, outReq)
+	if err != nil {
+		_ = backendConn.Close()
+		_ = c.Error(err)
+		http.Error(c.Writer, err.Error(), http.StatusBadGateway)
+
+		return
+	}
+
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		defer func() { _ = backendConn.Close() }()
+		defer func() { _ = res.Body.Close() }()
+		copyTunnelResponse(c.Writer, res)
+
+		return
+	}
+
+	clientConn, clientRW, err := http.NewResponseController(c.Writer).Hijack()
+	if err != nil {
+		_ = backendConn.Close()
+		_ = res.Body.Close()
+		_ = c.Error(err)
+
+		return
+	}
+
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = backendConn.Close() }()
+
+	res.Body = nil
+	if err := res.Write(clientRW); err != nil {
+		_ = c.Error(err)
+
+		return
+	}
+
+	if err := clientRW.Flush(); err != nil {
+		_ = c.Error(err)
+
+		return
+	}
+
+	proxyRawTunnel(clientConn, bufferedTunnelConn{Conn: backendConn, reader: backendReader})
+}
+
+func upgradeType(header http.Header) string {
+	if !headerHasToken(header, "Connection", "Upgrade") {
+		return ""
+	}
+
+	return header.Get("Upgrade")
+}
+
+func headerHasToken(header http.Header, key, token string) bool {
+	for _, value := range header.Values(key) {
+		for part := range strings.SplitSeq(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), token) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func copyTunnelResponse(w http.ResponseWriter, res *http.Response) {
+	for key, values := range res.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	w.WriteHeader(res.StatusCode)
+	_, _ = io.Copy(w, res.Body)
+}
+
+func proxyRawTunnel(client, backend io.ReadWriteCloser) {
+	done := make(chan struct{}, 2)
+	copyStream := func(dst io.WriteCloser, src io.Reader) {
+		_, _ = io.Copy(dst, src)
+		_ = dst.Close()
+		done <- struct{}{}
+	}
+
+	go copyStream(backend, client)
+	go copyStream(client, backend)
+	<-done
+}
+
+type bufferedTunnelConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c bufferedTunnelConn) Read(p []byte) (int, error) {
+	if c.reader.Buffered() > 0 {
+		return c.reader.Read(p)
+	}
+
+	return c.Conn.Read(p)
 }
 
 func newTunnelProxy(c *gin.Context, vsockSocketPath string, targetPort int, proxyPath string) *httputil.ReverseProxy {
@@ -92,8 +232,14 @@ type agentProxyResponseWriter struct {
 	http.ResponseWriter
 }
 
+func (w agentProxyResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 func (w agentProxyResponseWriter) Flush() {
-	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
-		flusher.Flush()
-	}
+	_ = http.NewResponseController(w.ResponseWriter).Flush()
+}
+
+func (w agentProxyResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return http.NewResponseController(w.ResponseWriter).Hijack()
 }

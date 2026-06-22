@@ -16,7 +16,10 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/clustermigrations"
 )
 
-const uniqueViolationCode = "23505"
+const (
+	uniqueViolationCode     = "23505"
+	foreignKeyViolationCode = "23503"
+)
 
 // Client wraps a Postgres connection pool.
 type Client struct {
@@ -70,6 +73,11 @@ func (c *Client) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, 
 // QueryRow executes a query expected to return one row.
 func (c *Client) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	return c.pool.QueryRow(ctx, sql, args...)
+}
+
+// Begin starts a transaction.
+func (c *Client) Begin(ctx context.Context) (pgx.Tx, error) {
+	return c.pool.Begin(ctx)
 }
 
 func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
@@ -165,8 +173,14 @@ func applyMigration(ctx context.Context, pool *pgxpool.Pool, name string) error 
 	return nil
 }
 
-// IsConstraint reports whether err is a Postgres constraint violation.
+// IsConstraint reports whether err is a Postgres unique constraint violation.
 func IsConstraint(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode
+}
+
+// IsForeignKeyViolation reports whether err is a Postgres foreign key constraint violation.
+func IsForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolationCode
 }

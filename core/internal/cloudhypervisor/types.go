@@ -99,6 +99,7 @@ type PreparedTemplate struct {
 	RootfsPath  string `json:"rootfsPath,omitempty"`
 	SeedPath    string `json:"seedPath,omitempty"`
 	SnapshotDir string `json:"snapshotDir,omitempty"`
+	SSHKeyPath  string `json:"sshKeyPath,omitempty"`
 	CreatedAt   string `json:"createdAt,omitempty"`
 	UpdatedAt   string `json:"updatedAt,omitempty"`
 }

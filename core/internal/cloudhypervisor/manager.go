@@ -30,6 +30,8 @@ const (
 	proxySocketMode      = 0o660
 	runtimeDir           = "/run/bastion/vms"
 	sshWait              = 180 * time.Second
+	sshAuthRetryInterval = time.Second
+	guestReadyCommand    = "if command -v cloud-init >/dev/null 2>&1; then timeout 120s cloud-init status --wait >/dev/null 2>&1 || true; fi"
 	apiWait              = 15 * time.Second
 	vmmStartErrorTimeout = 5 * time.Second
 	snapshotNetworkDelay = 1500 * time.Millisecond
@@ -141,6 +143,15 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
+	if err := m.waitForGuestSSH(ctx, vm, sshWait); err != nil {
+		vm.State = StateError
+		vm.LastError = err.Error()
+		_ = writeVMState(vm)
+		m.cleanupVM(context.Background(), vm, true)
+
+		return VM{}, err
+	}
+
 	if err := m.startEnvironmentServices(ctx, vm, req); err != nil {
 		failed, failErr := failVM(vm, err)
 		m.cleanupVM(context.Background(), failed, false)
@@ -176,6 +187,49 @@ func (m Manager) startEnvironmentServices(ctx context.Context, vm VM, req Launch
 	}
 
 	return m.runStartActions(ctx, vm, req.Template.Config, req.Logs)
+}
+
+func (m Manager) waitForGuestSSH(ctx context.Context, vm VM, timeout time.Duration) error {
+	return m.waitForGuestSSHWithInterval(ctx, vm, timeout, sshAuthRetryInterval)
+}
+
+func (m Manager) waitForGuestSSHWithInterval(ctx context.Context, vm VM, timeout, interval time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	port := vm.SSHPort
+	if port == 0 {
+		port = SSHPort
+	}
+
+	address := net.JoinHostPort(vm.GuestIP, strconv.Itoa(port))
+
+	var lastErr error
+
+	for {
+		if err := m.runGuestCommand(ctx, vm, "true", nil); err != nil {
+			lastErr = err
+		} else if err := m.runGuestCommand(ctx, vm, guestReadyCommand, nil); err != nil {
+			lastErr = err
+		} else {
+			return nil
+		}
+
+		if !time.Now().Before(deadline) {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("timed out waiting for SSH authentication on %s: %w", address, lastErr)
+	}
+
+	return fmt.Errorf("timed out waiting for SSH authentication on %s", address)
 }
 
 // PrepareTemplate boots a template VM, runs init actions, snapshots it, and stores reusable artifacts.
@@ -246,6 +300,17 @@ func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest
 	}
 
 	if err := waitForTCP(ctx, vm.GuestIP, vm.SSHPort, sshWait); err != nil {
+		vm.State = StateError
+		vm.LastError = err.Error()
+		_ = writeVMState(vm)
+		m.cleanupVM(context.Background(), vm, false)
+
+		_ = os.RemoveAll(workspace.dir)
+
+		return PreparedTemplate{}, err
+	}
+
+	if err := m.waitForGuestSSH(ctx, vm, sshWait); err != nil {
 		vm.State = StateError
 		vm.LastError = err.Error()
 		_ = writeVMState(vm)
@@ -351,6 +416,7 @@ type workspace struct {
 	snapshotPath  string
 	kernelPath    string
 	initramfsPath string
+	sshKeyPath    string
 	assets        assets
 }
 
@@ -391,7 +457,7 @@ func (m Manager) prepareTemplateWorkspace(ctx context.Context, templateID string
 		return workspace{}, err
 	}
 
-	return workspace{dir: dir, rootfsPath: rootfsPath, seedPath: seedPath, snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, assets: assetSet}, nil
+	return workspace{dir: dir, rootfsPath: rootfsPath, seedPath: seedPath, snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, sshKeyPath: assetSet.sshKey, assets: assetSet}, nil
 }
 
 func (m Manager) prepareRestoreWorkspace(ctx context.Context, environmentID string, template Template) (workspace, error) {
@@ -434,7 +500,12 @@ func (m Manager) prepareRestoreWorkspace(ctx context.Context, environmentID stri
 		return workspace{}, err
 	}
 
-	return workspace{dir: dir, rootfsPath: rootfsPath, seedPath: prepared.SeedPath, snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, assets: assetSet}, nil
+	sshKeyPath := prepared.SSHKeyPath
+	if sshKeyPath == "" {
+		sshKeyPath = assetSet.sshKey
+	}
+
+	return workspace{dir: dir, rootfsPath: rootfsPath, seedPath: prepared.SeedPath, snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, sshKeyPath: sshKeyPath, assets: assetSet}, nil
 }
 
 func loadPreparedTemplate(dataDir, templateID string) (PreparedTemplate, error) {
@@ -449,6 +520,7 @@ func loadPreparedTemplate(dataDir, templateID string) (PreparedTemplate, error) 
 		RootfsPath:  filepath.Join(dir, envRootfsFileName),
 		SeedPath:    filepath.Join(dir, envSeedFileName),
 		SnapshotDir: filepath.Join(dir, snapshotDirName),
+		SSHKeyPath:  preparedTemplateSSHKeyPath(dir),
 	}
 
 	checks := []string{
@@ -737,7 +809,7 @@ func (m Manager) startMachine(
 		NetworkIndex:    plan.networkIndex,
 		SSHUser:         SSHUser,
 		SSHPort:         SSHPort,
-		SSHKeyPath:      workspace.assets.sshKey,
+		SSHKeyPath:      workspace.sshKeyPath,
 		CreatedAt:       createdAt,
 		UpdatedAt:       createdAt,
 	}
@@ -855,7 +927,7 @@ func (m Manager) startRestoredMachineWithMode(
 		NetworkIndex:    plan.networkIndex,
 		SSHUser:         SSHUser,
 		SSHPort:         SSHPort,
-		SSHKeyPath:      workspace.assets.sshKey,
+		SSHKeyPath:      workspace.sshKeyPath,
 		CreatedAt:       createdAt,
 		UpdatedAt:       createdAt,
 	}
@@ -1225,7 +1297,7 @@ func (m Manager) snapshotTemplate(ctx context.Context, templateID string, vm VM,
 
 	createdAt := now()
 
-	return PreparedTemplate{TemplateID: templateID, TemplateDir: workspace.dir, RootfsPath: workspace.rootfsPath, SeedPath: workspace.seedPath, SnapshotDir: workspace.snapshotPath, CreatedAt: createdAt, UpdatedAt: createdAt}, nil
+	return PreparedTemplate{TemplateID: templateID, TemplateDir: workspace.dir, RootfsPath: workspace.rootfsPath, SeedPath: workspace.seedPath, SnapshotDir: workspace.snapshotPath, SSHKeyPath: workspace.sshKeyPath, CreatedAt: createdAt, UpdatedAt: createdAt}, nil
 }
 
 func fileURL(path string) string {
@@ -1291,7 +1363,12 @@ func cloudHypervisorCall(ctx context.Context, socketPath, method, path string, i
 }
 
 func (m Manager) prepareCloudInit(ctx context.Context, environmentID string, workspace workspace, plan networkPlan) error {
-	publicKey, err := os.ReadFile(workspace.assets.sshKey + ".pub")
+	sshKeyPath := workspace.sshKeyPath
+	if sshKeyPath == "" {
+		sshKeyPath = workspace.assets.sshKey
+	}
+
+	publicKey, err := os.ReadFile(sshKeyPath + ".pub") //nolint:gosec // SSH key path is resolved from Bastion assets or an imported prepared template.
 	if err != nil {
 		return fmt.Errorf("read SSH public key: %w", err)
 	}
