@@ -143,10 +143,11 @@ func TestImportTemplateUploadsArchive(t *testing.T) {
 	}
 }
 
-func TestNamespaceQueryParamsApplyToSecretAndTemplateRequests(t *testing.T) {
+//nolint:gocyclo // Verifies namespace propagation across all resource request shapes in one table fixture.
+func TestNamespaceQueryParamsApplyToResourceRequests(t *testing.T) {
 	t.Parallel()
 
-	paths := make([]string, 0, 4)
+	paths := make([]string, 0, 9)
 	secretKey := "client-secret"
 	templateKey := "dev"
 	client := &Client{
@@ -169,6 +170,21 @@ func TestNamespaceQueryParamsApplyToSecretAndTemplateRequests(t *testing.T) {
 				return &http.Response{StatusCode: http.StatusOK, Status: clientTestOKStatus, Body: io.NopCloser(bytes.NewBufferString("template-archive"))}, nil
 			case "/v1/templates/import":
 				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"tpl_imported","key":"dev","createdAt":"now"}`), nil
+			case "/v1/environments":
+				if req.Method == http.MethodPost {
+					var body bytes.Buffer
+					if err := json.NewEncoder(&body).Encode(environment.CreateStreamEvent{Type: environment.StreamEventResult, Environment: &environment.Environment{ID: "env_created", Status: "running", TemplateID: "tpl_created", Tags: []string{}, CreatedAt: "now", UpdatedAt: "now"}}); err != nil {
+						t.Fatalf("encode environment stream: %v", err)
+					}
+
+					return &http.Response{StatusCode: http.StatusOK, Status: clientTestOKStatus, Body: io.NopCloser(&body)}, nil
+				}
+
+				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[]}`), nil
+			case "/v1/environments/env_created", "/v1/environments/by-key/dev-env":
+				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"env_created","status":"running","templateId":"tpl_created","tags":[],"createdAt":"now","updatedAt":"now"}`), nil
+			case "/v1/environments/env_created/tunnels":
+				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"entries":[]}`), nil
 			default:
 				t.Fatalf("unexpected path %s", req.URL.Path)
 
@@ -194,11 +210,36 @@ func TestNamespaceQueryParamsApplyToSecretAndTemplateRequests(t *testing.T) {
 		t.Fatalf("import template: %v", err)
 	}
 
+	if _, err := client.CreateEnvironment(context.Background(), environment.CreateRequest{TemplateKey: templateKey}); err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+
+	if _, err := client.ListEnvironments(context.Background(), 10, "next", []string{"prod"}); err != nil {
+		t.Fatalf("list environments: %v", err)
+	}
+
+	if _, err := client.GetEnvironment(context.Background(), "env_created"); err != nil {
+		t.Fatalf("get environment: %v", err)
+	}
+
+	if _, err := client.GetEnvironmentByKey(context.Background(), "dev-env"); err != nil {
+		t.Fatalf("get environment by key: %v", err)
+	}
+
+	if _, err := client.GetEnvironmentTunnels(context.Background(), "env_created", ""); err != nil {
+		t.Fatalf("get environment tunnels: %v", err)
+	}
+
 	want := []string{
 		"POST http://bastion.test/v1/secrets?namespace-id=ns_123",
 		"POST http://bastion.test/v1/templates?namespace-id=ns_123",
 		"GET http://bastion.test/v1/templates/by-key/dev/export?namespace-id=ns_123",
 		"POST http://bastion.test/v1/templates/import?key=dev&namespace-id=ns_123",
+		"POST http://bastion.test/v1/environments?namespace-id=ns_123",
+		"GET http://bastion.test/v1/environments?cursor=next&limit=10&namespace-id=ns_123&tag=prod",
+		"GET http://bastion.test/v1/environments/env_created?namespace-id=ns_123",
+		"GET http://bastion.test/v1/environments/by-key/dev-env?namespace-id=ns_123",
+		"GET http://bastion.test/v1/environments/env_created/tunnels?namespace-id=ns_123",
 	}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("paths = %#v, want %#v", paths, want)

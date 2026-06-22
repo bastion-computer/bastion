@@ -31,6 +31,8 @@ NAMESPACE_IDS=()
 HOST_TEMPLATE_IDS=()
 HOST_ENV_IDS=()
 VM_NODE_URL=""
+LAST_VM_NODE_URL=""
+SECOND_VM_NODE_URL=""
 
 log() {
   printf '[cluster-test] %s\n' "$*"
@@ -287,7 +289,12 @@ assert_cluster_utilization_shape() {
 }
 
 vm_node_template_config() {
-  jq -nc '{
+  local vcpu=${1:-2}
+  local memory=${2:-3}
+  local volume=${3:-60}
+
+  jq -nc --argjson vcpu "$vcpu" --argjson memory "$memory" --argjson volume "$volume" '{
+    resources: {vcpu: $vcpu, memory: $memory, volume: $volume},
     agents: {opencode: {}},
     tunnels: {nodeapi: 4148},
     actions: {
@@ -375,18 +382,22 @@ INNER
 }
 
 start_vm_node() {
-  local template_key="$RUN_ID-vm-node-template"
+  local label=${1:-a}
+  local vcpu=${2:-2}
+  local memory=${3:-3}
+  local volume=${4:-60}
+  local template_key="$RUN_ID-vm-node-template-$label"
   local template_output template_id env_output env_id
 
-  log "creating VM-backed cluster node template"
-  template_output="$(run_host_cli templates create --key "$template_key" --config "$(vm_node_template_config)")"
+  log "creating VM-backed cluster node template $label"
+  template_output="$(run_host_cli templates create --key "$template_key" --config "$(vm_node_template_config "$vcpu" "$memory" "$volume")")"
   template_id="$(jq -r '.id' <<<"$template_output")"
   if [ -z "$template_id" ] || [ "$template_id" = "null" ]; then
     fail "VM node template did not return an id"
   fi
   HOST_TEMPLATE_IDS+=("$template_id")
 
-  log "creating VM-backed cluster node environment"
+  log "creating VM-backed cluster node environment $label"
   env_output="$(run_host_cli env create --template-key "$template_key")"
   env_id="$(jq -r '.id' <<<"$env_output")"
   if [ -z "$env_id" ] || [ "$env_id" = "null" ]; then
@@ -397,13 +408,16 @@ start_vm_node() {
   copy_repo_to_vm_node "$env_id"
   start_inner_bastion_node "$env_id"
 
-  VM_NODE_URL="${HOST_API_URL%/}/v1/environments/$env_id/tunnels/nodeapi"
+  LAST_VM_NODE_URL="${HOST_API_URL%/}/v1/environments/$env_id/tunnels/nodeapi"
+  if [ -z "$VM_NODE_URL" ]; then
+    VM_NODE_URL="$LAST_VM_NODE_URL"
+  fi
 
   local i=0
-  until curl -fsS "$VM_NODE_URL/v1/health" >/dev/null 2>&1; do
+  until curl -fsS "$LAST_VM_NODE_URL/v1/health" >/dev/null 2>&1; do
     i=$((i + 1))
     if [ "$i" -gt 120 ]; then
-      fail "VM-backed cluster node did not become reachable at $VM_NODE_URL"
+      fail "VM-backed cluster node did not become reachable at $LAST_VM_NODE_URL"
     fi
     sleep 1
   done
@@ -618,6 +632,240 @@ run_resource_case() {
   run_cli cluster namespaces remove --id "$ns_b" >/dev/null
 }
 
+cluster_environment_template_config() {
+  local secret_key=$1
+
+  jq -nc --arg secret_key "$secret_key" --arg run_id "$RUN_ID" '{
+    agents: {opencode: {}},
+    resources: {vcpu: 1, memory: 1, volume: 8},
+    tunnels: {cluster: 3000},
+    actions: {
+      init: [
+        {run: ("set -eu\nmkdir -p /opt/bastion-cluster-env /opt/bastion-cluster-secret\nprintf \"run_id=\" > /opt/bastion-cluster-env/run-id\nprintf \"" + $run_id + "\\n\" >> /opt/bastion-cluster-env/run-id\nprintf \"${{ secret." + $secret_key + " }}\" > /opt/bastion-cluster-secret/value")},
+        {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\nif ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then apt-get update; apt-get install -y --no-install-recommends python3 curl ca-certificates; fi"}
+      ],
+      start: [
+        {run: "set -eu\ncd /opt/bastion-cluster-env\nprintf cluster-env-ok > index.html\nnohup python3 -m http.server 3000 --bind 127.0.0.1 > server.log 2>&1 &\nprintf \"%s\\n\" \"$!\" > server.pid\nfor i in $(seq 1 60); do if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:3000/ >/tmp/bastion-cluster-env-health 2>/dev/null; then exit 0; fi; sleep 1; done\ncat server.log >&2 || true\nexit 1"}
+      ]
+    }
+  }'
+}
+
+node_page_count() {
+  local node_url=$1
+  local path=$2
+
+  curl -fsS "$node_url$path?limit=100" | jq -r '.entries | length'
+}
+
+assert_node_counts() {
+  local label=$1
+  local node_url=$2
+  local want_templates=$3
+  local want_secrets=$4
+  local want_environments=$5
+  local templates secrets environments
+
+  templates="$(node_page_count "$node_url" /v1/templates)"
+  secrets="$(node_page_count "$node_url" /v1/secrets)"
+  environments="$(node_page_count "$node_url" /v1/environments)"
+
+  if [ "$templates" != "$want_templates" ] || [ "$secrets" != "$want_secrets" ] || [ "$environments" != "$want_environments" ]; then
+    fail "$label node counts templates=$templates secrets=$secrets environments=$environments, want $want_templates/$want_secrets/$want_environments"
+  fi
+}
+
+node_environment_id_by_tag() {
+  local node_url=$1
+  local tag=$2
+
+  curl -fsS "$node_url/v1/environments?limit=100" | jq -r --arg tag "$tag" '.entries[] | select(.tags | index($tag)) | .id' | head -n 1
+}
+
+assert_cluster_opencode_cli_url() {
+  local env_id=$1
+  local namespace_id=$2
+  local expected_url=$3
+  local fake_bin="$WORK_DIR/opencode-bin"
+  local proxy_file="$WORK_DIR/opencode-url"
+
+  rm -rf "$fake_bin"
+  mkdir -p "$fake_bin"
+  cat >"$fake_bin/opencode" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$#" -ne 2 ] || [ "$1" != "attach" ]; then
+  exit 64
+fi
+printf '%s\n' "$2" >"${BASTION_E2E_OPENCODE_PROXY_FILE:?}"
+SH
+  chmod +x "$fake_bin/opencode"
+
+  if ! (export PATH="$fake_bin:$PATH" BASTION_E2E_OPENCODE_PROXY_FILE="$proxy_file"; run_cli --namespace-id "$namespace_id" opencode --id "$env_id"); then
+    fail "cluster opencode CLI failed"
+  fi
+
+  if [ "$(<"$proxy_file")" != "$expected_url" ]; then
+    fail "cluster opencode proxy URL was $(<"$proxy_file"), want $expected_url"
+  fi
+}
+
+run_environment_case() {
+  local ns_a ns_b secret_key secret_value secret_id template_key template_output template_id
+  local env1_key env1_tag env2_tag env3_tag env1 env2 env3 got listed output proxy_logs proxy_url derivative_env1
+  local node_b_output node_b_id
+
+  log "creating environment orchestration namespaces"
+  ns_a="$(jq -r '.id' <<<"$(run_cli cluster namespaces create --key "$RUN_ID-env-a")")"
+  ns_b="$(jq -r '.id' <<<"$(run_cli cluster namespaces create --key "$RUN_ID-env-b")")"
+  NAMESPACE_IDS+=("$ns_a" "$ns_b")
+
+  secret_key="$RUN_ID-env-secret"
+  secret_value="cluster-env-secret-$RUN_ID"
+  template_key="$RUN_ID-env-template"
+  env1_key="$RUN_ID-env-one"
+  env1_tag="$RUN_ID-env-one"
+  env2_tag="$RUN_ID-env-two"
+  env3_tag="$RUN_ID-env-three"
+
+  log "creating source secret and template for environments"
+  secret_id="$(jq -r '.id' <<<"$(run_cli --namespace-id "$ns_a" secrets create --key "$secret_key" --value "$secret_value")")"
+  template_output="$(run_cli --namespace-id "$ns_a" templates create --key "$template_key" --config "$(cluster_environment_template_config "$secret_key")")"
+  template_id="$(jq -r '.id' <<<"$template_output")"
+
+  if [[ "$template_id" != tpl_* ]]; then
+    fail "environment source template id is $template_id, want tpl_ prefix"
+  fi
+
+  assert_node_derivatives_removed
+
+  log "creating first environment on first node"
+  output="$(run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --key "$env1_key" --tag "$env1_tag")"
+  env1="$(jq -r '.id' <<<"$output")"
+  if ! jq -e --arg template_id "$template_id" --arg key "$env1_key" '(.id | startswith("env_")) and .key == $key and .templateId == $template_id and .status == "running"' <<<"$output" >/dev/null; then
+    fail "first cluster environment response is $(jq -c . <<<"$output"), want source env"
+  fi
+  assert_node_counts "after first environment" "$VM_NODE_URL" 1 1 1
+
+  run_cli --namespace-id "$ns_a" ssh --id "$env1" -- grep -q "$RUN_ID" /opt/bastion-cluster-env/run-id
+  output="$(run_cli --namespace-id "$ns_a" ssh --id "$env1" -- cat /opt/bastion-cluster-secret/value)"
+  if [ "$output" != "$secret_value" ]; then
+    fail "cluster environment secret value was $output, want $secret_value"
+  fi
+
+  log "creating second environment reusing first node derivative template"
+  output="$(run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --tag "$env2_tag")"
+  env2="$(jq -r '.id' <<<"$output")"
+  if ! jq -e --arg template_id "$template_id" '.templateId == $template_id and .status == "running"' <<<"$output" >/dev/null; then
+    fail "second cluster environment response is $(jq -c . <<<"$output"), want source template id"
+  fi
+  assert_node_counts "after second environment" "$VM_NODE_URL" 1 1 2
+
+  log "starting and registering second VM-backed cluster node"
+  start_vm_node b 1 2 50
+  SECOND_VM_NODE_URL="$LAST_VM_NODE_URL"
+  node_b_output="$(run_cli cluster nodes create --key "$RUN_ID-vm-node-b" --url "$SECOND_VM_NODE_URL")"
+  node_b_id="$(jq -r '.id' <<<"$node_b_output")"
+  NODE_IDS+=("$node_b_id")
+  assert_node "second VM-backed node" "$node_b_output" "$RUN_ID-vm-node-b" "$SECOND_VM_NODE_URL"
+
+  log "creating third environment on second node due first node capacity"
+  output="$(run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --tag "$env3_tag")"
+  env3="$(jq -r '.id' <<<"$output")"
+  if ! jq -e --arg template_id "$template_id" '.templateId == $template_id and .status == "running"' <<<"$output" >/dev/null; then
+    fail "third cluster environment response is $(jq -c . <<<"$output"), want source template id"
+  fi
+  assert_node_counts "first node after third environment" "$VM_NODE_URL" 1 1 2
+  assert_node_counts "second node after third environment" "$SECOND_VM_NODE_URL" 1 1 1
+
+  log "verifying out-of-capacity error"
+  assert_command_fails run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --tag "$RUN_ID-env-four"
+
+  got="$(run_cli --namespace-key "$RUN_ID-env-a" env get --id "$env1")"
+  if ! jq -e --arg id "$env1" --arg template_id "$template_id" --arg key "$env1_key" '.id == $id and .key == $key and .templateId == $template_id' <<<"$got" >/dev/null; then
+    fail "cluster env get returned $(jq -c . <<<"$got"), want source environment"
+  fi
+
+  listed="$(run_cli --namespace-id "$ns_a" env list --tag "$env1_tag" --limit 100)"
+  if ! jq -e --arg id "$env1" '.entries | length == 1 and .[0].id == $id' <<<"$listed" >/dev/null; then
+    fail "cluster env tag list returned $(jq -c . <<<"$listed"), want $env1"
+  fi
+
+  assert_command_fails run_cli --namespace-id "$ns_b" env get --id "$env1"
+  assert_command_fails run_cli env get --id "$env1"
+  assert_command_fails run_cli --namespace-id "$ns_b" env tunnels --id "$env1"
+  assert_command_fails run_cli env tunnels --id "$env1"
+  assert_command_fails run_cli ssh --id "$env1" -- true
+
+  output="$(run_cli --namespace-id "$ns_a" env tunnels --id "$env1")"
+  if ! jq -e --arg url "${CLUSTER_URL%/}/v1/environments/$env1/tunnels/cluster?namespace-id=$ns_a" '.entries | length == 1 and .[0].name == "cluster" and .[0].url == $url' <<<"$output" >/dev/null; then
+    fail "cluster env tunnels response is $(jq -c . <<<"$output"), want source tunnel URL"
+  fi
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "${CLUSTER_URL%/}/v1/environments/$env1/tunnels/cluster?namespace-id=$ns_a")"
+  if [ "$output" != "cluster-env-ok" ]; then
+    fail "cluster tunnel returned $output, want cluster-env-ok"
+  fi
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "${CLUSTER_URL%/}/v1/environments/$env1/agents/opencode/global/health?namespace-id=$ns_a")"
+  if ! jq -e '.healthy == true' <<<"$output" >/dev/null; then
+    fail "cluster opencode health response is $(jq -c . <<<"$output"), want healthy true"
+  fi
+  assert_cluster_opencode_cli_url "$env1" "$ns_a" "${CLUSTER_URL%/}/v1/environments/$env1/agents/opencode?namespace-id=$ns_a"
+
+  proxy_logs="$WORK_DIR/cluster-proxy.log"
+  : >"$proxy_logs"
+  run_cli --namespace-id "$ns_a" proxy --env-id "$env1" --name cluster >/dev/null 2>"$proxy_logs" &
+  local proxy_pid=$!
+  local i=0
+  while [ "$i" -lt 80 ]; do
+    if grep -q 'proxy listening on ' "$proxy_logs"; then
+      break
+    fi
+    i=$((i + 1))
+    sleep 0.1
+  done
+  proxy_url="$(sed -n 's/^proxy listening on //p' "$proxy_logs" | head -n 1)"
+  if [ -z "$proxy_url" ]; then
+    kill "$proxy_pid" >/dev/null 2>&1 || true
+    wait "$proxy_pid" >/dev/null 2>&1 || true
+    fail "cluster proxy did not start: $(<"$proxy_logs")"
+  fi
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$proxy_url")"
+  kill "$proxy_pid" >/dev/null 2>&1 || true
+  wait "$proxy_pid" >/dev/null 2>&1 || true
+  if [ "$output" != "cluster-env-ok" ]; then
+    fail "cluster local proxy returned $output, want cluster-env-ok"
+  fi
+
+  log "verifying out-of-band derivative reconciliation"
+  derivative_env1="$(node_environment_id_by_tag "$VM_NODE_URL" "$env1_tag")"
+  if [ -z "$derivative_env1" ]; then
+    fail "could not find derivative environment for $env1"
+  fi
+  curl -fsS -X DELETE "$VM_NODE_URL/v1/environments/$derivative_env1" >/dev/null
+  got="$(run_cli --namespace-id "$ns_a" env get --id "$env1")"
+  if ! jq -e '.status == "stopped"' <<<"$got" >/dev/null; then
+    fail "reconciled source environment is $(jq -c . <<<"$got"), want stopped"
+  fi
+
+  log "verifying active environment prevents source template removal"
+  assert_command_fails run_cli --namespace-id "$ns_a" templates remove --id "$template_id"
+  assert_minio_object_exists "$ns_a" "$template_id"
+
+  log "removing environments and verifying derivative cleanup"
+  run_cli --namespace-id "$ns_a" env remove --id "$env1" >/dev/null
+  run_cli --namespace-id "$ns_a" env remove --id "$env2" >/dev/null
+  run_cli --namespace-id "$ns_a" env remove --id "$env3" >/dev/null
+  assert_node_counts "first node after environment removals" "$VM_NODE_URL" 0 0 0
+  assert_node_counts "second node after environment removals" "$SECOND_VM_NODE_URL" 0 0 0
+
+  run_cli --namespace-id "$ns_a" templates remove --id "$template_id" >/dev/null
+  run_cli --namespace-id "$ns_a" secrets remove --id "$secret_id" >/dev/null
+  run_cli cluster namespaces remove --id "$ns_a" >/dev/null
+  run_cli cluster namespaces remove --id "$ns_b" >/dev/null
+}
+
 main() {
   precheck
   trap cleanup EXIT
@@ -628,6 +876,7 @@ main() {
   run_namespace_case
   run_vm_node_case
   run_resource_case
+  run_environment_case
   log "cluster e2e run passed"
 }
 

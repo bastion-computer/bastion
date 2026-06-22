@@ -601,6 +601,47 @@ func TestTunnelProxyRouteForwardsRegisteredTunnel(t *testing.T) {
 	}
 }
 
+func TestTunnelProxyRouteForwardsUpgradedSSH(t *testing.T) {
+	t.Parallel()
+
+	socketPath := newGuestProxyUpgradeSocket(t, func(r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/environments/env_inner/ssh" {
+			t.Fatalf("proxied upgrade request = %s %s, want POST /v1/environments/env_inner/ssh", r.Method, r.URL.Path)
+		}
+
+		if r.Header.Get("X-Bastion-Tunnel-Port") != "4148" {
+			t.Fatalf("tunnel port header = %q, want 4148", r.Header.Get("X-Bastion-Tunnel-Port"))
+		}
+
+		if r.Header.Get("Upgrade") != sshtunnel.Protocol {
+			t.Fatalf("upgrade header = %q, want %q", r.Header.Get("Upgrade"), sshtunnel.Protocol)
+		}
+	})
+
+	orchestrator := &agentProxyOrchestrator{vms: make(map[string]ch.VM), vsockSocketPath: socketPath}
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(orchestrator))
+	template := createTemplateWithConfig(t, router, "tunnel-upgrade-template", json.RawMessage(`{"agents":{"opencode":{}},"tunnels":{"nodeapi":4148},"actions":{"init":[]}}`))
+	env := createEnvironment(t, router, requireStringPtr(t, template.Key))
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	stream, err := hostclient.New(server.URL+"/v1/environments/"+env.ID+"/tunnels/nodeapi").OpenSSH(context.Background(), "env_inner", sshtunnel.Request{Command: []string{"true"}})
+	if err != nil {
+		t.Fatalf("open nested SSH stream: %v", err)
+	}
+	defer func() { _ = stream.Close() }()
+
+	frameType, _, err := sshtunnel.ReadFrame(stream)
+	if err != nil {
+		t.Fatalf("read nested SSH frame: %v", err)
+	}
+
+	if frameType != sshtunnel.FrameExit {
+		t.Fatalf("frame type = %d, want exit", frameType)
+	}
+}
+
 func newTestRouter(t *testing.T, logger *slog.Logger, opts ...api.RouterOption) http.Handler {
 	t.Helper()
 
@@ -674,6 +715,83 @@ func newGuestProxySocket(t *testing.T, assertRequest func(*http.Request), header
 	}()
 
 	return socketPath
+}
+
+func newGuestProxyUpgradeSocket(t *testing.T, assertRequest func(*http.Request)) string {
+	t.Helper()
+
+	socketPath := filepath.Join(t.TempDir(), "guest-proxy-upgrade.sock")
+
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen on guest proxy socket: %v", err)
+	}
+
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+
+			go handleGuestProxyUpgradeSocket(t, conn, assertRequest)
+		}
+	}()
+
+	return socketPath
+}
+
+func handleGuestProxyUpgradeSocket(t *testing.T, conn net.Conn, assertRequest func(*http.Request)) {
+	t.Helper()
+
+	defer func() { _ = conn.Close() }()
+
+	reader := bufio.NewReader(conn)
+
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		t.Errorf("read vsock connect line: %v", err)
+		return
+	}
+
+	wantConnect := fmt.Sprintf("CONNECT %d\n", ch.GuestProxyVsockPort)
+	if line != wantConnect {
+		t.Errorf("vsock connect line = %q, want %q", line, wantConnect)
+		return
+	}
+
+	if _, err := conn.Write([]byte("OK 1073741824\n")); err != nil {
+		t.Errorf("write vsock connect ack: %v", err)
+		return
+	}
+
+	req, err := http.ReadRequest(reader)
+	if err != nil {
+		t.Errorf("read proxied HTTP request: %v", err)
+		return
+	}
+	defer func() { _ = req.Body.Close() }()
+
+	assertRequest(req)
+	_, _ = io.Copy(io.Discard, req.Body)
+
+	response := "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: " + sshtunnel.Protocol + "\r\n\r\n"
+	if _, err := conn.Write([]byte(response)); err != nil {
+		t.Errorf("write upgrade response: %v", err)
+		return
+	}
+
+	payload, err := json.Marshal(sshtunnel.ExitStatus{})
+	if err != nil {
+		t.Errorf("marshal exit status: %v", err)
+		return
+	}
+
+	if err := sshtunnel.WriteFrame(conn, sshtunnel.FrameExit, payload); err != nil {
+		t.Errorf("write exit frame: %v", err)
+	}
 }
 
 func handleGuestProxySocket(t *testing.T, conn net.Conn, assertRequest func(*http.Request), headers map[string]string, body string) {

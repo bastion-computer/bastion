@@ -115,7 +115,7 @@ func TestProxyHandlerForwardsRequestsToTunnelURL(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	proxy := httptest.NewServer(newProxyHandler(mustParseProxyTarget(t, environmentTunnelURL(upstream.URL+"/api/", cliTestEnvironmentID, "", cliTestTunnelName)), &logs))
+	proxy := httptest.NewServer(newProxyHandler(mustParseProxyTarget(t, environmentTunnelURL(upstream.URL+"/api/", cliTestEnvironmentID, "", cliTestTunnelName, "ns_123", "")), &logs))
 	t.Cleanup(proxy.Close)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, proxy.URL+"/assets/app.js?mode=dev", strings.NewReader(proxyTestRequestBody))
@@ -171,7 +171,7 @@ func newProxyForwardingUpstream(t *testing.T, gotRequest chan<- proxyUpstreamReq
 func assertProxyUpstreamRequest(t *testing.T, got proxyUpstreamRequest, wantHost string) {
 	t.Helper()
 
-	wantURI := "/api/v1/environments/" + cliTestEnvironmentID + "/tunnels/" + cliTestTunnelName + "/assets/app.js?mode=dev"
+	wantURI := "/api/v1/environments/" + cliTestEnvironmentID + "/tunnels/" + cliTestTunnelName + "/assets/app.js?namespace-id=ns_123&mode=dev"
 	if got.method != http.MethodPost || got.requestURI != wantURI {
 		t.Fatalf("upstream request = %s %s, want POST %s", got.method, got.requestURI, wantURI)
 	}

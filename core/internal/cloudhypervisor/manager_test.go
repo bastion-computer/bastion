@@ -84,6 +84,45 @@ func TestCloudInitNetworkConfigUsesDHCP(t *testing.T) {
 	}
 }
 
+func TestWaitForGuestSSHRetriesUntilAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	trueAttempts := 0
+	readyAttempts := 0
+	manager := Manager{stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
+		if name != "ssh" {
+			t.Fatalf("command name = %q, want ssh", name)
+		}
+
+		command := args[len(args)-1]
+		switch {
+		case command == "sh -c 'true'":
+			trueAttempts++
+			if trueAttempts < 3 {
+				return errors.New("ssh failed: exit status 255: root@10.241.0.2: permission denied (publickey)")
+			}
+
+			return nil
+		case strings.Contains(command, "cloud-init status --wait"):
+			readyAttempts++
+
+			return nil
+		default:
+			t.Fatalf("ssh command = %q, want true or guest readiness probe", command)
+
+			return nil
+		}
+	}}
+
+	if err := manager.waitForGuestSSHWithInterval(context.Background(), testActionVM(), time.Second, time.Millisecond); err != nil {
+		t.Fatalf("wait for guest ssh: %v", err)
+	}
+
+	if trueAttempts != 3 || readyAttempts != 1 {
+		t.Fatalf("attempts = true:%d ready:%d, want true:3 ready:1", trueAttempts, readyAttempts)
+	}
+}
+
 func TestPrepareTemplateWorkspaceUsesResourceVolumeSize(t *testing.T) {
 	t.Parallel()
 
@@ -121,6 +160,7 @@ func TestManagerExportsAndImportsPreparedTemplateArchive(t *testing.T) {
 	sourceKey := "source-template"
 	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
 
+	writeTestCloudHypervisorAssets(t, dataDir)
 	writeTestPreparedTemplate(t, dataDir, sourceID)
 
 	manager := Manager{DataDir: dataDir}
@@ -149,6 +189,42 @@ func TestManagerExportsAndImportsPreparedTemplateArchive(t *testing.T) {
 
 	assertPreparedTemplateFiles(t, dataDir, restoredID)
 	assertPathMode(t, filepath.Join(templateDir(dataDir, restoredID), envRootfsFileName), 0o400)
+	assertPathMode(t, filepath.Join(templateDir(dataDir, restoredID), templateArchiveSSHKeyName), 0o600)
+
+	prepared, err := loadPreparedTemplate(dataDir, restoredID)
+	if err != nil {
+		t.Fatalf("load imported prepared template: %v", err)
+	}
+
+	if prepared.SSHKeyPath == "" {
+		t.Fatal("imported prepared template SSHKeyPath is empty")
+	}
+}
+
+func TestPrepareRestoreWorkspaceUsesImportedTemplateSSHKey(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	templateID := "tpl_imported_key"
+
+	writeTestCloudHypervisorAssets(t, dataDir)
+	writeTestPreparedTemplate(t, dataDir, templateID)
+
+	importedKeyPath := filepath.Join(templateDir(dataDir, templateID), templateArchiveSSHKeyName)
+	if err := os.WriteFile(importedKeyPath, []byte("imported-key"), 0o600); err != nil {
+		t.Fatalf("write imported key: %v", err)
+	}
+
+	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error { return nil }}
+
+	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_imported_key", Template{ID: templateID})
+	if err != nil {
+		t.Fatalf("prepare restore workspace: %v", err)
+	}
+
+	if workspace.sshKeyPath != importedKeyPath {
+		t.Fatalf("restore workspace ssh key = %q, want imported key %q", workspace.sshKeyPath, importedKeyPath)
+	}
 }
 
 func TestManagerImportTemplateRejectsGzipArchive(t *testing.T) {

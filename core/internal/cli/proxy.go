@@ -22,6 +22,8 @@ type proxyRunner func(context.Context, io.Writer, proxyOptions) error
 
 type proxyOptions struct {
 	apiURL         string
+	namespaceID    string
+	namespaceKey   string
 	environmentID  string
 	environmentKey string
 	name           string
@@ -57,6 +59,8 @@ func newProxyCommandWithRunner(opts *rootOptions, runner proxyRunner) *cobra.Com
 			}
 
 			proxyOpts.apiURL = opts.apiURL
+			proxyOpts.namespaceID = opts.namespaceID
+			proxyOpts.namespaceKey = opts.namespaceKey
 
 			return runner(cmd.Context(), cmd.ErrOrStderr(), proxyOpts)
 		},
@@ -82,7 +86,7 @@ func runProxy(ctx context.Context, stderr io.Writer, opts proxyOptions) error {
 		return err
 	}
 
-	target, err := parseProxyTarget(environmentTunnelURL(opts.apiURL, opts.environmentID, opts.environmentKey, opts.name))
+	target, err := parseProxyTarget(environmentTunnelURL(opts.apiURL, opts.environmentID, opts.environmentKey, opts.name, opts.namespaceID, opts.namespaceKey))
 	if err != nil {
 		return fmt.Errorf("parse tunnel URL: %w", err)
 	}
@@ -130,7 +134,7 @@ func runProxy(ctx context.Context, stderr io.Writer, opts proxyOptions) error {
 }
 
 func validateProxyTunnel(ctx context.Context, opts proxyOptions) error {
-	tunnels, err := apiClient(&rootOptions{apiURL: opts.apiURL}).GetEnvironmentTunnels(ctx, opts.environmentID, opts.environmentKey)
+	tunnels, err := apiClient(&rootOptions{apiURL: opts.apiURL, namespaceID: opts.namespaceID, namespaceKey: opts.namespaceKey}).GetEnvironmentTunnels(ctx, opts.environmentID, opts.environmentKey)
 	if err != nil {
 		return err
 	}
@@ -204,7 +208,19 @@ func rewriteProxyRequest(req *http.Request, target *url.URL) {
 	req.URL.Host = target.Host
 	req.URL.Path = joinProxyPath(target.Path, req.URL.Path)
 	req.URL.RawPath = joinProxyPath(proxyTargetEscapedPath(target), req.URL.EscapedPath())
+	req.URL.RawQuery = joinProxyQuery(target.RawQuery, req.URL.RawQuery)
 	req.Host = target.Host
+}
+
+func joinProxyQuery(base, request string) string {
+	switch {
+	case base == "":
+		return request
+	case request == "":
+		return base
+	default:
+		return base + "&" + request
+	}
 }
 
 func proxyTargetEscapedPath(target *url.URL) string {

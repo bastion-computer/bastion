@@ -317,7 +317,7 @@ func (c *Client) ImportTemplate(ctx context.Context, importReq template.ImportRe
 
 // CreateEnvironment creates an environment from a template.
 func (c *Client) CreateEnvironment(ctx context.Context, createReq environment.CreateRequest) (environment.Environment, error) {
-	return postHostStream(ctx, c.http, c.baseURL+"/v1/environments", createReq, createReq.Logs, decodeCreateEnvironmentStream)
+	return postHostStream(ctx, c.http, c.baseURL+c.withNamespace("/v1/environments"), createReq, createReq.Logs, decodeCreateEnvironmentStream)
 }
 
 func decodeCreateEnvironmentStream(decoder *json.Decoder, logs io.Writer) (environment.Environment, error) {
@@ -466,7 +466,7 @@ func (c *Client) OpenSSH(ctx context.Context, id string, tunnelReq sshtunnel.Req
 		return nil, fmt.Errorf("encode request: %w", err)
 	}
 
-	target, err := url.Parse(c.baseURL + "/v1/environments/" + url.PathEscape(id) + "/ssh")
+	target, err := url.Parse(c.baseURL + c.withNamespace("/v1/environments/"+url.PathEscape(id)+"/ssh"))
 	if err != nil {
 		return nil, fmt.Errorf("parse host API URL: %w", err)
 	}
@@ -567,7 +567,7 @@ func (c *Client) withNamespace(path string) string {
 		return path
 	}
 
-	if !strings.HasPrefix(path, "/v1/secrets") && !strings.HasPrefix(path, "/v1/templates") {
+	if !strings.HasPrefix(path, "/v1/secrets") && !strings.HasPrefix(path, "/v1/templates") && !strings.HasPrefix(path, "/v1/environments") {
 		return path
 	}
 

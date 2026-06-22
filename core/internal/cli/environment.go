@@ -115,20 +115,47 @@ func newEnvironmentTunnelsCommand(opts *rootOptions) *cobra.Command {
 		}
 
 		for i := range tunnels.Entries {
-			tunnels.Entries[i].URL = environmentTunnelURL(opts.apiURL, id, key, tunnels.Entries[i].Name)
+			tunnels.Entries[i].URL = environmentTunnelURL(opts.apiURL, id, key, tunnels.Entries[i].Name, opts.namespaceID, opts.namespaceKey)
 		}
 
 		return tunnels, nil
 	})
 }
 
-func environmentTunnelURL(apiURL, id, key, name string) string {
+func environmentTunnelURL(apiURL, id, key, name, namespaceID, namespaceKey string) string {
 	baseURL := strings.TrimRight(apiURL, "/")
+
+	var value string
+
 	if key != "" {
-		return baseURL + "/v1/environments/by-key/" + url.PathEscape(key) + "/tunnels/" + url.PathEscape(name)
+		value = baseURL + "/v1/environments/by-key/" + url.PathEscape(key) + "/tunnels/" + url.PathEscape(name)
+	} else {
+		value = baseURL + "/v1/environments/" + url.PathEscape(id) + "/tunnels/" + url.PathEscape(name)
 	}
 
-	return baseURL + "/v1/environments/" + url.PathEscape(id) + "/tunnels/" + url.PathEscape(name)
+	return urlWithNamespace(value, namespaceID, namespaceKey)
+}
+
+func urlWithNamespace(value, namespaceID, namespaceKey string) string {
+	if namespaceID == "" && namespaceKey == "" {
+		return value
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return value
+	}
+
+	query := parsed.Query()
+	if namespaceID != "" {
+		query.Set("namespace-id", namespaceID)
+	} else if namespaceKey != "" {
+		query.Set("namespace-key", namespaceKey)
+	}
+
+	parsed.RawQuery = query.Encode()
+
+	return parsed.String()
 }
 
 func newEnvironmentRemoveCommand(opts *rootOptions) *cobra.Command {
