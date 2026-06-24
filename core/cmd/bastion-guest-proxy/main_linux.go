@@ -99,7 +99,8 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func proxyUpgrade(w http.ResponseWriter, r *http.Request, port int) {
-	targetConn, err := (&net.Dialer{}).DialContext(r.Context(), "tcp", net.JoinHostPort("localhost", strconv.Itoa(port)))
+	targetHost := net.JoinHostPort("localhost", strconv.Itoa(port))
+	targetConn, err := (&net.Dialer{}).DialContext(r.Context(), "tcp", targetHost)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 
@@ -107,7 +108,8 @@ func proxyUpgrade(w http.ResponseWriter, r *http.Request, port int) {
 	}
 
 	outReq := r.Clone(r.Context())
-	outReq.URL = &url.URL{Scheme: "http", Host: net.JoinHostPort("localhost", strconv.Itoa(port)), Path: r.URL.Path, RawQuery: r.URL.RawQuery}
+	outReq.URL = &url.URL{Scheme: "http", Host: targetHost, Path: r.URL.Path, RawQuery: r.URL.RawQuery}
+	outReq.Host = targetHost
 	outReq.RequestURI = ""
 	outReq.Header = r.Header.Clone()
 	outReq.Header.Del(tunnel.TargetPortHeader)

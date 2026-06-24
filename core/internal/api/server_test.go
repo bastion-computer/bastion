@@ -11,12 +11,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bastion-computer/bastion/core/internal/api"
 	hostclient "github.com/bastion-computer/bastion/core/internal/client"
@@ -36,6 +38,9 @@ const (
 	apiTestGPUTag  = "gpu"
 	apiTestCPUTag  = "cpu"
 	apiTestGiB     = int64(1 << 30)
+
+	testWebSocketKey    = "dGhlIHNhbXBsZSBub25jZQ=="
+	testWebSocketAccept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 )
 
 func TestListRoutes(t *testing.T) {
@@ -642,6 +647,48 @@ func TestTunnelProxyRouteForwardsUpgradedSSH(t *testing.T) {
 	}
 }
 
+func TestTunnelProxyRouteForwardsWebSocketUpgrades(t *testing.T) {
+	t.Parallel()
+
+	socketPath := newGuestProxyWebSocketSocket(t, func(r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/hmr" || r.URL.RawQuery != "token=abc" {
+			t.Fatalf("proxied websocket request = %s %s?%s, want GET /hmr?token=abc", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+
+		if r.Header.Get("X-Bastion-Tunnel-Port") != "3000" {
+			t.Fatalf("tunnel port header = %q, want 3000", r.Header.Get("X-Bastion-Tunnel-Port"))
+		}
+
+		if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+			t.Fatalf("upgrade header = %q, want websocket", r.Header.Get("Upgrade"))
+		}
+	})
+
+	orchestrator := &agentProxyOrchestrator{vms: make(map[string]ch.VM), vsockSocketPath: socketPath}
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithEnvironmentOrchestrator(orchestrator))
+	template := createTemplateWithConfig(t, router, "tunnel-websocket-template", json.RawMessage(`{"agents":{"opencode":{}},"tunnels":{"frontend":3000},"actions":{"init":[]}}`))
+	env := createEnvironment(t, router, requireStringPtr(t, template.Key))
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	conn, reader := openWebSocketUpgrade(t, server.URL, "/v1/environments/"+env.ID+"/tunnels/frontend/hmr?token=abc", nil)
+	defer func() { _ = conn.Close() }()
+
+	if _, err := conn.Write([]byte("ping\n")); err != nil {
+		t.Fatalf("write websocket payload: %v", err)
+	}
+
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read websocket payload: %v", err)
+	}
+
+	if line != "guest:ping\n" {
+		t.Fatalf("websocket payload = %q, want guest echo", line)
+	}
+}
+
 func newTestRouter(t *testing.T, logger *slog.Logger, opts ...api.RouterOption) http.Handler {
 	t.Helper()
 
@@ -720,7 +767,23 @@ func newGuestProxySocket(t *testing.T, assertRequest func(*http.Request), header
 func newGuestProxyUpgradeSocket(t *testing.T, assertRequest func(*http.Request)) string {
 	t.Helper()
 
-	socketPath := filepath.Join(t.TempDir(), "guest-proxy-upgrade.sock")
+	return newGuestProxyRawSocket(t, "guest-proxy-upgrade.sock", func(conn net.Conn) {
+		handleGuestProxyUpgradeSocket(t, conn, assertRequest)
+	})
+}
+
+func newGuestProxyWebSocketSocket(t *testing.T, assertRequest func(*http.Request)) string {
+	t.Helper()
+
+	return newGuestProxyRawSocket(t, "guest-proxy-websocket.sock", func(conn net.Conn) {
+		handleGuestProxyWebSocketSocket(t, conn, assertRequest)
+	})
+}
+
+func newGuestProxyRawSocket(t *testing.T, name string, handle func(net.Conn)) string {
+	t.Helper()
+
+	socketPath := filepath.Join(t.TempDir(), name)
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socketPath)
 	if err != nil {
@@ -736,11 +799,69 @@ func newGuestProxyUpgradeSocket(t *testing.T, assertRequest func(*http.Request))
 				return
 			}
 
-			go handleGuestProxyUpgradeSocket(t, conn, assertRequest)
+			go handle(conn)
 		}
 	}()
 
 	return socketPath
+}
+
+func handleGuestProxyWebSocketSocket(t *testing.T, conn net.Conn, assertRequest func(*http.Request)) {
+	t.Helper()
+
+	defer func() { _ = conn.Close() }()
+
+	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Errorf("set guest proxy websocket deadline: %v", err)
+		return
+	}
+
+	reader := bufio.NewReader(conn)
+
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		t.Errorf("read vsock connect line: %v", err)
+		return
+	}
+
+	wantConnect := fmt.Sprintf("CONNECT %d\n", ch.GuestProxyVsockPort)
+	if line != wantConnect {
+		t.Errorf("vsock connect line = %q, want %q", line, wantConnect)
+		return
+	}
+
+	if _, err := conn.Write([]byte("OK 1073741824\n")); err != nil {
+		t.Errorf("write vsock connect ack: %v", err)
+		return
+	}
+
+	req, err := http.ReadRequest(reader)
+	if err != nil {
+		t.Errorf("read proxied HTTP request: %v", err)
+		return
+	}
+	defer func() { _ = req.Body.Close() }()
+
+	assertRequest(req)
+	_, _ = io.Copy(io.Discard, req.Body)
+
+	key := req.Header.Get("Sec-WebSocket-Key")
+
+	response := "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: " + websocketAccept(key) + "\r\n\r\n"
+	if _, err := conn.Write([]byte(response)); err != nil {
+		t.Errorf("write websocket response: %v", err)
+		return
+	}
+
+	payload, err := reader.ReadString('\n')
+	if err != nil {
+		t.Errorf("read websocket payload: %v", err)
+		return
+	}
+
+	if _, err := conn.Write([]byte("guest:" + payload)); err != nil {
+		t.Errorf("write websocket payload: %v", err)
+	}
 }
 
 func handleGuestProxyUpgradeSocket(t *testing.T, conn net.Conn, assertRequest func(*http.Request)) {
@@ -875,6 +996,79 @@ func documentedTemplateConfig(t *testing.T, path string) json.RawMessage {
 	}
 
 	return json.RawMessage(config)
+}
+
+//nolint:wsl_v5 // Raw socket handshake tests keep cleanup next to each failing operation.
+func openWebSocketUpgrade(t *testing.T, serverURL, requestURI string, headers http.Header) (net.Conn, *bufio.Reader) {
+	t.Helper()
+
+	parsed, err := url.Parse(serverURL)
+	if err != nil {
+		t.Fatalf("parse websocket server URL: %v", err)
+	}
+
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", parsed.Host)
+	if err != nil {
+		t.Fatalf("dial websocket server: %v", err)
+	}
+
+	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		_ = conn.Close()
+		t.Fatalf("set websocket deadline: %v", err)
+	}
+
+	key := testWebSocketKey
+	if _, err := fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n", requestURI, parsed.Host, key); err != nil {
+		_ = conn.Close()
+		t.Fatalf("write websocket request: %v", err)
+	}
+
+	for name, values := range headers {
+		for _, value := range values {
+			if _, err := fmt.Fprintf(conn, "%s: %s\r\n", name, value); err != nil {
+				_ = conn.Close()
+				t.Fatalf("write websocket request header: %v", err)
+			}
+		}
+	}
+
+	if _, err := fmt.Fprint(conn, "\r\n"); err != nil {
+		_ = conn.Close()
+		t.Fatalf("finish websocket request: %v", err)
+	}
+
+	reader := bufio.NewReader(conn)
+	//nolint:bodyclose // The caller owns the upgraded raw connection.
+	res, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		_ = conn.Close()
+		t.Fatalf("read websocket response: %v", err)
+	}
+
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		_ = conn.Close()
+		t.Fatalf("websocket status = %d, want %d", res.StatusCode, http.StatusSwitchingProtocols)
+	}
+
+	if got := res.Header.Get("Upgrade"); !strings.EqualFold(got, "websocket") {
+		_ = conn.Close()
+		t.Fatalf("websocket Upgrade = %q, want websocket", got)
+	}
+
+	if got := res.Header.Get("Sec-WebSocket-Accept"); got != websocketAccept(key) {
+		_ = conn.Close()
+		t.Fatalf("websocket accept = %q, want valid accept", got)
+	}
+
+	return conn, reader
+}
+
+func websocketAccept(key string) string {
+	if key != testWebSocketKey {
+		return ""
+	}
+
+	return testWebSocketAccept
 }
 
 func createEnvironment(t *testing.T, handler http.Handler, templateKey string, tags ...string) environment.Environment {
