@@ -279,5 +279,7 @@ func (w *proxyResponseWriter) Flush() {
 }
 
 func (w *proxyResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	w.status = http.StatusSwitchingProtocols
+
 	return http.NewResponseController(w.ResponseWriter).Hijack()
 }
