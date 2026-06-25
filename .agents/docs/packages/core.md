@@ -124,7 +124,7 @@ Supported top-level commands are intentionally limited to the current product sc
 - `bastion client set api-url URL`, `bastion client set namespace-id ID`, `bastion client set namespace-key KEY`, matching `bastion client remove ...` commands, and `bastion client config`
 - `bastion mux`
 - `bastion opencode (--id ID | --key KEY)`
-- `bastion proxy (--env-id ID | --env-key KEY) --name NAME [--port PORT]`
+- `bastion proxy (--env-id ID | --env-key KEY) --name NAME [--host HOST] [--port PORT]`
 - `bastion ssh (--id ID | --key KEY) [-- COMMAND...]`
 - `bastion version`
 

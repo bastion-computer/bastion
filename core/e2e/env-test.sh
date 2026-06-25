@@ -666,6 +666,8 @@ run_basic_setup_case() {
   local expected_key_url
   local proxy_logs
   local proxy_url
+  local proxy_host_logs
+  local proxy_host_url
   local secret_key="$RUN_ID-secret"
   local secret_value="/opt/bastion-e2e-secret-$RUN_ID"
   local utilization_baseline
@@ -818,6 +820,11 @@ fi"
   PROXY_PIDS+=("$!")
   proxy_url="$(wait_for_proxy_url "$proxy_logs")"
 
+  case "$proxy_url" in
+    http://localhost:*) ;;
+    *) fail "default local proxy URL was $proxy_url, want localhost" ;;
+  esac
+
   output="$(curl -fsS --connect-timeout 5 --max-time 20 "$proxy_url/absolute/path")"
   if [ "$output" != "proxy-path-ok $RUN_ID" ]; then
     fail "local proxy returned $output, want proxy-path-ok $RUN_ID"
@@ -825,6 +832,22 @@ fi"
 
   if [[ "$(<"$proxy_logs")" != *"GET /absolute/path -> 200"* ]]; then
     fail "local proxy did not log the proxied request: $(<"$proxy_logs")"
+  fi
+
+  proxy_host_logs="/tmp/bastion-env-test-proxy-host-$RUN_ID.log"
+  : >"$proxy_host_logs"
+  run_cli proxy --env-key "$first_env_key" --name frontend --host 127.0.0.1 >/dev/null 2>"$proxy_host_logs" &
+  PROXY_PIDS+=("$!")
+  proxy_host_url="$(wait_for_proxy_url "$proxy_host_logs")"
+
+  case "$proxy_host_url" in
+    http://127.0.0.1:*) ;;
+    *) fail "explicit local proxy URL was $proxy_host_url, want 127.0.0.1" ;;
+  esac
+
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "$proxy_host_url/absolute/path")"
+  if [ "$output" != "proxy-path-ok $RUN_ID" ]; then
+    fail "host-specific local proxy returned $output, want proxy-path-ok $RUN_ID"
   fi
 
   log "lifecycle case passed for $first_env and $second_env"

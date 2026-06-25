@@ -141,9 +141,10 @@ for the tunnel instead:
 bastion proxy --env-key review-123 --name frontend
 ```
 
-The command prints a local URL such as `http://127.0.0.1:49152` and logs proxied
+The command prints a local URL such as `http://localhost:49152` and logs proxied
 requests to stderr. Open that local URL in your browser; requests for absolute
-paths like `/assets/app.js` are forwarded to the named tunnel.
+paths like `/assets/app.js` are forwarded to the named tunnel. Use `--host`, for
+example `--host 0.0.0.0`, to serve the proxy somewhere other than `localhost`.
 
 ## Remove an Environment
 
