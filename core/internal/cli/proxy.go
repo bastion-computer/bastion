@@ -20,6 +20,8 @@ import (
 
 type proxyRunner func(context.Context, io.Writer, proxyOptions) error
 
+const defaultProxyHost = "localhost"
+
 type proxyOptions struct {
 	apiURL         string
 	namespaceID    string
@@ -27,6 +29,7 @@ type proxyOptions struct {
 	environmentID  string
 	environmentKey string
 	name           string
+	host           string
 	port           int
 }
 
@@ -42,7 +45,7 @@ func newProxyCommandWithRunner(opts *rootOptions, runner proxyRunner) *cobra.Com
 	proxyOpts := proxyOptions{}
 
 	cmd := &cobra.Command{
-		Use:   proxyUse + " (--env-id ID | --env-key KEY) --name NAME [--port PORT]",
+		Use:   proxyUse + " (--env-id ID | --env-key KEY) --name NAME [--host HOST] [--port PORT]",
 		Short: "Start a local proxy for an environment tunnel",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -52,6 +55,10 @@ func newProxyCommandWithRunner(opts *rootOptions, runner proxyRunner) *cobra.Com
 
 			if proxyOpts.name == "" {
 				return errors.New("--name is required")
+			}
+
+			if proxyOpts.host == "" {
+				return errors.New("--host is required")
 			}
 
 			if proxyOpts.port < 0 || proxyOpts.port > 65535 {
@@ -68,6 +75,7 @@ func newProxyCommandWithRunner(opts *rootOptions, runner proxyRunner) *cobra.Com
 	cmd.Flags().StringVar(&proxyOpts.environmentID, "env-id", "", "environment ID")
 	cmd.Flags().StringVar(&proxyOpts.environmentKey, "env-key", "", "environment key")
 	cmd.Flags().StringVar(&proxyOpts.name, "name", "", "environment tunnel name")
+	cmd.Flags().StringVar(&proxyOpts.host, "host", defaultProxyHost, "local proxy host")
 	cmd.Flags().IntVar(&proxyOpts.port, "port", 0, "local proxy port (0 selects a free port)")
 
 	return cmd
@@ -91,14 +99,19 @@ func runProxy(ctx context.Context, stderr io.Writer, opts proxyOptions) error {
 		return fmt.Errorf("parse tunnel URL: %w", err)
 	}
 
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(opts.port)))
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort(opts.host, strconv.Itoa(opts.port)))
 	if err != nil {
 		return fmt.Errorf("listen local proxy: %w", err)
 	}
 
 	defer func() { _ = listener.Close() }()
 
-	localURL := "http://" + listener.Addr().String()
+	_, localPort, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		return fmt.Errorf("resolve local proxy address: %w", err)
+	}
+
+	localURL := (&url.URL{Scheme: "http", Host: net.JoinHostPort(opts.host, localPort)}).String()
 	_, _ = fmt.Fprintf(stderr, "proxy listening on %s\n", localURL)
 	_, _ = fmt.Fprintf(stderr, "proxy target %s\n", target.String())
 

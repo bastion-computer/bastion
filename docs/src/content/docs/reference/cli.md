@@ -311,18 +311,19 @@ requires a keyed template; use `--template-id ID` for unkeyed templates.
 
 ## `bastion proxy`
 
-Starts a local localhost proxy for a named environment tunnel.
+Starts a local proxy on `localhost` by default for a named environment tunnel.
 
 ```sh
-bastion proxy (--env-id ID | --env-key KEY) --name NAME [--port PORT]
+bastion proxy (--env-id ID | --env-key KEY) --name NAME [--host HOST] [--port PORT]
 ```
 
-| Flag        | Default | Description                                          |
-| ----------- | ------- | ---------------------------------------------------- |
-| `--env-id`  |         | Environment ID. Mutually exclusive with `--env-key`. |
-| `--env-key` |         | Environment key. Mutually exclusive with `--env-id`. |
-| `--name`    |         | Registered tunnel name, such as `frontend`.          |
-| `--port`    | `0`     | Local port. `0` selects a free port.                 |
+| Flag        | Default     | Description                                            |
+| ----------- | ----------- | ------------------------------------------------------ |
+| `--env-id`  |             | Environment ID. Mutually exclusive with `--env-key`.   |
+| `--env-key` |             | Environment key. Mutually exclusive with `--env-id`.   |
+| `--name`    |             | Registered tunnel name, such as `frontend`.            |
+| `--host`    | `localhost` | Local host to serve, such as `127.0.0.1` or `0.0.0.0`. |
+| `--port`    | `0`         | Local port. `0` selects a free port.                   |
 
 The command validates that the environment exposes the named tunnel, then prints
 the local URL and request logs to stderr. All local paths and HTTP methods are
@@ -333,6 +334,8 @@ Use this for web apps that expect absolute routes from the origin:
 ```sh
 bastion proxy --env-key review-123 --name frontend
 ```
+
+Use `--host 0.0.0.0` to serve the proxy on all interfaces.
 
 ## `bastion ssh`
 

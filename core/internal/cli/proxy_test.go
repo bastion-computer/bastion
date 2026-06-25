@@ -95,7 +95,7 @@ func TestProxyCommandPassesOptions(t *testing.T) {
 	})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--env-key", "feature/dev", "--name", cliTestTunnelName, "--port", "43210"})
+	cmd.SetArgs([]string{"--env-key", "feature/dev", "--name", cliTestTunnelName, "--host", "0.0.0.0", "--port", "43210"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -103,11 +103,77 @@ func TestProxyCommandPassesOptions(t *testing.T) {
 
 	select {
 	case got := <-gotOptions:
-		if got.apiURL != "http://localhost:3148/api/" || got.environmentKey != "feature/dev" || got.name != cliTestTunnelName || got.port != 43210 {
-			t.Fatalf("proxy options = %#v, want keyed frontend proxy on port 43210", got)
+		if got.apiURL != "http://localhost:3148/api/" || got.environmentKey != "feature/dev" || got.name != cliTestTunnelName || got.host != "0.0.0.0" || got.port != 43210 {
+			t.Fatalf("proxy options = %#v, want keyed frontend proxy on 0.0.0.0:43210", got)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("proxy runner was not called")
+	}
+}
+
+func TestProxyCommandDefaultsToLocalhost(t *testing.T) {
+	t.Parallel()
+
+	gotOptions := make(chan proxyOptions, 1)
+	cmd := newProxyCommandWithRunner(&rootOptions{apiURL: "http://localhost:3148"}, func(_ context.Context, _ io.Writer, opts proxyOptions) error {
+		gotOptions <- opts
+
+		return nil
+	})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--env-id", cliTestEnvironmentID, "--name", cliTestTunnelName})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	select {
+	case got := <-gotOptions:
+		if got.host != "localhost" {
+			t.Fatalf("proxy host = %q, want localhost", got.host)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("proxy runner was not called")
+	}
+}
+
+func TestRunProxyPrintsLocalhostURL(t *testing.T) {
+	t.Parallel()
+
+	server := newProxyTunnelValidationServer(t)
+	t.Cleanup(server.Close)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var stderr bytes.Buffer
+
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- runProxy(ctx, &stderr, proxyOptions{
+			apiURL:        server.URL,
+			environmentID: cliTestEnvironmentID,
+			name:          cliTestTunnelName,
+			host:          "localhost",
+		})
+	}()
+
+	localURL := waitForProxyListeningURL(t, &stderr)
+	if !strings.HasPrefix(localURL, "http://localhost:") {
+		t.Fatalf("proxy URL = %q, want localhost URL", localURL)
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run proxy: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("proxy did not stop after context cancellation")
 	}
 }
 
@@ -203,6 +269,38 @@ func waitForProxyLog(logs *bytes.Buffer, want string) bool {
 	}
 
 	return false
+}
+
+func waitForProxyListeningURL(t *testing.T, logs *bytes.Buffer) string {
+	t.Helper()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		for line := range strings.SplitSeq(logs.String(), "\n") {
+			if localURL, ok := strings.CutPrefix(line, "proxy listening on "); ok {
+				return localURL
+			}
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatalf("proxy did not report a local URL: %s", logs.String())
+
+	return ""
+}
+
+func newProxyTunnelValidationServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/environments/"+cliTestEnvironmentID+"/tunnels" {
+			t.Fatalf("request = %s %s, want GET environment tunnels", r.Method, r.URL.Path)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"entries":[{"name":%q,"port":3000}]}`, cliTestTunnelName)
+	}))
 }
 
 func newProxyForwardingUpstream(t *testing.T, gotRequest chan<- proxyUpstreamRequest) *httptest.Server {
