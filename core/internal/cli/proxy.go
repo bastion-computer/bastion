@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -31,6 +32,7 @@ type proxyOptions struct {
 	name           string
 	host           string
 	port           int
+	portSet        bool
 }
 
 func newProxyCommand(opts *rootOptions) *cobra.Command {
@@ -68,6 +70,7 @@ func newProxyCommandWithRunner(opts *rootOptions, runner proxyRunner) *cobra.Com
 			proxyOpts.apiURL = opts.apiURL
 			proxyOpts.namespaceID = opts.namespaceID
 			proxyOpts.namespaceKey = opts.namespaceKey
+			proxyOpts.portSet = cmd.Flags().Changed("port")
 
 			return runner(cmd.Context(), cmd.ErrOrStderr(), proxyOpts)
 		},
@@ -76,7 +79,7 @@ func newProxyCommandWithRunner(opts *rootOptions, runner proxyRunner) *cobra.Com
 	cmd.Flags().StringVar(&proxyOpts.environmentKey, "env-key", "", "environment key")
 	cmd.Flags().StringVar(&proxyOpts.name, "name", "", "environment tunnel name")
 	cmd.Flags().StringVar(&proxyOpts.host, "host", defaultProxyHost, "local proxy host")
-	cmd.Flags().IntVar(&proxyOpts.port, "port", 0, "local proxy port (0 selects a free port)")
+	cmd.Flags().IntVar(&proxyOpts.port, "port", 0, "local proxy port (omitted uses tunnel port; 0 selects a free port)")
 
 	return cmd
 }
@@ -90,7 +93,8 @@ func requireProxyEnvironmentReference(id, key string) error {
 }
 
 func runProxy(ctx context.Context, stderr io.Writer, opts proxyOptions) error {
-	if err := validateProxyTunnel(ctx, opts); err != nil {
+	tunnelPort, err := validateProxyTunnel(ctx, opts)
+	if err != nil {
 		return err
 	}
 
@@ -99,9 +103,9 @@ func runProxy(ctx context.Context, stderr io.Writer, opts proxyOptions) error {
 		return fmt.Errorf("parse tunnel URL: %w", err)
 	}
 
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort(opts.host, strconv.Itoa(opts.port)))
+	listener, err := listenProxy(ctx, stderr, opts, tunnelPort)
 	if err != nil {
-		return fmt.Errorf("listen local proxy: %w", err)
+		return err
 	}
 
 	defer func() { _ = listener.Close() }()
@@ -146,19 +150,48 @@ func runProxy(ctx context.Context, stderr io.Writer, opts proxyOptions) error {
 	}
 }
 
-func validateProxyTunnel(ctx context.Context, opts proxyOptions) error {
+func listenProxy(ctx context.Context, stderr io.Writer, opts proxyOptions, tunnelPort int) (net.Listener, error) {
+	listenPort := opts.port
+	if !opts.portSet {
+		listenPort = tunnelPort
+	}
+
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort(opts.host, strconv.Itoa(listenPort)))
+	if err == nil {
+		return listener, nil
+	}
+
+	if opts.portSet || !isProxyPortUnavailable(err) {
+		return nil, fmt.Errorf("listen local proxy: %w", err)
+	}
+
+	_, _ = fmt.Fprintf(stderr, "proxy port %d is unavailable; using a random port instead\n", listenPort)
+
+	listener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort(opts.host, "0"))
+	if err != nil {
+		return nil, fmt.Errorf("listen local proxy: %w", err)
+	}
+
+	return listener, nil
+}
+
+func isProxyPortUnavailable(err error) bool {
+	return errors.Is(err, syscall.EADDRINUSE) || errors.Is(err, syscall.EACCES)
+}
+
+func validateProxyTunnel(ctx context.Context, opts proxyOptions) (int, error) {
 	tunnels, err := apiClient(&rootOptions{apiURL: opts.apiURL, namespaceID: opts.namespaceID, namespaceKey: opts.namespaceKey}).GetEnvironmentTunnels(ctx, opts.environmentID, opts.environmentKey)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	for _, tunnel := range tunnels.Entries {
 		if tunnel.Name == opts.name {
-			return nil
+			return tunnel.Port, nil
 		}
 	}
 
-	return fmt.Errorf("environment tunnel %q not found", opts.name)
+	return 0, fmt.Errorf("environment tunnel %q not found", opts.name)
 }
 
 func parseProxyTarget(value string) (*url.URL, error) {

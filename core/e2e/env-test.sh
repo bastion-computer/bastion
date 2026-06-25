@@ -821,8 +821,13 @@ fi"
   proxy_url="$(wait_for_proxy_url "$proxy_logs")"
 
   case "$proxy_url" in
-    http://localhost:*) ;;
-    *) fail "default local proxy URL was $proxy_url, want localhost" ;;
+    http://localhost:3000) ;;
+    http://localhost:*)
+      if [[ "$(<"$proxy_logs")" != *"proxy port 3000 is unavailable; using a random port instead"* ]]; then
+        fail "default local proxy URL was $proxy_url, want localhost:3000 or fallback log"
+      fi
+      ;;
+    *) fail "default local proxy URL was $proxy_url, want localhost:3000" ;;
   esac
 
   output="$(curl -fsS --connect-timeout 5 --max-time 20 "$proxy_url/absolute/path")"
