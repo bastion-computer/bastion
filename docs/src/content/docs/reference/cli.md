@@ -323,11 +323,13 @@ bastion proxy (--env-id ID | --env-key KEY) --name NAME [--host HOST] [--port PO
 | `--env-key` |             | Environment key. Mutually exclusive with `--env-id`.   |
 | `--name`    |             | Registered tunnel name, such as `frontend`.            |
 | `--host`    | `localhost` | Local host to serve, such as `127.0.0.1` or `0.0.0.0`. |
-| `--port`    | `0`         | Local port. `0` selects a free port.                   |
+| `--port`    | Tunnel port | Local port. `0` selects a free port.                   |
 
 The command validates that the environment exposes the named tunnel, then prints
 the local URL and request logs to stderr. All local paths and HTTP methods are
-forwarded to the API tunnel URL using the resolved `--api-url`.
+forwarded to the API tunnel URL using the resolved `--api-url`. If the tunnel
+port is unavailable locally, the command falls back to a free port and logs the
+fallback to stderr.
 
 Use this for web apps that expect absolute routes from the origin:
 
