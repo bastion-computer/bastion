@@ -20,21 +20,19 @@
   <a href="https://github.com/orgs/bastion-computer/discussions">Discussions</a>
 </p>
 
-Bastion is an open-source orchestrator for running background coding agents on your own Linux infrastructure. Each environment runs in a separate [Cloud Hypervisor](https://www.cloudhypervisor.org/) VM with its own OpenCode agent and SSH access.
+Bastion is an open-source orchestrator for running background coding agents on your own Linux infrastructure. Each agent runs in a separate [Cloud Hypervisor](https://www.cloudhypervisor.org/) VM with a reproducible dev environment.
 
 Define an environment in JSON, prepare it once as a snapshot, and create disposable VMs for parallel tasks. Bastion can run on a single KVM host or schedule environments across an optional multi-node cluster.
 
 ## Why Bastion?
 
-Running a single coding agent on a workstation is simple. Running many in parallel for autonomous and long running tasks lead to race conditions and security vulnerabilities.
-
-Bastion gives every task a disposable computer instead:
+Bastion makes it easy to scale background coding agents into reproducible environments.
 
 - **VM-level isolation:** each environment has its own guest kernel, root filesystem, processes, and network.
 - **Declarative setup:** define CPU, memory, disk, agents, service tunnels, and lifecycle actions in schema-validated JSON.
-- **Prepared snapshots:** install dependencies during template creation, then restore isolated copy-on-write environments from that prepared state.
+- **Prepared snapshots:** install dependencies during template creation, then replicate isolated copy-on-write environments from that prepared state.
 - **Direct access:** connect through SSH, attach a local OpenCode TUI, or use `bastion mux` to move between persistent sessions.
-- **Conflict-free previews:** expose guest-local web services through named tunnels and a local proxy without assigning host ports by hand.
+- **Conflict-free previews:** expose dev servers on the guest VM through named tunnels for host side previews.
 - **Self-hosted control:** start on one Linux machine, then add the cluster control plane when a single host is not enough.
 
 ## Quick start
@@ -46,7 +44,7 @@ The host needs:
 - Linux on x86_64
 - read/write access to `/dev/kvm`
 - `/dev/vhost-vsock` for VM tunnel traffic
-- nested virtualization when the host is itself a cloud VM
+- nested virtualization when the host is itself a VM
 
 ### 1. Install and prepare the host
 
