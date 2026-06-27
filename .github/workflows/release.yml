@@ -127,6 +127,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: core-*
           path: dist
           merge-multiple: true
 
