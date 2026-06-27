@@ -148,6 +148,16 @@ check_docker_publish() {
   fi
 }
 
+check_release_artifact_download() {
+  if ! grep -q 'actions/download-artifact@' "$WORKFLOW"; then
+    fail "workflow does not download release artifacts"
+  fi
+
+  if ! grep -q 'pattern: core-\*' "$WORKFLOW"; then
+    fail "release artifact download must be restricted to core-* artifacts"
+  fi
+}
+
 if [ ! -f "$WORKFLOW" ]; then
   fail "workflow not found: $WORKFLOW"
 fi
@@ -157,6 +167,7 @@ check_target linux_x86_64 'bastion bastion-guest-proxy'
 check_target darwin_arm64 'bastion'
 check_release_channel
 check_docker_publish
+check_release_artifact_download
 check_darwin_client_build
 
 printf 'release workflow package contents, docker publishing, and darwin client build are valid\n'
