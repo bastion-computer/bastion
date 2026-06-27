@@ -55,3 +55,13 @@ The macOS archive contains the client CLI only:
 
 The release page is generated automatically by GitHub Actions with generated
 release notes.
+
+The workflow also builds and pushes a multi-platform Docker image to Docker Hub
+for Linux x86_64 and Apple silicon-compatible Linux arm64 hosts. The Docker Hub
+tags are:
+
+- `bastioncomputer/bastion:<tag>` for every release tag
+- `bastioncomputer/bastion:latest` for stable releases only
+
+Prerelease tags with `-rc.*` are pushed with their explicit tag but are not
+published as `latest`.

@@ -110,6 +110,44 @@ check_release_channel() {
   fi
 }
 
+check_docker_publish() {
+  if [ ! -f Dockerfile ]; then
+    fail "Dockerfile is required for Docker Hub release images"
+  fi
+
+  if ! grep -q 'docker/build-push-action@' "$WORKFLOW"; then
+    fail "workflow does not use docker/build-push-action"
+  fi
+
+  if ! grep -q 'docker/login-action@' "$WORKFLOW"; then
+    fail "workflow does not log in to Docker Hub"
+  fi
+
+  if ! grep -q 'DOCKERHUB_USERNAME' "$WORKFLOW"; then
+    fail "workflow does not use DOCKERHUB_USERNAME"
+  fi
+
+  if ! grep -q 'DOCKERHUB_TOKEN' "$WORKFLOW"; then
+    fail "workflow does not use DOCKERHUB_TOKEN"
+  fi
+
+  if ! grep -q 'linux/amd64,linux/arm64' "$WORKFLOW"; then
+    fail "workflow does not build linux/amd64 and linux/arm64 images"
+  fi
+
+  if ! grep -q 'bastioncomputer/bastion' "$WORKFLOW"; then
+    fail "workflow does not publish to bastioncomputer/bastion"
+  fi
+
+  if ! grep -q 'BASTION_VERSION=.*github.ref_name' "$WORKFLOW"; then
+    fail "workflow does not pass the release tag into the Docker build"
+  fi
+
+  if ! grep -q 'latest.*release_channel\.outputs\.make_latest' "$WORKFLOW"; then
+    fail "workflow does not gate the latest Docker tag on the release channel"
+  fi
+}
+
 if [ ! -f "$WORKFLOW" ]; then
   fail "workflow not found: $WORKFLOW"
 fi
@@ -118,6 +156,7 @@ TMP_DIR="$(mktemp -d)"
 check_target linux_x86_64 'bastion bastion-guest-proxy'
 check_target darwin_arm64 'bastion'
 check_release_channel
+check_docker_publish
 check_darwin_client_build
 
-printf 'release workflow package contents and darwin client build are valid\n'
+printf 'release workflow package contents, docker publishing, and darwin client build are valid\n'
