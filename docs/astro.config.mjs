@@ -146,6 +146,10 @@ export default defineConfig({
           label: "Examples",
           items: [
             {
+              label: "Cluster with Docker Compose",
+              slug: "examples/cluster-with-docker-compose",
+            },
+            {
               label: "Issue tracker demo",
               slug: "examples/bastion-demo-repo",
             },
