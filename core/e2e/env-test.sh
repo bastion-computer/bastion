@@ -567,7 +567,11 @@ lifecycle_config() {
 
 toolchain_config() {
   local token="github-cli-e2e-${RUN_ID}"
+  local aws_access_key_id="bastion-e2e-access-key-id"
+  local aws_secret_access_key="bastion-e2e-secret-access-key"
+  local aws_session_token="aws-session-token-${RUN_ID}"
   local verify_github
+  local verify_aws
   local verify_docker
   local verify_uv
 
@@ -582,6 +586,18 @@ toolchain_config() {
     'test -n "$(gh auth token --hostname github.com)"' \
     "printf 'protocol=https\nhost=github.com\n\n' | git credential fill | grep -q 'password=$token'" \
     'printf github-cli-ready > /opt/bastion-e2e-github-cli/auth')"
+  verify_aws="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-aws-cli' \
+    'aws --version > /opt/bastion-e2e-aws-cli/version' \
+    'aws configure list-profiles | grep -q "^bastion-e2e$"' \
+    'aws configure get region --profile bastion-e2e > /opt/bastion-e2e-aws-cli/region' \
+    'aws configure get output --profile bastion-e2e > /opt/bastion-e2e-aws-cli/output' \
+    'aws configure get aws_access_key_id --profile bastion-e2e > /opt/bastion-e2e-aws-cli/access-key-id' \
+    'aws configure get aws_session_token --profile bastion-e2e > /opt/bastion-e2e-aws-cli/session-token' \
+    'test "$(stat -c %a /root/.aws/config)" = 600' \
+    'test "$(stat -c %a /root/.aws/credentials)" = 600' \
+    'printf aws-cli-ready > /opt/bastion-e2e-aws-cli/config')"
   verify_docker="$(printf '%s\n' \
     'set -eu' \
     'mkdir -p /opt/bastion-e2e-docker-preset' \
@@ -600,7 +616,16 @@ toolchain_config() {
     'test -x "$python_path"' \
     '"$python_path" --version > /opt/bastion-e2e-uv/python-version')"
 
-  jq -nc --arg token "$token" --arg verify_github "$verify_github" --arg verify_docker "$verify_docker" --arg verify_uv "$verify_uv" '{
+  jq -nc \
+    --arg token "$token" \
+    --arg aws_access_key_id "$aws_access_key_id" \
+    --arg aws_secret_access_key "$aws_secret_access_key" \
+    --arg aws_session_token "$aws_session_token" \
+    --arg verify_github "$verify_github" \
+    --arg verify_aws "$verify_aws" \
+    --arg verify_docker "$verify_docker" \
+    --arg verify_uv "$verify_uv" \
+    '{
     agents: {opencode: {}},
     actions: {
       init: [
@@ -613,6 +638,8 @@ toolchain_config() {
         {run: $verify_uv},
         {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
         {run: $verify_github},
+        {use: "setup_aws_cli", with: {access_key_id: $aws_access_key_id, secret_access_key: $aws_secret_access_key, session_token: $aws_session_token, region: "us-west-2", profile: "bastion-e2e", output: "json"}},
+        {run: $verify_aws},
         {use: "setup_docker"},
         {run: $verify_docker}
       ]
@@ -901,6 +928,13 @@ run_node_docker_case() {
   ssh_env "$env_id" grep -q '^agent@bastion.computer$' /opt/bastion-e2e-github-cli/git-email
   ssh_env "$env_id" "grep -q '/usr/local/bin/gh auth git-credential' /opt/bastion-e2e-github-cli/git-helper"
   ssh_env "$env_id" grep -q github-cli-ready /opt/bastion-e2e-github-cli/auth
+
+  ssh_env "$env_id" "grep -q '^aws-cli/' /opt/bastion-e2e-aws-cli/version"
+  ssh_env "$env_id" grep -q '^us-west-2$' /opt/bastion-e2e-aws-cli/region
+  ssh_env "$env_id" grep -q '^json$' /opt/bastion-e2e-aws-cli/output
+  ssh_env "$env_id" grep -q '^bastion-e2e-access-key-id$' /opt/bastion-e2e-aws-cli/access-key-id
+  ssh_env "$env_id" grep -q "^aws-session-token-$RUN_ID$" /opt/bastion-e2e-aws-cli/session-token
+  ssh_env "$env_id" grep -q aws-cli-ready /opt/bastion-e2e-aws-cli/config
 
   ssh_env "$env_id" "grep -q '^Docker version' /opt/bastion-e2e-docker-preset/docker-version"
   ssh_env "$env_id" grep -q 'buildx' /opt/bastion-e2e-docker-preset/buildx-version
