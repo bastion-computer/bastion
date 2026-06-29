@@ -710,6 +710,66 @@ func TestSetupUVPresetInputs(t *testing.T) {
 	}
 }
 
+func TestSetupAWSCLIPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_aws_cli")
+	if err != nil {
+		t.Fatalf("load setup_aws_cli preset: %v", err)
+	}
+
+	expected := map[string]bool{
+		"access_key_id":     true,
+		"secret_access_key": true,
+		"region":            true,
+		"session_token":     false,
+		"profile":           false,
+		"output":            false,
+	}
+
+	if len(preset.manifest.Inputs) != len(expected) {
+		t.Fatalf("setup_aws_cli input count = %d, want %d: %#v", len(preset.manifest.Inputs), len(expected), preset.manifest.Inputs)
+	}
+
+	for name, required := range expected {
+		input, ok := preset.manifest.Inputs[name]
+		if !ok {
+			t.Fatalf("setup_aws_cli input %s is not defined: %#v", name, preset.manifest.Inputs)
+		}
+
+		if input.Type != presetInputTypeString || input.Required != required {
+			t.Fatalf("setup_aws_cli input %s = %#v, want required=%t string", name, input, required)
+		}
+	}
+
+	if preset.manifest.Run != "sh ./install_aws_cli.sh" {
+		t.Fatalf("setup_aws_cli run = %q, want install_aws_cli script", preset.manifest.Run)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{
+		"access_key_id":     "test-access-key-id",
+		"secret_access_key": "test-secret-access-key",
+		"region":            "us-west-2",
+		"session_token":     "test-session-token",
+		"profile":           "dev",
+		"output":            "json",
+	}); err != nil {
+		t.Fatalf("validate setup_aws_cli inputs: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{
+		"access_key_id":     "test-access-key-id",
+		"secret_access_key": "test-secret-access-key",
+	}); err == nil || !strings.Contains(err.Error(), "input region is required") {
+		t.Fatalf("validate missing region error = %v, want required region", err)
+	}
+}
+
 func TestSetupDockerPresetInputs(t *testing.T) {
 	t.Parallel()
 

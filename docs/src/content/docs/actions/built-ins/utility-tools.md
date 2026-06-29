@@ -138,6 +138,67 @@ and `email`.
 The token is stored in the guest at `/etc/bastion/github-token` with mode `600`.
 Treat environments created with this action as having access to that token.
 
+## `setup_aws_cli`
+
+`setup_aws_cli` installs AWS CLI v2 with AWS's official Linux command line
+installer and configures a profile for IAM access key authentication.
+
+| Input               | Required | Default   | Description                                                 |
+| ------------------- | -------- | --------- | ----------------------------------------------------------- |
+| `access_key_id`     | Yes      | None      | AWS access key ID used by the AWS CLI inside the guest.     |
+| `secret_access_key` | Yes      | None      | AWS secret access key used by the AWS CLI inside the guest. |
+| `region`            | Yes      | None      | Default AWS Region for the configured profile.              |
+| `session_token`     | No       | None      | AWS session token for temporary IAM credentials.            |
+| `profile`           | No       | `default` | AWS CLI profile name to configure.                          |
+| `output`            | No       | `json`    | Default AWS CLI output format: `json`, `yaml`, `text`, etc. |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup_aws_cli",
+        "with": {
+          "access_key_id": "${{ secret.AWS_ACCESS_KEY_ID }}",
+          "secret_access_key": "${{ secret.AWS_SECRET_ACCESS_KEY }}",
+          "region": "us-west-2",
+          "profile": "default",
+          "output": "json"
+        }
+      }
+    ]
+  }
+}
+```
+
+For temporary IAM credentials, also pass `session_token`:
+
+```json
+{
+  "use": "setup_aws_cli",
+  "with": {
+    "access_key_id": "${{ secret.AWS_ACCESS_KEY_ID }}",
+    "secret_access_key": "${{ secret.AWS_SECRET_ACCESS_KEY }}",
+    "session_token": "${{ secret.AWS_SESSION_TOKEN }}",
+    "region": "us-east-1"
+  }
+}
+```
+
+The action downloads the official AWS CLI v2 Linux installer for the guest CPU
+architecture, installs it under `/usr/local/aws-cli`, and creates the
+`/usr/local/bin/aws` symlink.
+
+Credentials are written to root's AWS shared config files under `/root/.aws` with
+mode `600`, matching the AWS CLI's standard configuration file behavior. Treat
+templates and environments created with this action as having access to the
+configured IAM credentials.
+
 ## `setup_docker`
 
 `setup_docker` installs Docker Engine from Docker's official Ubuntu apt

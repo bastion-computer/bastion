@@ -1,0 +1,32 @@
+{
+  "inputs": {
+    "access_key_id": {
+      "type": "string",
+      "description": "AWS access key ID used by the AWS CLI in the guest VM.",
+      "required": true
+    },
+    "secret_access_key": {
+      "type": "string",
+      "description": "AWS secret access key used by the AWS CLI in the guest VM.",
+      "required": true
+    },
+    "region": {
+      "type": "string",
+      "description": "Default AWS Region for the configured profile.",
+      "required": true
+    },
+    "session_token": {
+      "type": "string",
+      "description": "Optional AWS session token for temporary IAM credentials."
+    },
+    "profile": {
+      "type": "string",
+      "description": "AWS CLI profile name to configure. Defaults to default."
+    },
+    "output": {
+      "type": "string",
+      "description": "Default AWS CLI output format. Defaults to json."
+    }
+  },
+  "run": "sh ./install_aws_cli.sh"
+}
