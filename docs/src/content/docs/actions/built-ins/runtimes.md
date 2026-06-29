@@ -121,3 +121,55 @@ Omit `version` to install the latest mise release:
   }
 }
 ```
+
+## `setup_uv`
+
+`setup_uv` installs uv with the official standalone installer. It installs uv and
+uvx to `/usr/local/bin`.
+
+| Input            | Required | Default                | Description                                            |
+| ---------------- | -------- | ---------------------- | ------------------------------------------------------ |
+| `version`        | No       | Latest                 | uv version to install, for example `0.11.25`.          |
+| `python_version` | No       | No Python installation | Python version to install with uv, for example `3.13`. |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup_uv",
+        "with": {
+          "version": "0.11.25",
+          "python_version": "3.13"
+        }
+      },
+      {
+        "run": "uv sync",
+        "working_directory": "/workspace/project"
+      }
+    ]
+  }
+}
+```
+
+Omit `version` to install the latest uv release, and omit `python_version` when a
+template only needs uv without preinstalling a managed Python:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [{ "use": "setup_uv" }]
+  }
+}
+```
+
+When `python_version` is provided, the action runs `uv python install` and
+verifies the installed interpreter with `uv python find`.

@@ -569,6 +569,7 @@ toolchain_config() {
   local token="github-cli-e2e-${RUN_ID}"
   local verify_github
   local verify_docker
+  local verify_uv
 
   verify_github="$(printf '%s\n' \
     'set -eu' \
@@ -590,8 +591,16 @@ toolchain_config() {
     'docker info --format "{{.ServerVersion}}" > /opt/bastion-e2e-docker-preset/server-version' \
     'systemctl is-enabled --quiet docker' \
     'systemctl is-active --quiet docker')"
+  verify_uv="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-uv' \
+    'uv --version > /opt/bastion-e2e-uv/version' \
+    'uvx --version > /opt/bastion-e2e-uv/uvx-version' \
+    'python_path="$(uv python find 3.13)"' \
+    'test -x "$python_path"' \
+    '"$python_path" --version > /opt/bastion-e2e-uv/python-version')"
 
-  jq -nc --arg token "$token" --arg verify_github "$verify_github" --arg verify_docker "$verify_docker" '{
+  jq -nc --arg token "$token" --arg verify_github "$verify_github" --arg verify_docker "$verify_docker" --arg verify_uv "$verify_uv" '{
     agents: {opencode: {}},
     actions: {
       init: [
@@ -600,6 +609,8 @@ toolchain_config() {
         {use: "setup_bun"},
         {run: "set -eu\nmkdir -p /opt/bastion-e2e-bun\nbun --version > /opt/bastion-e2e-bun/version\nbun --revision > /opt/bastion-e2e-bun/revision\nbun -e '\''console.log(\"bun-ok\")'\'' > /opt/bastion-e2e-bun/runtime"},
         {use: "setup_mise"},
+        {use: "setup_uv", with: {python_version: "3.13"}},
+        {run: $verify_uv},
         {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
         {run: $verify_github},
         {use: "setup_docker"},
@@ -879,6 +890,10 @@ run_node_docker_case() {
   if [[ ! "$version" =~ ^(mise[[:space:]])?[0-9] ]]; then
     fail "mise --version returned unexpected output: $version"
   fi
+
+  ssh_env "$env_id" "grep -Eq '^uv [0-9]' /opt/bastion-e2e-uv/version"
+  ssh_env "$env_id" test -s /opt/bastion-e2e-uv/uvx-version
+  ssh_env "$env_id" "grep -Eq '^Python 3\.13\.' /opt/bastion-e2e-uv/python-version"
 
   ssh_env "$env_id" "grep -q '^gh version' /opt/bastion-e2e-github-cli/version"
   ssh_env "$env_id" grep -q '^https$' /opt/bastion-e2e-github-cli/git-protocol

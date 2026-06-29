@@ -1,0 +1,13 @@
+{
+  "inputs": {
+    "version": {
+      "type": "string",
+      "description": "uv version to install, for example 0.11.25. Defaults to latest."
+    },
+    "python_version": {
+      "type": "string",
+      "description": "Python version to install with uv, for example 3.13. Defaults to no Python installation."
+    }
+  },
+  "run": "sh ./install_uv.sh"
+}

@@ -17,7 +17,11 @@ import (
 	builtinActions "github.com/bastion-computer/bastion/core/actions"
 )
 
-const testSSHCommand = "ssh"
+const (
+	testSSHCommand             = "ssh"
+	testVersionInputName       = "version"
+	testPythonVersionInputName = "python_version"
+)
 
 func TestRunActionsRunsCommandsInOrder(t *testing.T) {
 	t.Parallel()
@@ -587,7 +591,7 @@ func TestSetupBunPresetInputs(t *testing.T) {
 		t.Fatalf("load setup_bun preset: %v", err)
 	}
 
-	input, ok := preset.manifest.Inputs["version"]
+	input, ok := preset.manifest.Inputs[testVersionInputName]
 	if !ok {
 		t.Fatalf("setup_bun input version is not defined: %#v", preset.manifest.Inputs)
 	}
@@ -600,11 +604,11 @@ func TestSetupBunPresetInputs(t *testing.T) {
 		t.Fatalf("validate setup_bun inputs without version: %v", err)
 	}
 
-	if err := validatePresetActionInputs(preset, map[string]any{"version": "bun-v1.3.3"}); err != nil {
+	if err := validatePresetActionInputs(preset, map[string]any{testVersionInputName: "bun-v1.3.3"}); err != nil {
 		t.Fatalf("validate setup_bun inputs with version: %v", err)
 	}
 
-	if err := validatePresetActionInputs(preset, map[string]any{"version": 1.3}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
+	if err := validatePresetActionInputs(preset, map[string]any{testVersionInputName: 1.3}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
 		t.Fatalf("validate setup_bun invalid version error = %v, want type mismatch", err)
 	}
 }
@@ -657,6 +661,52 @@ func TestSetupGitHubCLIPresetInputs(t *testing.T) {
 
 	if err := validatePresetActionInputs(preset, map[string]any{"name": "custom-agent"}); err == nil || !strings.Contains(err.Error(), "input token is required") {
 		t.Fatalf("validate missing token error = %v, want required token", err)
+	}
+}
+
+func TestSetupUVPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_uv")
+	if err != nil {
+		t.Fatalf("load setup_uv preset: %v", err)
+	}
+
+	expected := []string{testVersionInputName, testPythonVersionInputName}
+	if len(preset.manifest.Inputs) != len(expected) {
+		t.Fatalf("setup_uv input count = %d, want %d: %#v", len(preset.manifest.Inputs), len(expected), preset.manifest.Inputs)
+	}
+
+	for _, name := range expected {
+		input, ok := preset.manifest.Inputs[name]
+		if !ok {
+			t.Fatalf("setup_uv input %s is not defined: %#v", name, preset.manifest.Inputs)
+		}
+
+		if input.Type != presetInputTypeString || input.Required {
+			t.Fatalf("setup_uv input %s = %#v, want optional string", name, input)
+		}
+	}
+
+	if preset.manifest.Run != "sh ./install_uv.sh" {
+		t.Fatalf("setup_uv run = %q, want install_uv script", preset.manifest.Run)
+	}
+
+	if err := validatePresetActionInputs(preset, nil); err != nil {
+		t.Fatalf("validate setup_uv inputs without values: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{testVersionInputName: "0.11.25", testPythonVersionInputName: "3.13"}); err != nil {
+		t.Fatalf("validate setup_uv inputs with values: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{testPythonVersionInputName: 3.13}); err == nil || !strings.Contains(err.Error(), "input python_version: must be a string") {
+		t.Fatalf("validate setup_uv invalid python_version error = %v, want type mismatch", err)
 	}
 }
 
