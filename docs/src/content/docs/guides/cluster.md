@@ -154,6 +154,11 @@ Postgres. It creates node-local derivative resources only when needed. Template
 archives are stored in the configured S3 bucket so any node can restore the
 prepared source template before launching an environment.
 
+During `templates create` and `env create`, the cluster API streams control-plane
+progress such as node selection, derivative import/export, archive storage, and
+record persistence through the normal `log` events. The CLI prints these
+`cluster:` progress lines to stderr alongside node-level creation logs.
+
 Environment creation chooses a node with enough available vCPU, memory, and
 volume for the template's declared resources. If no registered node has enough
 capacity, `bastion env create` fails instead of overcommitting the cluster.

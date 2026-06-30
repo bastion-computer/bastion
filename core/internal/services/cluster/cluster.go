@@ -82,6 +82,22 @@ type NodeClient interface {
 	OpenSSH(context.Context, string, string, sshtunnel.Request) (io.ReadWriteCloser, error)
 }
 
+func writeClusterProgress(logs io.Writer, message string, args ...any) error {
+	if logs == nil {
+		return nil
+	}
+
+	if len(args) > 0 {
+		message = fmt.Sprintf(message, args...)
+	}
+
+	if _, err := fmt.Fprintf(logs, "cluster: %s\n", message); err != nil {
+		return fmt.Errorf("stream cluster progress: %w", err)
+	}
+
+	return nil
+}
+
 // Option configures the cluster service.
 type Option func(*Service)
 

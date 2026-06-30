@@ -59,8 +59,16 @@ type clusterEnvironmentRecord struct {
 //
 //nolint:gocyclo // Coordinates namespace validation, scheduling, derivative provisioning, persistence, and cleanup.
 func (s *Service) CreateEnvironment(ctx context.Context, namespaceSelector NamespaceSelector, req environment.CreateRequest) (environment.Environment, error) {
+	if err := writeClusterProgress(req.Logs, "resolving namespace"); err != nil {
+		return environment.Environment{}, err
+	}
+
 	namespace, err := s.resolveNamespace(ctx, namespaceSelector)
 	if err != nil {
+		return environment.Environment{}, err
+	}
+
+	if err := writeClusterProgress(req.Logs, "validating environment request"); err != nil {
 		return environment.Environment{}, err
 	}
 
@@ -68,7 +76,15 @@ func (s *Service) CreateEnvironment(ctx context.Context, namespaceSelector Names
 		return environment.Environment{}, err
 	}
 
+	if err := writeClusterProgress(req.Logs, "checking template archive storage"); err != nil {
+		return environment.Environment{}, err
+	}
+
 	if err := s.requireArchiveStore(); err != nil {
+		return environment.Environment{}, err
+	}
+
+	if err := writeClusterProgress(req.Logs, "resolving source template"); err != nil {
 		return environment.Environment{}, err
 	}
 
@@ -77,24 +93,38 @@ func (s *Service) CreateEnvironment(ctx context.Context, namespaceSelector Names
 		return environment.Environment{}, err
 	}
 
+	if err := writeClusterProgress(req.Logs, "resolving template resource requirements"); err != nil {
+		return environment.Environment{}, err
+	}
+
 	usage, err := ch.ResolveTemplateResourceUsage(sourceTemplate.Config)
 	if err != nil {
 		return environment.Environment{}, fmt.Errorf("%w: resolve source template resources: %w", failure.ErrInvalid, err)
 	}
 
-	node, derivative, derivativeExists, err := s.selectEnvironmentNode(ctx, sourceTemplate.ID, usage)
+	if err := writeClusterProgress(req.Logs, "selecting environment node"); err != nil {
+		return environment.Environment{}, err
+	}
+
+	node, derivative, derivativeExists, err := s.selectEnvironmentNode(ctx, sourceTemplate.ID, usage, req.Logs)
 	if err != nil {
 		return environment.Environment{}, err
 	}
 
 	createdDerivative := false
 	if !derivativeExists {
-		derivative, err = s.createTemplateDerivative(ctx, namespace.ID, node, sourceTemplate, archiveKey)
+		if err := writeClusterProgress(req.Logs, "creating template derivative on cluster node %s", node.ID); err != nil {
+			return environment.Environment{}, err
+		}
+
+		derivative, err = s.createTemplateDerivative(ctx, namespace.ID, node, sourceTemplate, archiveKey, req.Logs)
 		if err != nil {
 			return environment.Environment{}, err
 		}
 
 		createdDerivative = true
+	} else if err := writeClusterProgress(req.Logs, "reusing template derivative on cluster node %s", node.ID); err != nil {
+		return environment.Environment{}, err
 	}
 
 	environmentID, err := services.GenerateID(environmentIDPrefix)
@@ -104,6 +134,10 @@ func (s *Service) CreateEnvironment(ctx context.Context, namespaceSelector Names
 
 	now := services.Now()
 	source := environment.Environment{ID: environmentID, Key: services.CopyStringPtr(req.Key), Status: ch.StateCreating, TemplateID: sourceTemplate.ID, Tags: copyEnvironmentTags(req.Tags), CreatedAt: now, UpdatedAt: now}
+
+	if err := writeClusterProgress(req.Logs, "creating derivative environment on cluster node %s", node.ID); err != nil {
+		return environment.Environment{}, err
+	}
 
 	derivativeEnvironment, err := s.nodeClient.CreateEnvironment(ctx, node.URL, environment.CreateRequest{TemplateID: derivative.DerivativeTemplateID, Tags: req.Tags, Logs: req.Logs})
 	if err != nil {
@@ -120,6 +154,10 @@ func (s *Service) CreateEnvironment(ctx context.Context, namespaceSelector Names
 		source.Status = ch.StateRunning
 	}
 	source.LastError = derivativeEnvironment.LastError
+
+	if err := writeClusterProgress(req.Logs, "recording source environment"); err != nil {
+		return environment.Environment{}, err
+	}
 
 	if err := s.insertEnvironment(ctx, namespace.ID, source, node.ID, derivative.ID, derivativeEnvironment.ID); err != nil {
 		_, _ = s.nodeClient.RemoveEnvironment(context.Background(), node.URL, derivativeEnvironment.ID)
@@ -293,7 +331,12 @@ func validateEnvironmentTags(tags []string) error {
 	return nil
 }
 
-func (s *Service) selectEnvironmentNode(ctx context.Context, templateID string, usage ch.ResourceUsage) (Node, templateDerivative, bool, error) {
+//nolint:gocyclo // Checks existing derivatives and fallback nodes while streaming scheduling progress.
+func (s *Service) selectEnvironmentNode(ctx context.Context, templateID string, usage ch.ResourceUsage, logs io.Writer) (Node, templateDerivative, bool, error) {
+	if err := writeClusterProgress(logs, "checking existing template derivatives"); err != nil {
+		return Node{}, templateDerivative{}, false, err
+	}
+
 	derivatives, err := s.listTemplateDerivatives(ctx, templateID)
 	if err != nil {
 		return Node{}, templateDerivative{}, false, err
@@ -302,6 +345,10 @@ func (s *Service) selectEnvironmentNode(ctx context.Context, templateID string, 
 	for _, derivative := range derivatives {
 		node, err := s.GetNode(ctx, derivative.NodeID, "")
 		if err != nil {
+			return Node{}, templateDerivative{}, false, err
+		}
+
+		if err := writeClusterProgress(logs, "checking cluster node capacity"); err != nil {
 			return Node{}, templateDerivative{}, false, err
 		}
 
@@ -328,6 +375,10 @@ func (s *Service) selectEnvironmentNode(ctx context.Context, templateID string, 
 	rand.Shuffle(len(randomNodes), func(i, j int) { randomNodes[i], randomNodes[j] = randomNodes[j], randomNodes[i] })
 
 	for _, node := range randomNodes {
+		if err := writeClusterProgress(logs, "checking cluster node capacity"); err != nil {
+			return Node{}, templateDerivative{}, false, err
+		}
+
 		hasCapacity, err := s.nodeHasCapacity(ctx, node, usage)
 		if err != nil {
 			return Node{}, templateDerivative{}, false, err
@@ -354,7 +405,8 @@ func resourceHasCapacity(resource utilization.Resource, required int64) bool {
 	return resource.Available >= required
 }
 
-func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID string, node Node, sourceTemplate template.Template, archiveKey string) (templateDerivative, error) {
+//nolint:gocyclo // Coordinates archive restore/rewrite/import, DB persistence, cleanup, and streamed progress.
+func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID string, node Node, sourceTemplate template.Template, archiveKey string, logs io.Writer) (templateDerivative, error) {
 	derivatives := derivativeCleanup{service: s, nodeURL: node.URL}
 	cleanupDerivatives := true
 	defer func() {
@@ -363,7 +415,11 @@ func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID stri
 		}
 	}()
 
-	derivativeConfig, sourceDerivativeSecrets, err := s.createDerivativeSecrets(ctx, namespaceID, node, sourceTemplate.Config, &derivatives)
+	if err := writeClusterProgress(logs, "preparing derivative secrets"); err != nil {
+		return templateDerivative{}, err
+	}
+
+	derivativeConfig, sourceDerivativeSecrets, err := s.createDerivativeSecrets(ctx, namespaceID, node, sourceTemplate.Config, &derivatives, logs)
 	if err != nil {
 		return templateDerivative{}, err
 	}
@@ -373,6 +429,10 @@ func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID stri
 		return templateDerivative{}, err
 	}
 	defer sourceArchive.cleanup()
+
+	if err := writeClusterProgress(logs, "loading source template archive"); err != nil {
+		return templateDerivative{}, err
+	}
 
 	if err := s.archiveStore.Get(ctx, archiveKey, sourceArchive.file); err != nil {
 		return templateDerivative{}, fmt.Errorf("get source template archive: %w", err)
@@ -389,6 +449,10 @@ func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID stri
 	}
 
 	archiveTemplate := templatearchive.Template{ID: sourceTemplate.ID, Config: derivativeConfig}
+	if err := writeClusterProgress(logs, "rewriting template derivative archive"); err != nil {
+		return templateDerivative{}, err
+	}
+
 	if err := templatearchive.RewriteTemplate(ctx, sourceArchive.file, rewrittenArchive.file, archiveTemplate); err != nil {
 		return templateDerivative{}, fmt.Errorf("rewrite derivative template archive: %w", err)
 	}
@@ -400,6 +464,10 @@ func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID stri
 
 	if _, err := rewrittenArchive.file.Seek(0, io.SeekStart); err != nil {
 		return templateDerivative{}, fmt.Errorf("rewind derivative template archive: %w", err)
+	}
+
+	if err := writeClusterProgress(logs, "importing template derivative"); err != nil {
+		return templateDerivative{}, err
 	}
 
 	imported, err := s.nodeClient.ImportTemplate(ctx, node.URL, template.ImportRequest{Archive: rewrittenArchive.file, ArchiveSize: archiveSize})
@@ -415,6 +483,10 @@ func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID stri
 	}
 
 	derivative := templateDerivative{ID: derivativeID, TemplateID: sourceTemplate.ID, NodeID: node.ID, DerivativeTemplateID: imported.ID, CreatedAt: services.Now()}
+	if err := writeClusterProgress(logs, "recording template derivative"); err != nil {
+		return templateDerivative{}, err
+	}
+
 	if err := s.insertTemplateDerivative(ctx, derivative, sourceDerivativeSecrets); err != nil {
 		return templateDerivative{}, err
 	}

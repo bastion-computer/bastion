@@ -500,6 +500,16 @@ assert_command_fails() {
   fi
 }
 
+assert_output_contains() {
+  local label=$1
+  local output=$2
+  local needle=$3
+
+  if [[ "$output" != *"$needle"* ]]; then
+    fail "$label did not include $needle: $output"
+  fi
+}
+
 assert_node_derivatives_removed() {
   local templates secrets
 
@@ -534,6 +544,7 @@ assert_minio_object_missing() {
 
 run_resource_case() {
   local ns_a ns_b secret_key secret_value secret_output secret_id template_key template_output template_id got listed archive imported_key imported_output imported_id imported_archive
+  local template_logs
 
   log "creating resource namespaces"
   ns_a="$(jq -r '.id' <<<"$(run_cli cluster namespaces create --key "$RUN_ID-resources-a")")"
@@ -546,6 +557,7 @@ run_resource_case() {
   imported_key="$RUN_ID-imported"
   archive="$WORK_DIR/source-template.tar.zst"
   imported_archive="$WORK_DIR/imported-template.tar.zst"
+  template_logs="$WORK_DIR/source-template-create.log"
 
   log "creating source secret on namespace $ns_a"
   secret_output="$(run_cli --namespace-id "$ns_a" secrets create --key "$secret_key" --value "$secret_value")"
@@ -563,11 +575,14 @@ run_resource_case() {
   assert_command_fails run_cli secrets get --key "$secret_key"
 
   log "creating source template on namespace $ns_a"
-  template_output="$(run_cli --namespace-id "$ns_a" templates create --key "$template_key" --config "$(cluster_template_config "$secret_key")")"
+  template_output="$(run_cli --namespace-id "$ns_a" templates create --key "$template_key" --config "$(cluster_template_config "$secret_key")" 2>"$template_logs")"
   template_id="$(jq -r '.id' <<<"$template_output")"
   if [[ "$template_id" != tpl_* ]]; then
     fail "cluster template id is $template_id, want tpl_ prefix"
   fi
+
+  assert_output_contains "template creation logs" "$(<"$template_logs")" "cluster: resolving namespace"
+  assert_output_contains "template creation logs" "$(<"$template_logs")" "cluster: storing source template archive"
 
   assert_node_derivatives_removed
   assert_minio_object_exists "$ns_a" "$template_id"
@@ -714,6 +729,7 @@ run_environment_case() {
   local ns_a ns_b secret_key secret_value secret_id template_key template_output template_id
   local env1_key env1_tag env2_tag env3_tag env1 env2 env3 got listed output proxy_logs proxy_url derivative_env1
   local node_b_output node_b_id
+  local env1_logs env3_logs
 
   log "creating environment orchestration namespaces"
   ns_a="$(jq -r '.id' <<<"$(run_cli cluster namespaces create --key "$RUN_ID-env-a")")"
@@ -727,6 +743,8 @@ run_environment_case() {
   env1_tag="$RUN_ID-env-one"
   env2_tag="$RUN_ID-env-two"
   env3_tag="$RUN_ID-env-three"
+  env1_logs="$WORK_DIR/cluster-env-one-create.log"
+  env3_logs="$WORK_DIR/cluster-env-three-create.log"
 
   log "creating source secret and template for environments"
   secret_id="$(jq -r '.id' <<<"$(run_cli --namespace-id "$ns_a" secrets create --key "$secret_key" --value "$secret_value")")"
@@ -740,11 +758,13 @@ run_environment_case() {
   assert_node_derivatives_removed
 
   log "creating first environment on first node"
-  output="$(run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --key "$env1_key" --tag "$env1_tag")"
+  output="$(run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --key "$env1_key" --tag "$env1_tag" 2>"$env1_logs")"
   env1="$(jq -r '.id' <<<"$output")"
   if ! jq -e --arg template_id "$template_id" --arg key "$env1_key" '(.id | startswith("env_")) and .key == $key and .templateId == $template_id and .status == "running"' <<<"$output" >/dev/null; then
     fail "first cluster environment response is $(jq -c . <<<"$output"), want source env"
   fi
+  assert_output_contains "first environment creation logs" "$(<"$env1_logs")" "cluster: selecting environment node"
+  assert_output_contains "first environment creation logs" "$(<"$env1_logs")" "cluster: importing template derivative"
   assert_node_counts "after first environment" "$VM_NODE_URL" 1 1 1
 
   run_cli --namespace-id "$ns_a" ssh --id "$env1" -- grep -q "$RUN_ID" /opt/bastion-cluster-env/run-id
@@ -770,11 +790,13 @@ run_environment_case() {
   assert_node "second VM-backed node" "$node_b_output" "$RUN_ID-vm-node-b" "$SECOND_VM_NODE_URL"
 
   log "creating third environment on second node due first node capacity"
-  output="$(run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --tag "$env3_tag")"
+  output="$(run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --tag "$env3_tag" 2>"$env3_logs")"
   env3="$(jq -r '.id' <<<"$output")"
   if ! jq -e --arg template_id "$template_id" '.templateId == $template_id and .status == "running"' <<<"$output" >/dev/null; then
     fail "third cluster environment response is $(jq -c . <<<"$output"), want source template id"
   fi
+  assert_output_contains "third environment creation logs" "$(<"$env3_logs")" "cluster: checking cluster node capacity"
+  assert_output_contains "third environment creation logs" "$(<"$env3_logs")" "cluster: recording source environment"
   assert_node_counts "first node after third environment" "$VM_NODE_URL" 1 1 2
   assert_node_counts "second node after third environment" "$SECOND_VM_NODE_URL" 1 1 1
 

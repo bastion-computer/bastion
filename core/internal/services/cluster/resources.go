@@ -92,9 +92,19 @@ func (s *Service) RemoveSecret(ctx context.Context, namespaceSelector NamespaceS
 }
 
 // CreateTemplate creates a source template and a temporary node derivative, then stores its exported archive.
+//
+//nolint:gocyclo // Coordinates validation, derivative provisioning, archive persistence, streamed progress, and cleanup.
 func (s *Service) CreateTemplate(ctx context.Context, namespaceSelector NamespaceSelector, req template.CreateRequest) (template.Metadata, error) {
+	if err := writeClusterProgress(req.Logs, "resolving namespace"); err != nil {
+		return template.Metadata{}, err
+	}
+
 	namespace, err := s.resolveNamespace(ctx, namespaceSelector)
 	if err != nil {
+		return template.Metadata{}, err
+	}
+
+	if err := writeClusterProgress(req.Logs, "validating template config"); err != nil {
 		return template.Metadata{}, err
 	}
 
@@ -102,7 +112,15 @@ func (s *Service) CreateTemplate(ctx context.Context, namespaceSelector Namespac
 		return template.Metadata{}, err
 	}
 
+	if err := writeClusterProgress(req.Logs, "checking template archive storage"); err != nil {
+		return template.Metadata{}, err
+	}
+
 	if err := s.requireArchiveStore(); err != nil {
+		return template.Metadata{}, err
+	}
+
+	if err := writeClusterProgress(req.Logs, "selecting cluster node"); err != nil {
 		return template.Metadata{}, err
 	}
 
@@ -128,8 +146,16 @@ func (s *Service) CreateTemplate(ctx context.Context, namespaceSelector Namespac
 		}
 	}()
 
-	derivativeConfig, sourceDerivativeSecrets, err := s.createDerivativeSecrets(ctx, namespace.ID, node, req.Config, &derivatives)
+	if err := writeClusterProgress(req.Logs, "preparing derivative secrets"); err != nil {
+		return template.Metadata{}, err
+	}
+
+	derivativeConfig, sourceDerivativeSecrets, err := s.createDerivativeSecrets(ctx, namespace.ID, node, req.Config, &derivatives, req.Logs)
 	if err != nil {
+		return template.Metadata{}, err
+	}
+
+	if err := writeClusterProgress(req.Logs, "creating derivative template on cluster node %s", node.ID); err != nil {
 		return template.Metadata{}, err
 	}
 
@@ -146,8 +172,16 @@ func (s *Service) CreateTemplate(ctx context.Context, namespaceSelector Namespac
 	}
 	defer derivativeArchive.cleanup()
 
+	if err := writeClusterProgress(req.Logs, "exporting derivative template archive from cluster node %s", node.ID); err != nil {
+		return template.Metadata{}, err
+	}
+
 	if err := s.nodeClient.ExportTemplate(ctx, node.URL, createdDerivative.ID, derivativeArchive.file); err != nil {
 		return template.Metadata{}, fmt.Errorf("%w: export derivative template from cluster node %s: %w", failure.ErrFailedDependency, node.ID, err)
+	}
+
+	if err := writeClusterProgress(req.Logs, "cleaning up derivative resources"); err != nil {
+		return template.Metadata{}, err
 	}
 
 	if err := derivatives.cleanup(ctx); err != nil {
@@ -156,7 +190,7 @@ func (s *Service) CreateTemplate(ctx context.Context, namespaceSelector Namespac
 
 	cleanupDerivatives = false
 
-	if err := s.insertTemplateWithArchive(ctx, namespace.ID, sourceTemplate, archiveKey, derivativeArchive.file, node.ID, createdDerivative.ID, sourceDerivativeSecrets); err != nil {
+	if err := s.insertTemplateWithArchive(ctx, namespace.ID, sourceTemplate, archiveKey, derivativeArchive.file, node.ID, createdDerivative.ID, sourceDerivativeSecrets, req.Logs); err != nil {
 		return template.Metadata{}, err
 	}
 
@@ -217,7 +251,7 @@ func (s *Service) ImportTemplate(ctx context.Context, namespaceSelector Namespac
 	sourceTemplate := template.Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append(json.RawMessage(nil), archiveTemplate.Config...), CreatedAt: services.Now()}
 	archiveKey := templateArchiveObjectKey(namespace.ID, sourceTemplate.ID)
 
-	if err := s.insertTemplateWithArchive(ctx, namespace.ID, sourceTemplate, archiveKey, sourceArchive.file, "", "", nil); err != nil {
+	if err := s.insertTemplateWithArchive(ctx, namespace.ID, sourceTemplate, archiveKey, sourceArchive.file, "", "", nil, nil); err != nil {
 		return template.Metadata{}, err
 	}
 
@@ -378,7 +412,7 @@ type derivativeSecretMapping struct {
 	derivativeID string
 }
 
-func (s *Service) createDerivativeSecrets(ctx context.Context, namespaceID string, node Node, config json.RawMessage, cleanup *derivativeCleanup) (json.RawMessage, []derivativeSecretMapping, error) {
+func (s *Service) createDerivativeSecrets(ctx context.Context, namespaceID string, node Node, config json.RawMessage, cleanup *derivativeCleanup, logs io.Writer) (json.RawMessage, []derivativeSecretMapping, error) {
 	mappingsBySourceID := map[string]string{}
 	mappings := []derivativeSecretMapping{}
 
@@ -394,6 +428,10 @@ func (s *Service) createDerivativeSecrets(ctx context.Context, namespaceID strin
 
 		if derivativeID, ok := mappingsBySourceID[sourceSecret.ID]; ok {
 			return derivativeID, nil
+		}
+
+		if err := writeClusterProgress(logs, "creating derivative secret on cluster node %s", node.ID); err != nil {
+			return "", err
 		}
 
 		created, err := s.nodeClient.CreateSecret(ctx, node.URL, secret.CreateRequest{Value: sourceSecret.Value})
@@ -456,7 +494,7 @@ func (s *Service) getSecretInNamespace(ctx context.Context, namespaceID, secretI
 	return resource, nil
 }
 
-func (s *Service) insertTemplateWithArchive(ctx context.Context, namespaceID string, resource template.Template, archiveKey string, sourceArchive *os.File, nodeID, derivativeTemplateID string, derivativeSecrets []derivativeSecretMapping) error {
+func (s *Service) insertTemplateWithArchive(ctx context.Context, namespaceID string, resource template.Template, archiveKey string, sourceArchive *os.File, nodeID, derivativeTemplateID string, derivativeSecrets []derivativeSecretMapping, logs io.Writer) error {
 	rewrittenArchive, err := createTempFile("bastion-cluster-source-*.tar.zst")
 	if err != nil {
 		return err
@@ -468,12 +506,21 @@ func (s *Service) insertTemplateWithArchive(ctx context.Context, namespaceID str
 	}
 
 	archiveTemplate := templatearchive.Template{ID: resource.ID, Key: services.CopyStringPtr(resource.Key), Config: resource.Config}
+
+	if err := writeClusterProgress(logs, "rewriting source template archive"); err != nil {
+		return err
+	}
+
 	if err := templatearchive.RewriteTemplate(ctx, sourceArchive, rewrittenArchive.file, archiveTemplate); err != nil {
 		return fmt.Errorf("rewrite template archive manifest: %w", err)
 	}
 
 	if _, err := rewrittenArchive.file.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("rewind source template archive: %w", err)
+	}
+
+	if err := writeClusterProgress(logs, "storing source template archive"); err != nil {
+		return err
 	}
 
 	if err := s.archiveStore.Put(ctx, archiveKey, rewrittenArchive.file); err != nil {
@@ -486,6 +533,10 @@ func (s *Service) insertTemplateWithArchive(ctx context.Context, namespaceID str
 			_ = s.archiveStore.Delete(context.Background(), archiveKey)
 		}
 	}()
+
+	if err := writeClusterProgress(logs, "recording source template"); err != nil {
+		return err
+	}
 
 	if err := s.insertTemplate(ctx, namespaceID, resource, archiveKey, nodeID, derivativeTemplateID, derivativeSecrets); err != nil {
 		return err
