@@ -573,6 +573,7 @@ toolchain_config() {
   local verify_github
   local verify_aws
   local verify_docker
+  local verify_openjdk
   local verify_uv
 
   verify_github="$(printf '%s\n' \
@@ -615,6 +616,16 @@ toolchain_config() {
     'python_path="$(uv python find 3.13)"' \
     'test -x "$python_path"' \
     '"$python_path" --version > /opt/bastion-e2e-uv/python-version')"
+  verify_openjdk="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-openjdk' \
+    'java -version 2> /opt/bastion-e2e-openjdk/java-version' \
+    'javac -version > /opt/bastion-e2e-openjdk/javac-version 2>&1' \
+    'test -n "${JAVA_HOME:-}"' \
+    'test -x "$JAVA_HOME/bin/java"' \
+    'printf "%s\n" "$JAVA_HOME" > /opt/bastion-e2e-openjdk/java-home' \
+    'grep -q "^JAVA_HOME=" /etc/environment' \
+    'test -s /etc/profile.d/bastion-openjdk.sh')"
 
   jq -nc \
     --arg token "$token" \
@@ -624,6 +635,7 @@ toolchain_config() {
     --arg verify_github "$verify_github" \
     --arg verify_aws "$verify_aws" \
     --arg verify_docker "$verify_docker" \
+    --arg verify_openjdk "$verify_openjdk" \
     --arg verify_uv "$verify_uv" \
     '{
     agents: {opencode: {}},
@@ -636,6 +648,8 @@ toolchain_config() {
         {use: "setup_mise"},
         {use: "setup_uv", with: {python_version: "3.13"}},
         {run: $verify_uv},
+        {use: "setup-openjdk"},
+        {run: $verify_openjdk},
         {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
         {run: $verify_github},
         {use: "setup_aws_cli", with: {access_key_id: $aws_access_key_id, secret_access_key: $aws_secret_access_key, session_token: $aws_session_token, region: "us-west-2", profile: "bastion-e2e", output: "json"}},
@@ -921,6 +935,10 @@ run_node_docker_case() {
   ssh_env "$env_id" "grep -Eq '^uv [0-9]' /opt/bastion-e2e-uv/version"
   ssh_env "$env_id" test -s /opt/bastion-e2e-uv/uvx-version
   ssh_env "$env_id" "grep -Eq '^Python 3\.13\.' /opt/bastion-e2e-uv/python-version"
+
+  ssh_env "$env_id" "grep -Eq '^(openjdk|java) version ' /opt/bastion-e2e-openjdk/java-version"
+  ssh_env "$env_id" "grep -Eq '^javac [0-9]' /opt/bastion-e2e-openjdk/javac-version"
+  ssh_env "$env_id" grep -q '^/usr/lib/jvm/' /opt/bastion-e2e-openjdk/java-home
 
   ssh_env "$env_id" "grep -q '^gh version' /opt/bastion-e2e-github-cli/version"
   ssh_env "$env_id" grep -q '^https$' /opt/bastion-e2e-github-cli/git-protocol

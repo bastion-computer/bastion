@@ -1,0 +1,9 @@
+{
+  "inputs": {
+    "version": {
+      "type": "number",
+      "description": "OpenJDK major version to install, for example 21. Defaults to latest."
+    }
+  },
+  "run": "sh ./install_openjdk.sh"
+}
