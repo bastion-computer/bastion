@@ -1,0 +1,17 @@
+{
+  "inputs": {
+    "api_level": {
+      "type": "number",
+      "description": "Android API level to install, for example 36. Defaults to latest stable."
+    },
+    "build_tools_version": {
+      "type": "string",
+      "description": "Android SDK Build Tools version to install, for example 36.0.0. Defaults to latest stable."
+    },
+    "extra_packages": {
+      "type": "string",
+      "description": "Whitespace-separated additional sdkmanager packages to install."
+    }
+  },
+  "run": "sh ./install_android_sdk.sh"
+}

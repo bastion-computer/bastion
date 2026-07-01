@@ -227,3 +227,63 @@ The action removes conflicting distro Docker packages when present, configures
 Docker's apt repository, installs `docker-ce`, `docker-ce-cli`, `containerd.io`,
 `docker-buildx-plugin`, and `docker-compose-plugin`, then verifies that the
 daemon is reachable with `docker info`.
+
+## `setup_android_sdk`
+
+`setup_android_sdk` installs and configures the Android SDK command-line
+toolchain required for Android app builds and emulator management.
+
+This action requires Java to already be installed. Use `setup-openjdk` earlier in
+the same template when the base image does not already include a JDK.
+
+| Input                 | Required | Default       | Description                                                       |
+| --------------------- | -------- | ------------- | ----------------------------------------------------------------- |
+| `api_level`           | No       | Latest stable | Android API level to install, for example 36.                     |
+| `build_tools_version` | No       | Latest stable | Android SDK Build Tools version to install, for example `36.0.0`. |
+| `extra_packages`      | No       | None          | Whitespace-separated additional `sdkmanager` packages to install. |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup-openjdk",
+        "with": {
+          "version": 21
+        }
+      },
+      {
+        "use": "setup_android_sdk",
+        "with": {
+          "api_level": 36,
+          "build_tools_version": "36.0.0"
+        }
+      }
+    ]
+  }
+}
+```
+
+To preinstall emulator system images or other Android SDK packages, pass their
+SDK package paths with `extra_packages`:
+
+```json
+{
+  "use": "setup_android_sdk",
+  "with": {
+    "api_level": 36,
+    "extra_packages": "system-images;android-36;google_apis;x86_64"
+  }
+}
+```
+
+The action installs command-line tools under `/opt/android-sdk`, installs
+`platform-tools`, `emulator`, one Android platform, and one Build Tools version,
+accepts Android SDK licenses non-interactively, sets `ANDROID_HOME` and
+`ANDROID_SDK_ROOT`, and exposes common tools such as `sdkmanager`, `avdmanager`,
+`adb`, and `emulator` on `PATH`.

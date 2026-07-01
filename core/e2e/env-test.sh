@@ -626,6 +626,22 @@ toolchain_config() {
     'printf "%s\n" "$JAVA_HOME" > /opt/bastion-e2e-openjdk/java-home' \
     'grep -q "^JAVA_HOME=" /etc/environment' \
     'test -s /etc/profile.d/bastion-openjdk.sh')"
+  verify_android="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-android-sdk' \
+    'test "${ANDROID_HOME:-}" = /opt/android-sdk' \
+    'test "${ANDROID_SDK_ROOT:-}" = /opt/android-sdk' \
+    'sdkmanager --version > /opt/bastion-e2e-android-sdk/sdkmanager-version' \
+    'avdmanager list target > /opt/bastion-e2e-android-sdk/avdmanager-targets' \
+    'adb version > /opt/bastion-e2e-android-sdk/adb-version' \
+    'emulator -version > /opt/bastion-e2e-android-sdk/emulator-version 2>&1' \
+    'test -d "$ANDROID_HOME/platforms/android-36"' \
+    'test -d "$ANDROID_HOME/build-tools/36.0.0"' \
+    'test -x /usr/local/bin/aapt2' \
+    'test -x /usr/local/bin/apksigner' \
+    'grep -q "^ANDROID_HOME=" /etc/environment' \
+    'grep -q "^ANDROID_SDK_ROOT=" /etc/environment' \
+    'test -s /etc/profile.d/bastion-android-sdk.sh')"
 
   jq -nc \
     --arg token "$token" \
@@ -636,6 +652,7 @@ toolchain_config() {
     --arg verify_aws "$verify_aws" \
     --arg verify_docker "$verify_docker" \
     --arg verify_openjdk "$verify_openjdk" \
+    --arg verify_android "$verify_android" \
     --arg verify_uv "$verify_uv" \
     '{
     agents: {opencode: {}},
@@ -650,6 +667,8 @@ toolchain_config() {
         {run: $verify_uv},
         {use: "setup-openjdk"},
         {run: $verify_openjdk},
+        {use: "setup_android_sdk", with: {api_level: 36, build_tools_version: "36.0.0"}},
+        {run: $verify_android},
         {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
         {run: $verify_github},
         {use: "setup_aws_cli", with: {access_key_id: $aws_access_key_id, secret_access_key: $aws_secret_access_key, session_token: $aws_session_token, region: "us-west-2", profile: "bastion-e2e", output: "json"}},
@@ -939,6 +958,11 @@ run_node_docker_case() {
   ssh_env "$env_id" "grep -Eq '^(openjdk|java) version ' /opt/bastion-e2e-openjdk/java-version"
   ssh_env "$env_id" "grep -Eq '^javac [0-9]' /opt/bastion-e2e-openjdk/javac-version"
   ssh_env "$env_id" grep -q '^/usr/lib/jvm/' /opt/bastion-e2e-openjdk/java-home
+
+  ssh_env "$env_id" "grep -Eq '^[0-9]' /opt/bastion-e2e-android-sdk/sdkmanager-version"
+  ssh_env "$env_id" grep -q 'android-36' /opt/bastion-e2e-android-sdk/avdmanager-targets
+  ssh_env "$env_id" "grep -q 'Android Debug Bridge' /opt/bastion-e2e-android-sdk/adb-version"
+  ssh_env "$env_id" "grep -q 'Android emulator version' /opt/bastion-e2e-android-sdk/emulator-version"
 
   ssh_env "$env_id" "grep -q '^gh version' /opt/bastion-e2e-github-cli/version"
   ssh_env "$env_id" grep -q '^https$' /opt/bastion-e2e-github-cli/git-protocol
