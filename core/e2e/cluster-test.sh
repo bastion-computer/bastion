@@ -31,7 +31,9 @@ NAMESPACE_IDS=()
 HOST_TEMPLATE_IDS=()
 HOST_ENV_IDS=()
 VM_NODE_URL=""
+VM_NODE_ENV_ID=""
 LAST_VM_NODE_URL=""
+LAST_VM_NODE_ENV_ID=""
 SECOND_VM_NODE_URL=""
 
 log() {
@@ -404,6 +406,7 @@ start_vm_node() {
     fail "VM node environment did not return an id"
   fi
   HOST_ENV_IDS+=("$env_id")
+  LAST_VM_NODE_ENV_ID="$env_id"
 
   copy_repo_to_vm_node "$env_id"
   start_inner_bastion_node "$env_id"
@@ -411,6 +414,7 @@ start_vm_node() {
   LAST_VM_NODE_URL="${HOST_API_URL%/}/v1/environments/$env_id/tunnels/nodeapi"
   if [ -z "$VM_NODE_URL" ]; then
     VM_NODE_URL="$LAST_VM_NODE_URL"
+    VM_NODE_ENV_ID="$LAST_VM_NODE_ENV_ID"
   fi
 
   local i=0
@@ -492,6 +496,109 @@ cluster_template_config() {
       ]
     }
   }'
+}
+
+cluster_oom_template_config() {
+  local marker=$1
+
+  jq -nc --arg marker "$marker" '{
+    agents: {opencode: {}},
+    resources: {vcpu: 1, memory: 1, volume: 5},
+    actions: {
+      init: [
+        {run: ("set -eu\nprintf \"" + $marker + "\\n\"\nsleep 600")}
+      ]
+    }
+  }'
+}
+
+kill_inner_cloud_hypervisor() {
+  local env_id=$1
+
+  run_host_cli ssh --id "$env_id" -- bash -s <<'INNER'
+set -euo pipefail
+
+for _ in $(seq 1 30); do
+  for proc in /proc/[0-9]*; do
+    if [ ! -r "$proc/cmdline" ]; then
+      continue
+    fi
+
+    cmdline="$(tr '\0' ' ' <"$proc/cmdline" 2>/dev/null || true)"
+    case "$cmdline" in
+      *cloud-hypervisor*)
+        kill -KILL "${proc##*/}"
+        exit 0
+        ;;
+    esac
+  done
+
+  sleep 1
+done
+
+exit 1
+INNER
+}
+
+run_template_oom_case() {
+  local ns template_key marker stdout_file stderr_file status create_pid i
+
+  ns="$(jq -r '.id' <<<"$(run_cli cluster namespaces create --key "$RUN_ID-oom")")"
+  NAMESPACE_IDS+=("$ns")
+
+  template_key="$RUN_ID-oom-template"
+  marker="BAS-68 template init started $RUN_ID"
+  stdout_file="$WORK_DIR/oom-template-create.out"
+  stderr_file="$WORK_DIR/oom-template-create.err"
+
+  log "starting template creation that will lose its VM"
+  timeout 300s "$BASTION" --api-url "$CLUSTER_URL" --namespace-id "$ns" templates create --key "$template_key" --config "$(cluster_oom_template_config "$marker")" >"$stdout_file" 2>"$stderr_file" &
+  create_pid=$!
+
+  i=0
+  until grep -q "$marker" "$stderr_file" 2>/dev/null || grep -q "Installing" "$stderr_file" 2>/dev/null || grep -q "bastion-guest-proxy.service" "$stderr_file" 2>/dev/null; do
+    if ! kill -0 "$create_pid" >/dev/null 2>&1; then
+      set +e
+      wait "$create_pid"
+      status=$?
+      set -e
+      fail "template creation exited before OOM simulation with status $status: $(<"$stderr_file")"
+    fi
+
+    i=$((i + 1))
+    if [ "$i" -gt 240 ]; then
+      kill "$create_pid" >/dev/null 2>&1 || true
+      wait "$create_pid" >/dev/null 2>&1 || true
+      fail "template VM did not reach a guest command before OOM simulation: $(<"$stderr_file")"
+    fi
+
+    sleep 1
+  done
+
+  log "simulating OOM kill of the node template VM"
+  if ! kill_inner_cloud_hypervisor "$VM_NODE_ENV_ID"; then
+    kill "$create_pid" >/dev/null 2>&1 || true
+    wait "$create_pid" >/dev/null 2>&1 || true
+    fail "failed to kill inner cloud-hypervisor process"
+  fi
+
+  set +e
+  wait "$create_pid"
+  status=$?
+  set -e
+
+  if [ "$status" -eq 124 ]; then
+    fail "cluster template creation hung after simulated OOM kill: $(<"$stderr_file")"
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    fail "cluster template creation succeeded after simulated OOM kill: $(<"$stdout_file")"
+  fi
+
+  assert_output_contains "OOM template creation error" "$(<"$stderr_file")" "cloud-hypervisor process exited"
+  assert_node_derivatives_removed
+
+  run_cli cluster namespaces remove --id "$ns" >/dev/null
 }
 
 assert_command_fails() {
@@ -897,6 +1004,7 @@ main() {
   start_cluster
   run_namespace_case
   run_vm_node_case
+  run_template_oom_case
   run_resource_case
   run_environment_case
   log "cluster e2e run passed"

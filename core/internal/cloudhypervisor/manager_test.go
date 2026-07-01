@@ -123,6 +123,69 @@ func TestWaitForGuestSSHRetriesUntilAuthenticated(t *testing.T) {
 	}
 }
 
+func TestRunGuestCommandStopsWhenVMProcessExits(t *testing.T) {
+	t.Parallel()
+
+	cmd := startTestCloudHypervisorProcess(t)
+	entered := make(chan struct{})
+	manager := Manager{stream: func(ctx context.Context, _ io.Writer, name string, _ ...string) error {
+		if name != "ssh" {
+			return fmt.Errorf("command name = %q, want ssh", name)
+		}
+
+		close(entered)
+		<-ctx.Done()
+
+		return ctx.Err()
+	}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	vm := testActionVM()
+	vm.EnvironmentID = "env_killed"
+	vm.VMID = "vm-killed"
+	vm.PID = cmd.Process.Pid
+
+	go func() {
+		errCh <- manager.runGuestCommand(ctx, vm, "sleep 600", nil)
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatalf("guest command did not start")
+	}
+
+	if err := cmd.Process.Kill(); err != nil {
+		cancel()
+		t.Fatalf("kill test cloud-hypervisor process: %v", err)
+	}
+
+	_ = cmd.Wait()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("guest command error is nil, want VM process exit")
+		}
+
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("guest command waited for parent context deadline: %v", err)
+		}
+
+		if !strings.Contains(err.Error(), "cloud-hypervisor process exited") {
+			t.Fatalf("guest command error = %v, want cloud-hypervisor process exit", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		cancel()
+		<-errCh
+		t.Fatal("guest command did not stop after VM process exited")
+	}
+}
+
 func TestPrepareTemplateWorkspaceUsesResourceVolumeSize(t *testing.T) {
 	t.Parallel()
 
