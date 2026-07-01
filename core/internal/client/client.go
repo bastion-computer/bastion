@@ -49,7 +49,7 @@ func New(baseURL string, opts ...Option) *Client {
 	return client
 }
 
-// WithNamespace configures cluster namespace query parameters for resource requests.
+// WithNamespace configures cluster namespace paths for resource requests.
 func WithNamespace(id, key string) Option {
 	return func(c *Client) {
 		c.namespaceID = id
@@ -567,25 +567,61 @@ func (c *Client) withNamespace(path string) string {
 		return path
 	}
 
-	if !strings.HasPrefix(path, "/v1/secrets") && !strings.HasPrefix(path, "/v1/templates") && !strings.HasPrefix(path, "/v1/environments") {
-		return path
-	}
-
 	parsed, err := url.Parse(path)
 	if err != nil {
 		return path
 	}
 
-	query := parsed.Query()
-	if c.namespaceID != "" {
-		query.Set("namespace-id", c.namespaceID)
-	} else if c.namespaceKey != "" {
-		query.Set("namespace-key", c.namespaceKey)
+	namespacedPath, ok := namespaceResourcePath(parsed.EscapedPath(), c.namespaceID, c.namespaceKey)
+	if !ok {
+		return path
 	}
 
-	parsed.RawQuery = query.Encode()
+	decodedPath, err := url.PathUnescape(namespacedPath)
+	if err != nil {
+		return path
+	}
+
+	parsed.Path = decodedPath
+	parsed.RawPath = namespacedPath
 
 	return parsed.String()
+}
+
+func namespaceResourcePath(path, namespaceID, namespaceKey string) (string, bool) {
+	var namespacePath string
+
+	switch {
+	case namespaceID != "":
+		namespacePath = "/namespaces/" + url.PathEscape(namespaceID)
+	case namespaceKey != "":
+		namespacePath = "/namespaces/by-key/" + url.PathEscape(namespaceKey)
+	default:
+		return path, false
+	}
+
+	for _, resource := range []string{"/secrets", "/templates", "/environments"} {
+		marker := "/v1" + resource
+		searchFrom := 0
+
+		for {
+			index := strings.Index(path[searchFrom:], marker)
+			if index < 0 {
+				break
+			}
+
+			index += searchFrom
+			end := index + len(marker)
+
+			if end == len(path) || path[end] == '/' {
+				return path[:index] + "/v1" + namespacePath + path[index+len("/v1"):], true
+			}
+
+			searchFrom = end
+		}
+	}
+
+	return path, false
 }
 
 func decodeHostStatusError(res *http.Response) error {

@@ -611,7 +611,7 @@ func newProxyUpgradeUpstream(t *testing.T, gotRequest chan<- proxyUpstreamReques
 func assertProxyUpstreamRequest(t *testing.T, got proxyUpstreamRequest, wantHost string) {
 	t.Helper()
 
-	wantURI := "/api/v1/environments/" + cliTestEnvironmentID + "/tunnels/" + cliTestTunnelName + "/assets/app.js?namespace-id=ns_123&mode=dev"
+	wantURI := "/api/v1/namespaces/ns_123/environments/" + cliTestEnvironmentID + "/tunnels/" + cliTestTunnelName + "/assets/app.js?mode=dev"
 	if got.method != http.MethodPost || got.requestURI != wantURI {
 		t.Fatalf("upstream request = %s %s, want POST %s", got.method, got.requestURI, wantURI)
 	}
@@ -632,7 +632,7 @@ func assertProxyUpstreamRequest(t *testing.T, got proxyUpstreamRequest, wantHost
 func assertProxyWebSocketUpstreamRequest(t *testing.T, got proxyUpstreamRequest, wantHost string) {
 	t.Helper()
 
-	wantURI := "/api/v1/environments/" + cliTestEnvironmentID + "/tunnels/" + cliTestTunnelName + "/hmr?namespace-id=ns_123&token=abc"
+	wantURI := "/api/v1/namespaces/ns_123/environments/" + cliTestEnvironmentID + "/tunnels/" + cliTestTunnelName + "/hmr?token=abc"
 	if got.method != http.MethodGet || got.requestURI != wantURI {
 		t.Fatalf("upstream websocket request = %s %s, want GET %s", got.method, got.requestURI, wantURI)
 	}

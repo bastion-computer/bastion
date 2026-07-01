@@ -89,7 +89,7 @@ Host-initiated guest proxy traffic must use `internal/tunnel.DialGuestProxy`; Cl
 - `--log-format`: log handler format. Defaults to `json` and can be set with `BASTION_CLUSTER_LOG_FORMAT` or `BASTION_LOG_FORMAT`; supported values are `json` and `text`.
 - `--log-level`: minimum log level. Defaults to `info` and can be set with `BASTION_CLUSTER_LOG_LEVEL` or `BASTION_LOG_LEVEL`; supported values are `debug`, `info`, `warn`, and `error`.
 
-The cluster service is supported on Linux and macOS. It exposes `/v1/cluster/nodes`, `/v1/cluster/namespaces`, `/v1/health`, `/v1/utilization`, plus namespace-scoped `/v1/secrets`, `/v1/templates`, and `/v1/environments` routes. Aggregate health and utilization call each registered node's Bastion API URL. Cluster resource routes require exactly one `namespace-id` or `namespace-key` query parameter, store source resources in Postgres, and use node derivatives plus S3-compatible archives for template and environment orchestration.
+The cluster service is supported on Linux and macOS. It exposes `/v1/cluster/nodes`, `/v1/cluster/namespaces`, `/v1/health`, `/v1/utilization`, plus namespace-scoped resource routes under `/v1/namespaces/:id/(secrets | templates | environments)` and `/v1/namespaces/by-key/:key/(secrets | templates | environments)`. Aggregate health and utilization call each registered node's Bastion API URL. Cluster resource routes store source resources in Postgres and use node derivatives plus S3-compatible archives for template and environment orchestration.
 
 ## Database
 

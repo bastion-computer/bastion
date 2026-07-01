@@ -146,16 +146,56 @@ func urlWithNamespace(value, namespaceID, namespaceKey string) string {
 		return value
 	}
 
-	query := parsed.Query()
-	if namespaceID != "" {
-		query.Set("namespace-id", namespaceID)
-	} else if namespaceKey != "" {
-		query.Set("namespace-key", namespaceKey)
+	namespacedPath, ok := namespaceResourcePath(parsed.EscapedPath(), namespaceID, namespaceKey)
+	if !ok {
+		return value
 	}
 
-	parsed.RawQuery = query.Encode()
+	decodedPath, err := url.PathUnescape(namespacedPath)
+	if err != nil {
+		return value
+	}
+
+	parsed.Path = decodedPath
+	parsed.RawPath = namespacedPath
 
 	return parsed.String()
+}
+
+func namespaceResourcePath(path, namespaceID, namespaceKey string) (string, bool) {
+	var namespacePath string
+
+	switch {
+	case namespaceID != "":
+		namespacePath = "/namespaces/" + url.PathEscape(namespaceID)
+	case namespaceKey != "":
+		namespacePath = "/namespaces/by-key/" + url.PathEscape(namespaceKey)
+	default:
+		return path, false
+	}
+
+	for _, resource := range []string{"/secrets", "/templates", "/environments"} {
+		marker := "/v1" + resource
+		searchFrom := 0
+
+		for {
+			index := strings.Index(path[searchFrom:], marker)
+			if index < 0 {
+				break
+			}
+
+			index += searchFrom
+			end := index + len(marker)
+
+			if end == len(path) || path[end] == '/' {
+				return path[:index] + "/v1" + namespacePath + path[index+len("/v1"):], true
+			}
+
+			searchFrom = end
+		}
+	}
+
+	return path, false
 }
 
 func newEnvironmentRemoveCommand(opts *rootOptions) *cobra.Command {
