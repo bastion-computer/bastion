@@ -119,6 +119,11 @@ bastion --api-url http://cluster.internal:3150 \
   secrets create --key OPENAI_API_KEY --value "$OPENAI_API_KEY"
 ```
 
+The CLI keeps namespace selection in flags, environment variables, or persisted
+client config, but cluster API requests encode the namespace in the path, such as
+`/v1/namespaces/ns_xxxxxx/templates` or
+`/v1/namespaces/by-key/team-a/templates`.
+
 For regular use, persist the cluster API URL and namespace locally:
 
 ```sh

@@ -44,6 +44,24 @@ func TestOpenCodeCommandUsesKeyProxyURL(t *testing.T) {
 	}
 }
 
+func TestOpenCodeProxyURLIncludesNamespacePath(t *testing.T) {
+	t.Parallel()
+
+	got := openCodeProxyURL("http://localhost:3150/api/", "env_123", "", "ns_123", "")
+	want := "http://localhost:3150/api/v1/namespaces/ns_123/environments/env_123/agents/opencode"
+
+	if got != want {
+		t.Fatalf("proxy URL = %q, want %q", got, want)
+	}
+
+	got = openCodeProxyURL("http://localhost:3150", "", "feature/dev", "", "team-a")
+	want = "http://localhost:3150/v1/namespaces/by-key/team-a/environments/by-key/feature%2Fdev/agents/opencode"
+
+	if got != want {
+		t.Fatalf("keyed proxy URL = %q, want %q", got, want)
+	}
+}
+
 func runOpenCodeCommandProxyURL(t *testing.T, apiURL string, args []string) string {
 	t.Helper()
 

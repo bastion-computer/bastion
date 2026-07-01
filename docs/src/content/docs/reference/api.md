@@ -6,6 +6,19 @@ description: Local HTTP API endpoints exposed by Bastion.
 The host API is served by `bastion start api` on `http://localhost:3148` by default.
 The CLI is a client for this API.
 
+When using the cluster API served by `bastion start cluster`, namespace-scoped
+resource endpoints use the same secret, template, and environment paths with a
+namespace prefix:
+
+```http
+/v1/namespaces/:id/(secrets | templates | environments)/...
+/v1/namespaces/by-key/:key/(secrets | templates | environments)/...
+```
+
+For example, `POST /v1/secrets` becomes
+`POST /v1/namespaces/ns_xxxxxx/secrets` with a namespace ID or
+`POST /v1/namespaces/by-key/team-a/secrets` with a namespace key.
+
 ## Health
 
 ```http

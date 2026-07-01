@@ -217,7 +217,8 @@ Namespace IDs start with `ns_`. Namespace keys are optional, unique, and cannot
 start with the reserved `ns_` prefix. When using the cluster API for `secrets`,
 `templates`, `env`, `ssh`, `proxy`, or `opencode`, select a namespace with
 `--namespace-id`, `--namespace-key`, environment variables, or persisted client
-config.
+config. The CLI sends cluster resource requests under `/v1/namespaces/:id/...`
+or `/v1/namespaces/by-key/:key/...`.
 
 ## `bastion utilization`
 

@@ -927,20 +927,20 @@ run_environment_case() {
   assert_command_fails run_cli ssh --id "$env1" -- true
 
   output="$(run_cli --namespace-id "$ns_a" env tunnels --id "$env1")"
-  if ! jq -e --arg url "${CLUSTER_URL%/}/v1/environments/$env1/tunnels/cluster?namespace-id=$ns_a" '.entries | length == 1 and .[0].name == "cluster" and .[0].url == $url' <<<"$output" >/dev/null; then
+  if ! jq -e --arg url "${CLUSTER_URL%/}/v1/namespaces/$ns_a/environments/$env1/tunnels/cluster" '.entries | length == 1 and .[0].name == "cluster" and .[0].url == $url' <<<"$output" >/dev/null; then
     fail "cluster env tunnels response is $(jq -c . <<<"$output"), want source tunnel URL"
   fi
 
-  output="$(curl -fsS --connect-timeout 5 --max-time 20 "${CLUSTER_URL%/}/v1/environments/$env1/tunnels/cluster?namespace-id=$ns_a")"
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "${CLUSTER_URL%/}/v1/namespaces/$ns_a/environments/$env1/tunnels/cluster")"
   if [ "$output" != "cluster-env-ok" ]; then
     fail "cluster tunnel returned $output, want cluster-env-ok"
   fi
 
-  output="$(curl -fsS --connect-timeout 5 --max-time 20 "${CLUSTER_URL%/}/v1/environments/$env1/agents/opencode/global/health?namespace-id=$ns_a")"
+  output="$(curl -fsS --connect-timeout 5 --max-time 20 "${CLUSTER_URL%/}/v1/namespaces/$ns_a/environments/$env1/agents/opencode/global/health")"
   if ! jq -e '.healthy == true' <<<"$output" >/dev/null; then
     fail "cluster opencode health response is $(jq -c . <<<"$output"), want healthy true"
   fi
-  assert_cluster_opencode_cli_url "$env1" "$ns_a" "${CLUSTER_URL%/}/v1/environments/$env1/agents/opencode?namespace-id=$ns_a"
+  assert_cluster_opencode_cli_url "$env1" "$ns_a" "${CLUSTER_URL%/}/v1/namespaces/$ns_a/environments/$env1/agents/opencode"
 
   proxy_logs="$WORK_DIR/cluster-proxy.log"
   : >"$proxy_logs"

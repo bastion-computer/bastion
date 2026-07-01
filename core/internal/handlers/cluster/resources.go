@@ -157,7 +157,7 @@ func (h Handler) RemoveTemplateByKey(c *gin.Context) {
 }
 
 func namespaceSelector(c *gin.Context) clusterservice.NamespaceSelector {
-	return clusterservice.NamespaceSelector{ID: c.Query("namespace-id"), Key: c.Query("namespace-key")}
+	return clusterservice.NamespaceSelector{ID: c.Param("namespaceID"), Key: c.Param("namespaceKey")}
 }
 
 type templateCreateStream struct {

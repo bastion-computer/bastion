@@ -144,7 +144,7 @@ func TestImportTemplateUploadsArchive(t *testing.T) {
 }
 
 //nolint:gocyclo // Verifies namespace propagation across all resource request shapes in one table fixture.
-func TestNamespaceQueryParamsApplyToResourceRequests(t *testing.T) {
+func TestNamespacePathAppliesToResourceRequests(t *testing.T) {
 	t.Parallel()
 
 	paths := make([]string, 0, 9)
@@ -157,20 +157,20 @@ func TestNamespaceQueryParamsApplyToResourceRequests(t *testing.T) {
 			paths = append(paths, req.Method+" "+req.URL.String())
 
 			switch req.URL.Path {
-			case "/v1/secrets":
+			case "/v1/namespaces/ns_123/secrets":
 				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"sec_created","key":"client-secret","createdAt":"now"}`), nil
-			case "/v1/templates":
+			case "/v1/namespaces/ns_123/templates":
 				var body bytes.Buffer
 				if err := json.NewEncoder(&body).Encode(template.CreateStreamEvent{Type: template.StreamEventResult, Template: &template.Metadata{ID: "tpl_created", Key: &templateKey}}); err != nil {
 					t.Fatalf("encode template stream: %v", err)
 				}
 
 				return &http.Response{StatusCode: http.StatusOK, Status: clientTestOKStatus, Body: io.NopCloser(&body)}, nil
-			case "/v1/templates/by-key/dev/export":
+			case "/v1/namespaces/ns_123/templates/by-key/dev/export":
 				return &http.Response{StatusCode: http.StatusOK, Status: clientTestOKStatus, Body: io.NopCloser(bytes.NewBufferString("template-archive"))}, nil
-			case "/v1/templates/import":
+			case "/v1/namespaces/ns_123/templates/import":
 				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"tpl_imported","key":"dev","createdAt":"now"}`), nil
-			case "/v1/environments":
+			case "/v1/namespaces/ns_123/environments":
 				if req.Method == http.MethodPost {
 					var body bytes.Buffer
 					if err := json.NewEncoder(&body).Encode(environment.CreateStreamEvent{Type: environment.StreamEventResult, Environment: &environment.Environment{ID: "env_created", Status: "running", TemplateID: "tpl_created", Tags: []string{}, CreatedAt: "now", UpdatedAt: "now"}}); err != nil {
@@ -181,9 +181,9 @@ func TestNamespaceQueryParamsApplyToResourceRequests(t *testing.T) {
 				}
 
 				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[]}`), nil
-			case "/v1/environments/env_created", "/v1/environments/by-key/dev-env":
+			case "/v1/namespaces/ns_123/environments/env_created", "/v1/namespaces/ns_123/environments/by-key/dev-env":
 				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"env_created","status":"running","templateId":"tpl_created","tags":[],"createdAt":"now","updatedAt":"now"}`), nil
-			case "/v1/environments/env_created/tunnels":
+			case "/v1/namespaces/ns_123/environments/env_created/tunnels":
 				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"entries":[]}`), nil
 			default:
 				t.Fatalf("unexpected path %s", req.URL.Path)
@@ -231,30 +231,31 @@ func TestNamespaceQueryParamsApplyToResourceRequests(t *testing.T) {
 	}
 
 	want := []string{
-		"POST http://bastion.test/v1/secrets?namespace-id=ns_123",
-		"POST http://bastion.test/v1/templates?namespace-id=ns_123",
-		"GET http://bastion.test/v1/templates/by-key/dev/export?namespace-id=ns_123",
-		"POST http://bastion.test/v1/templates/import?key=dev&namespace-id=ns_123",
-		"POST http://bastion.test/v1/environments?namespace-id=ns_123",
-		"GET http://bastion.test/v1/environments?cursor=next&limit=10&namespace-id=ns_123&tag=prod",
-		"GET http://bastion.test/v1/environments/env_created?namespace-id=ns_123",
-		"GET http://bastion.test/v1/environments/by-key/dev-env?namespace-id=ns_123",
-		"GET http://bastion.test/v1/environments/env_created/tunnels?namespace-id=ns_123",
+		"POST http://bastion.test/v1/namespaces/ns_123/secrets",
+		"POST http://bastion.test/v1/namespaces/ns_123/templates",
+		"GET http://bastion.test/v1/namespaces/ns_123/templates/by-key/dev/export",
+		"POST http://bastion.test/v1/namespaces/ns_123/templates/import?key=dev",
+		"POST http://bastion.test/v1/namespaces/ns_123/environments",
+		"GET http://bastion.test/v1/namespaces/ns_123/environments?cursor=next&limit=10&tag=prod",
+		"GET http://bastion.test/v1/namespaces/ns_123/environments/env_created",
+		"GET http://bastion.test/v1/namespaces/ns_123/environments/by-key/dev-env",
+		"GET http://bastion.test/v1/namespaces/ns_123/environments/env_created/tunnels",
 	}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("paths = %#v, want %#v", paths, want)
 	}
 }
 
-func TestNamespaceQueryParamsUseNamespaceKey(t *testing.T) {
+func TestNamespacePathUsesNamespaceKey(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{
 		baseURL:      clientTestBaseURL,
 		namespaceKey: "team-a",
 		http: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if req.URL.Query().Get("namespace-key") != "team-a" || req.URL.Query().Get("namespace-id") != "" {
-				t.Fatalf("query = %v, want namespace-key only", req.URL.Query())
+			query := req.URL.Query()
+			if req.URL.Path != "/v1/namespaces/by-key/team-a/templates" || query.Get("limit") != "20" || query.Get("namespace-id") != "" || query.Get("namespace-key") != "" {
+				t.Fatalf("request URL = %s, want namespace key path without namespace query", req.URL.String())
 			}
 
 			return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[]}`), nil

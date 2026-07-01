@@ -246,14 +246,14 @@ func TestEnvironmentTunnelURLIncludesNamespace(t *testing.T) {
 	t.Parallel()
 
 	got := environmentTunnelURL("http://localhost:3150/api/", "env_123", "", "frontend", "ns_123", "")
-	want := "http://localhost:3150/api/v1/environments/env_123/tunnels/frontend?namespace-id=ns_123"
+	want := "http://localhost:3150/api/v1/namespaces/ns_123/environments/env_123/tunnels/frontend"
 
 	if got != want {
 		t.Fatalf("tunnel URL = %q, want %q", got, want)
 	}
 
 	got = environmentTunnelURL("http://localhost:3150", "", "dev/env", "frontend", "", "team-a")
-	want = "http://localhost:3150/v1/environments/by-key/dev%2Fenv/tunnels/frontend?namespace-key=team-a"
+	want = "http://localhost:3150/v1/namespaces/by-key/team-a/environments/by-key/dev%2Fenv/tunnels/frontend"
 
 	if got != want {
 		t.Fatalf("keyed tunnel URL = %q, want %q", got, want)
