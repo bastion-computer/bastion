@@ -15,7 +15,7 @@ Built-in actions are documented separately by category:
 | Category                                           | Actions                                                                                            |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | [Utility tools](/actions/built-ins/utility-tools/) | `set_default_ssh_directory`, `setup_github_cli`, `setup_aws_cli`, `setup_docker`, `write_env_file` |
-| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_bun`, `setup_mise`, `setup_uv`                                                |
+| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_bun`, `setup_mise`, `setup_uv`, `setup-openjdk`                               |
 
 ## Package Layout
 

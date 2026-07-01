@@ -173,3 +173,49 @@ template only needs uv without preinstalling a managed Python:
 
 When `python_version` is provided, the action runs `uv python install` and
 verifies the installed interpreter with `uv python find`.
+
+## `setup-openjdk`
+
+`setup-openjdk` installs an OpenJDK JDK from Ubuntu's apt repositories.
+
+| Input     | Required | Default | Description                                       |
+| --------- | -------- | ------- | ------------------------------------------------- |
+| `version` | No       | Latest  | OpenJDK major version to install, for example 21. |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup-openjdk",
+        "with": {
+          "version": 21
+        }
+      }
+    ]
+  }
+}
+```
+
+Omit `version` to install the latest OpenJDK JDK package available from the
+guest apt repositories:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [{ "use": "setup-openjdk" }]
+  }
+}
+```
+
+The action installs the selected `openjdk-<version>-jdk-headless` package, sets
+`JAVA_HOME`, and verifies the installation with `java -version` and
+`javac -version`.
