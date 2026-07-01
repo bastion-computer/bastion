@@ -749,6 +749,61 @@ func TestSetupOpenJDKPresetInputs(t *testing.T) {
 	}
 }
 
+func TestSetupAndroidSDKPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_android_sdk")
+	if err != nil {
+		t.Fatalf("load setup_android_sdk preset: %v", err)
+	}
+
+	expected := map[string]string{
+		"api_level":           presetInputTypeNumber,
+		"build_tools_version": presetInputTypeString,
+		"extra_packages":      presetInputTypeString,
+	}
+
+	if len(preset.manifest.Inputs) != len(expected) {
+		t.Fatalf("setup_android_sdk input count = %d, want %d: %#v", len(preset.manifest.Inputs), len(expected), preset.manifest.Inputs)
+	}
+
+	for name, wantType := range expected {
+		input, ok := preset.manifest.Inputs[name]
+		if !ok {
+			t.Fatalf("setup_android_sdk input %s is not defined: %#v", name, preset.manifest.Inputs)
+		}
+
+		if input.Type != wantType || input.Required {
+			t.Fatalf("setup_android_sdk input %s = %#v, want optional %s", name, input, wantType)
+		}
+	}
+
+	if preset.manifest.Run != "sh ./install_android_sdk.sh" {
+		t.Fatalf("setup_android_sdk run = %q, want install_android_sdk script", preset.manifest.Run)
+	}
+
+	if err := validatePresetActionInputs(preset, nil); err != nil {
+		t.Fatalf("validate setup_android_sdk inputs without values: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{
+		"api_level":           float64(36),
+		"build_tools_version": "36.0.0",
+		"extra_packages":      "system-images;android-36;google_apis;x86_64",
+	}); err != nil {
+		t.Fatalf("validate setup_android_sdk inputs with values: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{"api_level": "36"}); err == nil || !strings.Contains(err.Error(), "input api_level: must be a number") {
+		t.Fatalf("validate setup_android_sdk invalid api_level error = %v, want type mismatch", err)
+	}
+}
+
 func TestSetupAWSCLIPresetInputs(t *testing.T) {
 	t.Parallel()
 
