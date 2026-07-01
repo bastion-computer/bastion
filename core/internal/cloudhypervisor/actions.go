@@ -254,7 +254,14 @@ func (m Manager) runGuestCommand(ctx context.Context, vm VM, command string, log
 		return err
 	}
 
-	if err := m.stream(ctx, logs, "ssh", args...); err != nil {
+	runCtx, stop := vmLivenessContext(ctx, vm)
+	defer stop()
+
+	if err := m.stream(runCtx, logs, "ssh", args...); err != nil {
+		if livenessErr := vmLivenessError(runCtx); livenessErr != nil {
+			return sanitizeGuestCommandError(livenessErr)
+		}
+
 		return sanitizeGuestCommandError(err)
 	}
 
@@ -283,6 +290,9 @@ func guestCommandArgs(vm VM, command string) ([]string, error) {
 	return []string{
 		"-i", vm.SSHKeyPath,
 		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=5",
+		"-o", "ServerAliveCountMax=3",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",

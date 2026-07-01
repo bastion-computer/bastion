@@ -45,7 +45,7 @@ func (m Manager) setupTemplateGuestProxy(ctx context.Context, vm VM, logs io.Wri
 		return guestProxyError{operation: guestProxySetup, err: err}
 	}
 
-	if err := m.run(ctx, "scp", args...); err != nil {
+	if err := m.runForVM(ctx, vm, "scp", args...); err != nil {
 		return guestProxyError{operation: guestProxySetup, err: sanitizeGuestCommandError(err)}
 	}
 
@@ -142,6 +142,9 @@ func scpGuestFileArgs(vm VM, src, guestPath string) ([]string, error) {
 	return []string{
 		"-i", vm.SSHKeyPath,
 		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=5",
+		"-o", "ServerAliveCountMax=3",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",

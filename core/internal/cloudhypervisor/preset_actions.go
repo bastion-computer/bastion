@@ -275,7 +275,7 @@ func (m Manager) copyPresetActionToGuest(ctx context.Context, vm VM, srcDir, gue
 		return err
 	}
 
-	if err := m.run(ctx, "scp", args...); err != nil {
+	if err := m.runForVM(ctx, vm, "scp", args...); err != nil {
 		return fmt.Errorf("copy preset action to guest: %w", sanitizeGuestCommandError(err))
 	}
 
@@ -304,6 +304,9 @@ func scpGuestArgs(vm VM, srcDir, guestDir string) ([]string, error) {
 	return []string{
 		"-i", vm.SSHKeyPath,
 		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=5",
+		"-o", "ServerAliveCountMax=3",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",

@@ -35,6 +35,7 @@ const (
 	apiWait              = 15 * time.Second
 	vmmStartErrorTimeout = 5 * time.Second
 	snapshotNetworkDelay = 1500 * time.Millisecond
+	vmLivenessPoll       = 100 * time.Millisecond
 	vmCPUsEnv            = "BASTION_VM_CPUS"
 	vmMemoryBytesEnv     = "BASTION_VM_MEMORY_BYTES"
 	linuxCmdline         = "root=LABEL=cloudimg-rootfs rootwait ro console=ttyS0"
@@ -1489,6 +1490,84 @@ func (m Manager) cleanupVM(ctx context.Context, vm VM, removeDir bool) {
 	if removeDir && vm.EnvDir != "" {
 		_ = os.RemoveAll(vm.EnvDir)
 	}
+}
+
+func (m Manager) runForVM(ctx context.Context, vm VM, name string, args ...string) error {
+	runCtx, stop := vmLivenessContext(ctx, vm)
+	defer stop()
+
+	if err := m.run(runCtx, name, args...); err != nil {
+		if livenessErr := vmLivenessError(runCtx); livenessErr != nil {
+			return livenessErr
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func vmLivenessContext(ctx context.Context, vm VM) (context.Context, func()) {
+	if vm.PID <= 0 {
+		return ctx, func() {}
+	}
+
+	livenessCtx, cancel := context.WithCancelCause(ctx)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		ticker := time.NewTicker(vmLivenessPoll)
+		defer ticker.Stop()
+
+		for {
+			if !processMatches(vm.PID, vm.VMID) {
+				cancel(vmProcessExitError{environmentID: vm.EnvironmentID, pid: vm.PID})
+
+				return
+			}
+
+			select {
+			case <-livenessCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
+	return livenessCtx, func() {
+		cancel(context.Canceled)
+		<-done
+	}
+}
+
+func vmLivenessError(ctx context.Context) error {
+	err := context.Cause(ctx)
+	if errors.Is(err, errVMProcessExited) {
+		return err
+	}
+
+	return nil
+}
+
+var errVMProcessExited = errors.New("cloud-hypervisor process exited")
+
+type vmProcessExitError struct {
+	environmentID string
+	pid           int
+}
+
+func (e vmProcessExitError) Error() string {
+	if e.environmentID != "" {
+		return "cloud-hypervisor process exited for VM " + e.environmentID
+	}
+
+	return "cloud-hypervisor process exited for pid " + strconv.Itoa(e.pid)
+}
+
+func (e vmProcessExitError) Unwrap() error {
+	return errVMProcessExited
 }
 
 func (m Manager) withDefaults() Manager {
