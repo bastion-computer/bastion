@@ -764,7 +764,11 @@ func TestSetupAndroidSDKPresetInputs(t *testing.T) {
 
 	expected := map[string]string{
 		"api_level":           presetInputTypeNumber,
+		"avd_device":          presetInputTypeString,
+		"avd_name":            presetInputTypeString,
+		"avd_system_image":    presetInputTypeString,
 		"build_tools_version": presetInputTypeString,
+		"create_avd":          presetInputTypeBoolean,
 		"extra_packages":      presetInputTypeString,
 	}
 
@@ -793,7 +797,11 @@ func TestSetupAndroidSDKPresetInputs(t *testing.T) {
 
 	if err := validatePresetActionInputs(preset, map[string]any{
 		"api_level":           float64(36),
+		"avd_device":          "pixel_9",
+		"avd_name":            "pixel_9",
+		"avd_system_image":    "system-images;android-36;google_apis;x86_64",
 		"build_tools_version": "36.0.0",
+		"create_avd":          true,
 		"extra_packages":      "system-images;android-36;google_apis;x86_64",
 	}); err != nil {
 		t.Fatalf("validate setup_android_sdk inputs with values: %v", err)
@@ -801,6 +809,24 @@ func TestSetupAndroidSDKPresetInputs(t *testing.T) {
 
 	if err := validatePresetActionInputs(preset, map[string]any{"api_level": "36"}); err == nil || !strings.Contains(err.Error(), "input api_level: must be a number") {
 		t.Fatalf("validate setup_android_sdk invalid api_level error = %v, want type mismatch", err)
+	}
+}
+
+func TestSetupAndroidSDKPresetRejectsInvalidCreateAVDInput(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_android_sdk")
+	if err != nil {
+		t.Fatalf("load setup_android_sdk preset: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{"create_avd": "true"}); err == nil || !strings.Contains(err.Error(), "input create_avd: must be a boolean") {
+		t.Fatalf("validate setup_android_sdk invalid create_avd error = %v, want type mismatch", err)
 	}
 }
 

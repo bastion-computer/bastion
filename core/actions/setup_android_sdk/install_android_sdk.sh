@@ -2,11 +2,28 @@
 set -eu
 
 api_level="${BASTION_INPUT_API_LEVEL:-}"
+avd_device="${BASTION_INPUT_AVD_DEVICE:-}"
+avd_name="${BASTION_INPUT_AVD_NAME:-}"
+avd_system_image="${BASTION_INPUT_AVD_SYSTEM_IMAGE:-}"
 build_tools_version="${BASTION_INPUT_BUILD_TOOLS_VERSION:-}"
+create_avd="${BASTION_INPUT_CREATE_AVD:-false}"
 extra_packages="${BASTION_INPUT_EXTRA_PACKAGES:-}"
 sdk_root="/opt/android-sdk"
 repository_url="https://dl.google.com/android/repository/repository2-1.xml"
 repository_base_url="https://dl.google.com/android/repository"
+
+reject_newline() {
+  name="$1"
+  value="$2"
+
+  case "$value" in
+    *'
+'*)
+      printf '%s must not contain newlines\n' "$name" >&2
+      exit 2
+      ;;
+  esac
+}
 
 if ! command -v java >/dev/null 2>&1; then
   printf 'java is required for Android SDK command-line tools; run setup_openjdk before setup_android_sdk\n' >&2
@@ -26,6 +43,40 @@ if [ -n "$build_tools_version" ]; then
   case "$build_tools_version" in
     ''|*[!0-9A-Za-z._-]*)
       printf 'Android Build Tools version must contain only letters, numbers, dots, underscores, or dashes: %s\n' "$build_tools_version" >&2
+      exit 2
+      ;;
+  esac
+fi
+
+case "$create_avd" in
+  true|false)
+    ;;
+  '')
+    create_avd="false"
+    ;;
+  *)
+    printf 'create_avd must be true or false: %s\n' "$create_avd" >&2
+    exit 2
+    ;;
+esac
+
+if [ -n "$avd_name" ]; then
+  case "$avd_name" in
+    *[!0-9A-Za-z._-]*)
+      printf 'Android AVD name must contain only letters, numbers, dots, underscores, or dashes: %s\n' "$avd_name" >&2
+      exit 2
+      ;;
+  esac
+fi
+
+reject_newline BASTION_INPUT_AVD_DEVICE "$avd_device"
+
+if [ -n "$avd_system_image" ]; then
+  reject_newline BASTION_INPUT_AVD_SYSTEM_IMAGE "$avd_system_image"
+
+  case "$avd_system_image" in
+    *' '*|*'	'*)
+      printf 'Android AVD system image package must not contain whitespace: %s\n' "$avd_system_image" >&2
       exit 2
       ;;
   esac
@@ -100,12 +151,43 @@ if [ -z "$build_tools_version" ]; then
   fi
 fi
 
+if [ "$create_avd" = "true" ]; then
+  if [ -z "$avd_name" ]; then
+    avd_name="pixel_9"
+  fi
+
+  if [ -z "$avd_device" ]; then
+    avd_device="pixel_9"
+  fi
+
+  if [ -z "$avd_system_image" ]; then
+    case "$(uname -m)" in
+      x86_64|amd64)
+        avd_system_image_abi="x86_64"
+        ;;
+      aarch64|arm64)
+        avd_system_image_abi="arm64-v8a"
+        ;;
+      *)
+        printf 'Unsupported Android emulator system image architecture: %s\n' "$(uname -m)" >&2
+        exit 2
+        ;;
+    esac
+
+    avd_system_image="system-images;android-$api_level;google_apis;$avd_system_image_abi"
+  fi
+fi
+
 yes | "$sdkmanager" --sdk_root="$sdk_root" --licenses >/dev/null
 yes | "$sdkmanager" --sdk_root="$sdk_root" \
   "platform-tools" \
   "emulator" \
   "platforms;android-$api_level" \
   "build-tools;$build_tools_version"
+
+if [ "$create_avd" = "true" ]; then
+  yes | "$sdkmanager" --sdk_root="$sdk_root" "$avd_system_image"
+fi
 
 set -f
 for package in $extra_packages; do
@@ -147,9 +229,23 @@ for tool in aapt aapt2 aidl apksigner d8 zipalign; do
   fi
 done
 
+if [ "$create_avd" = "true" ]; then
+  mkdir -p /root/.android/avd
+  printf 'no\n' | ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$avdmanager" create avd \
+    --force \
+    --name "$avd_name" \
+    --package "$avd_system_image" \
+    --device "$avd_device"
+fi
+
 ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$sdkmanager" --sdk_root="$sdk_root" --version
 ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$avdmanager" list target >/dev/null
 ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$sdk_root/platform-tools/adb" version
 ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$sdk_root/emulator/emulator" -version
 test -d "$sdk_root/platforms/android-$api_level"
 test -d "$sdk_root/build-tools/$build_tools_version"
+if [ "$create_avd" = "true" ]; then
+  ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$avdmanager" list avd | grep -q "Name: $avd_name"
+  test -f "/root/.android/avd/$avd_name.ini"
+  test -d "/root/.android/avd/$avd_name.avd"
+fi

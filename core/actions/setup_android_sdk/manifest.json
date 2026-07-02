@@ -4,9 +4,25 @@
       "type": "number",
       "description": "Android API level to install, for example 36. Defaults to latest stable."
     },
+    "avd_device": {
+      "type": "string",
+      "description": "Android device profile to use when create_avd is true. Defaults to pixel_9."
+    },
+    "avd_name": {
+      "type": "string",
+      "description": "Android Virtual Device name to create when create_avd is true. Defaults to pixel_9."
+    },
+    "avd_system_image": {
+      "type": "string",
+      "description": "Android SDK system image package to install for the AVD. Defaults to system-images;android-<api_level>;google_apis;<host ABI>."
+    },
     "build_tools_version": {
       "type": "string",
       "description": "Android SDK Build Tools version to install, for example 36.0.0. Defaults to latest stable."
+    },
+    "create_avd": {
+      "type": "boolean",
+      "description": "Create an Android Virtual Device after installing the SDK. Defaults to false."
     },
     "extra_packages": {
       "type": "string",
