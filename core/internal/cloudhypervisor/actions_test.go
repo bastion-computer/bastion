@@ -718,34 +718,34 @@ func TestSetupOpenJDKPresetInputs(t *testing.T) {
 		t.Fatalf("seed actions: %v", err)
 	}
 
-	preset, err := loadPresetAction(dataDir, "setup-openjdk")
+	preset, err := loadPresetAction(dataDir, "setup_openjdk")
 	if err != nil {
-		t.Fatalf("load setup-openjdk preset: %v", err)
+		t.Fatalf("load setup_openjdk preset: %v", err)
 	}
 
 	input, ok := preset.manifest.Inputs[testVersionInputName]
 	if !ok {
-		t.Fatalf("setup-openjdk input version is not defined: %#v", preset.manifest.Inputs)
+		t.Fatalf("setup_openjdk input version is not defined: %#v", preset.manifest.Inputs)
 	}
 
 	if len(preset.manifest.Inputs) != 1 || input.Type != presetInputTypeNumber || input.Required {
-		t.Fatalf("setup-openjdk inputs = %#v, want optional number version", preset.manifest.Inputs)
+		t.Fatalf("setup_openjdk inputs = %#v, want optional number version", preset.manifest.Inputs)
 	}
 
 	if preset.manifest.Run != "sh ./install_openjdk.sh" {
-		t.Fatalf("setup-openjdk run = %q, want install_openjdk script", preset.manifest.Run)
+		t.Fatalf("setup_openjdk run = %q, want install_openjdk script", preset.manifest.Run)
 	}
 
 	if err := validatePresetActionInputs(preset, nil); err != nil {
-		t.Fatalf("validate setup-openjdk inputs without version: %v", err)
+		t.Fatalf("validate setup_openjdk inputs without version: %v", err)
 	}
 
 	if err := validatePresetActionInputs(preset, map[string]any{testVersionInputName: float64(21)}); err != nil {
-		t.Fatalf("validate setup-openjdk inputs with version: %v", err)
+		t.Fatalf("validate setup_openjdk inputs with version: %v", err)
 	}
 
 	if err := validatePresetActionInputs(preset, map[string]any{testVersionInputName: "21"}); err == nil || !strings.Contains(err.Error(), "input version: must be a number") {
-		t.Fatalf("validate setup-openjdk invalid version error = %v, want type mismatch", err)
+		t.Fatalf("validate setup_openjdk invalid version error = %v, want type mismatch", err)
 	}
 }
 

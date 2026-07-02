@@ -9,7 +9,7 @@ repository_url="https://dl.google.com/android/repository/repository2-1.xml"
 repository_base_url="https://dl.google.com/android/repository"
 
 if ! command -v java >/dev/null 2>&1; then
-  printf 'java is required for Android SDK command-line tools; run setup-openjdk before setup_android_sdk\n' >&2
+  printf 'java is required for Android SDK command-line tools; run setup_openjdk before setup_android_sdk\n' >&2
   exit 2
 fi
 
