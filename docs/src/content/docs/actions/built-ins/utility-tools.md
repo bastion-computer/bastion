@@ -287,3 +287,73 @@ The action installs command-line tools under `/opt/android-sdk`, installs
 accepts Android SDK licenses non-interactively, sets `ANDROID_HOME` and
 `ANDROID_SDK_ROOT`, and exposes common tools such as `sdkmanager`, `avdmanager`,
 `adb`, and `emulator` on `PATH`.
+
+## `setup_maestro`
+
+`setup_maestro` installs the Maestro CLI for mobile end-to-end testing.
+
+This action requires Java 17 or newer to already be installed. Use
+`setup_openjdk` earlier in the same template when the base image does not already
+include a compatible JDK.
+
+For Android emulator tests, use `setup_android_sdk` earlier in the same template
+so Android tools such as `adb` are available.
+
+| Input     | Required | Default | Description                                           |
+| --------- | -------- | ------- | ----------------------------------------------------- |
+| `version` | No       | Latest  | Maestro CLI version to install, for example `1.39.0`. |
+
+Example:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      {
+        "use": "setup_openjdk",
+        "with": {
+          "version": 21
+        }
+      },
+      {
+        "use": "setup_android_sdk",
+        "with": {
+          "api_level": 36,
+          "build_tools_version": "36.0.0"
+        }
+      },
+      {
+        "use": "setup_maestro",
+        "with": {
+          "version": "1.39.0"
+        }
+      }
+    ]
+  }
+}
+```
+
+Omit `version` to install the latest Maestro CLI release:
+
+```json
+{
+  "agents": {
+    "opencode": {}
+  },
+  "actions": {
+    "init": [
+      { "use": "setup_openjdk" },
+      { "use": "setup_android_sdk" },
+      { "use": "setup_maestro" }
+    ]
+  }
+}
+```
+
+The action uses Maestro's official installer with `MAESTRO_VERSION` when a
+version is provided, installs Maestro under `/usr/local/maestro`, creates the
+`/usr/local/bin/maestro` symlink, sets `MAESTRO_DIR`, and verifies the
+installation with `maestro --version` and `maestro --help`.

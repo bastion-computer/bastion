@@ -575,6 +575,7 @@ toolchain_config() {
   local verify_docker
   local verify_openjdk
   local verify_uv
+  local verify_maestro
 
   verify_github="$(printf '%s\n' \
     'set -eu' \
@@ -642,6 +643,16 @@ toolchain_config() {
     'grep -q "^ANDROID_HOME=" /etc/environment' \
     'grep -q "^ANDROID_SDK_ROOT=" /etc/environment' \
     'test -s /etc/profile.d/bastion-android-sdk.sh')"
+  verify_maestro="$(printf '%s\n' \
+    'set -eu' \
+    'mkdir -p /opt/bastion-e2e-maestro' \
+    'test "${MAESTRO_DIR:-}" = /usr/local/maestro' \
+    'maestro --version > /opt/bastion-e2e-maestro/version' \
+    'maestro --help > /opt/bastion-e2e-maestro/help' \
+    'test -x /usr/local/bin/maestro' \
+    'test -x /usr/local/maestro/bin/maestro' \
+    'grep -q "^MAESTRO_DIR=" /etc/environment' \
+    'test -s /etc/profile.d/bastion-maestro.sh')"
 
   jq -nc \
     --arg token "$token" \
@@ -653,6 +664,7 @@ toolchain_config() {
     --arg verify_docker "$verify_docker" \
     --arg verify_openjdk "$verify_openjdk" \
     --arg verify_android "$verify_android" \
+    --arg verify_maestro "$verify_maestro" \
     --arg verify_uv "$verify_uv" \
     '{
     agents: {opencode: {}},
@@ -669,6 +681,8 @@ toolchain_config() {
         {run: $verify_openjdk},
         {use: "setup_android_sdk", with: {api_level: 36, build_tools_version: "36.0.0"}},
         {run: $verify_android},
+        {use: "setup_maestro"},
+        {run: $verify_maestro},
         {use: "setup_github_cli", with: {token: $token, hostname: "github.com", git_protocol: "https"}},
         {run: $verify_github},
         {use: "setup_aws_cli", with: {access_key_id: $aws_access_key_id, secret_access_key: $aws_secret_access_key, session_token: $aws_session_token, region: "us-west-2", profile: "bastion-e2e", output: "json"}},

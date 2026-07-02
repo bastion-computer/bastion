@@ -804,6 +804,45 @@ func TestSetupAndroidSDKPresetInputs(t *testing.T) {
 	}
 }
 
+func TestSetupMaestroPresetInputs(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := builtinActions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	preset, err := loadPresetAction(dataDir, "setup_maestro")
+	if err != nil {
+		t.Fatalf("load setup_maestro preset: %v", err)
+	}
+
+	input, ok := preset.manifest.Inputs[testVersionInputName]
+	if !ok {
+		t.Fatalf("setup_maestro input version is not defined: %#v", preset.manifest.Inputs)
+	}
+
+	if len(preset.manifest.Inputs) != 1 || input.Type != presetInputTypeString || input.Required {
+		t.Fatalf("setup_maestro inputs = %#v, want optional string version", preset.manifest.Inputs)
+	}
+
+	if preset.manifest.Run != "sh ./install_maestro.sh" {
+		t.Fatalf("setup_maestro run = %q, want install_maestro script", preset.manifest.Run)
+	}
+
+	if err := validatePresetActionInputs(preset, nil); err != nil {
+		t.Fatalf("validate setup_maestro inputs without version: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{testVersionInputName: "1.39.0"}); err != nil {
+		t.Fatalf("validate setup_maestro inputs with version: %v", err)
+	}
+
+	if err := validatePresetActionInputs(preset, map[string]any{testVersionInputName: 1.39}); err == nil || !strings.Contains(err.Error(), "input version: must be a string") {
+		t.Fatalf("validate setup_maestro invalid version error = %v, want type mismatch", err)
+	}
+}
+
 func TestSetupAWSCLIPresetInputs(t *testing.T) {
 	t.Parallel()
 
