@@ -634,10 +634,15 @@ toolchain_config() {
     'test "${ANDROID_SDK_ROOT:-}" = /opt/android-sdk' \
     'sdkmanager --version > /opt/bastion-e2e-android-sdk/sdkmanager-version' \
     'avdmanager list target > /opt/bastion-e2e-android-sdk/avdmanager-targets' \
+    'avdmanager list avd > /opt/bastion-e2e-android-sdk/avdmanager-avds' \
     'adb version > /opt/bastion-e2e-android-sdk/adb-version' \
     'emulator -version > /opt/bastion-e2e-android-sdk/emulator-version 2>&1' \
     'test -d "$ANDROID_HOME/platforms/android-36"' \
     'test -d "$ANDROID_HOME/build-tools/36.0.0"' \
+    'grep -q "Name: pixel_9" /opt/bastion-e2e-android-sdk/avdmanager-avds' \
+    'test -f /root/.android/avd/pixel_9.ini' \
+    'test -d /root/.android/avd/pixel_9.avd' \
+    'grep -q "image.sysdir.1" /root/.android/avd/pixel_9.avd/config.ini' \
     'test -x /usr/local/bin/aapt2' \
     'test -x /usr/local/bin/apksigner' \
     'grep -q "^ANDROID_HOME=" /etc/environment' \
@@ -679,7 +684,7 @@ toolchain_config() {
         {run: $verify_uv},
         {use: "setup_openjdk"},
         {run: $verify_openjdk},
-        {use: "setup_android_sdk", with: {api_level: 36, build_tools_version: "36.0.0"}},
+        {use: "setup_android_sdk", with: {api_level: 36, build_tools_version: "36.0.0", create_avd: true}},
         {run: $verify_android},
         {use: "setup_maestro"},
         {run: $verify_maestro},
@@ -975,6 +980,9 @@ run_node_docker_case() {
 
   ssh_env "$env_id" "grep -Eq '^[0-9]' /opt/bastion-e2e-android-sdk/sdkmanager-version"
   ssh_env "$env_id" grep -q 'android-36' /opt/bastion-e2e-android-sdk/avdmanager-targets
+  ssh_env "$env_id" "grep -q 'Name: pixel_9' /opt/bastion-e2e-android-sdk/avdmanager-avds"
+  ssh_env "$env_id" test -f /root/.android/avd/pixel_9.ini
+  ssh_env "$env_id" test -d /root/.android/avd/pixel_9.avd
   ssh_env "$env_id" "grep -q 'Android Debug Bridge' /opt/bastion-e2e-android-sdk/adb-version"
   ssh_env "$env_id" "grep -q 'Android emulator version' /opt/bastion-e2e-android-sdk/emulator-version"
 

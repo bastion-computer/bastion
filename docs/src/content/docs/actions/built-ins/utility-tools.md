@@ -236,11 +236,15 @@ toolchain required for Android app builds and emulator management.
 This action requires Java to already be installed. Use `setup_openjdk` earlier in
 the same template when the base image does not already include a JDK.
 
-| Input                 | Required | Default       | Description                                                       |
-| --------------------- | -------- | ------------- | ----------------------------------------------------------------- |
-| `api_level`           | No       | Latest stable | Android API level to install, for example 36.                     |
-| `build_tools_version` | No       | Latest stable | Android SDK Build Tools version to install, for example `36.0.0`. |
-| `extra_packages`      | No       | None          | Whitespace-separated additional `sdkmanager` packages to install. |
+| Input                 | Required | Default       | Description                                                        |
+| --------------------- | -------- | ------------- | ------------------------------------------------------------------ |
+| `api_level`           | No       | Latest stable | Android API level to install, for example 36.                      |
+| `avd_device`          | No       | `pixel_9`     | Android device profile to use when `create_avd` is `true`.         |
+| `avd_name`            | No       | `pixel_9`     | Android Virtual Device name to create when `create_avd` is `true`. |
+| `avd_system_image`    | No       | Host ABI      | Android SDK system image package to install for the AVD.           |
+| `build_tools_version` | No       | Latest stable | Android SDK Build Tools version to install, for example `36.0.0`.  |
+| `create_avd`          | No       | `false`       | Create an Android Virtual Device after installing the SDK.         |
+| `extra_packages`      | No       | None          | Whitespace-separated additional `sdkmanager` packages to install.  |
 
 Example:
 
@@ -282,11 +286,26 @@ SDK package paths with `extra_packages`:
 }
 ```
 
+To create an Android Virtual Device, set `create_avd` to `true`. By default,
+the action creates a Pixel 9 AVD named `pixel_9` and installs
+`system-images;android-<api_level>;google_apis;<host ABI>`:
+
+```json
+{
+  "use": "setup_android_sdk",
+  "with": {
+    "api_level": 36,
+    "create_avd": true
+  }
+}
+```
+
 The action installs command-line tools under `/opt/android-sdk`, installs
 `platform-tools`, `emulator`, one Android platform, and one Build Tools version,
 accepts Android SDK licenses non-interactively, sets `ANDROID_HOME` and
 `ANDROID_SDK_ROOT`, and exposes common tools such as `sdkmanager`, `avdmanager`,
-`adb`, and `emulator` on `PATH`.
+`adb`, and `emulator` on `PATH`. When `create_avd` is `true`, it also installs
+the selected system image and creates the AVD under `/root/.android/avd`.
 
 ## `setup_maestro`
 
