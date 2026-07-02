@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/actions"
@@ -49,6 +50,29 @@ func TestSeedCopiesBuiltInPresetActions(t *testing.T) {
 			if !info.Mode().IsRegular() {
 				t.Fatalf("seeded file %s/%s is not regular", preset.action, name)
 			}
+		}
+	}
+}
+
+func TestSetupAndroidSDKCreatesDefaultSDKPath(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	if err := actions.Seed(dataDir); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+
+	contents, err := os.ReadFile(filepath.Join(dataDir, actions.DirName, "setup_android_sdk", "install_android_sdk.sh")) //nolint:gosec // Test path is rooted in t.TempDir().
+	if err != nil {
+		t.Fatalf("read setup_android_sdk installer: %v", err)
+	}
+
+	for _, want := range []string{
+		"/root/Android/sdk",
+		"ln -sfn",
+	} {
+		if !strings.Contains(string(contents), want) {
+			t.Fatalf("setup_android_sdk installer = %q, want to contain %q", contents, want)
 		}
 	}
 }

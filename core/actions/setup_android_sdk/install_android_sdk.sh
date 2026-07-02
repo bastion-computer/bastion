@@ -206,6 +206,9 @@ fi
 install -m 0644 "$tmp_environment" /etc/environment
 rm -f "$tmp_environment"
 
+mkdir -p /root/Android
+ln -sfn "$sdk_root" /root/Android/sdk
+
 mkdir -p /etc/profile.d /usr/local/bin
 {
   printf 'export ANDROID_HOME=%s\n' "$sdk_root"
@@ -242,6 +245,7 @@ ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$sdkmanager" --sdk_root="
 ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$avdmanager" list target >/dev/null
 ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$sdk_root/platform-tools/adb" version
 ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root" "$sdk_root/emulator/emulator" -version
+test "$(readlink -f /root/Android/sdk)" = "$sdk_root"
 test -d "$sdk_root/platforms/android-$api_level"
 test -d "$sdk_root/build-tools/$build_tools_version"
 if [ "$create_avd" = "true" ]; then
