@@ -665,7 +665,7 @@ toolchain_config() {
         {use: "setup_mise"},
         {use: "setup_uv", with: {python_version: "3.13"}},
         {run: $verify_uv},
-        {use: "setup-openjdk"},
+        {use: "setup_openjdk"},
         {run: $verify_openjdk},
         {use: "setup_android_sdk", with: {api_level: 36, build_tools_version: "36.0.0"}},
         {run: $verify_android},

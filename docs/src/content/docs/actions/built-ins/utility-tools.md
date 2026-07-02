@@ -233,7 +233,7 @@ daemon is reachable with `docker info`.
 `setup_android_sdk` installs and configures the Android SDK command-line
 toolchain required for Android app builds and emulator management.
 
-This action requires Java to already be installed. Use `setup-openjdk` earlier in
+This action requires Java to already be installed. Use `setup_openjdk` earlier in
 the same template when the base image does not already include a JDK.
 
 | Input                 | Required | Default       | Description                                                       |
@@ -252,7 +252,7 @@ Example:
   "actions": {
     "init": [
       {
-        "use": "setup-openjdk",
+        "use": "setup_openjdk",
         "with": {
           "version": 21
         }
