@@ -12,10 +12,10 @@ templates instead of repeated as an inline `run` command.
 
 Built-in actions are documented separately by category:
 
-| Category                                           | Actions                                                                                                                 |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [Utility tools](/actions/built-ins/utility-tools/) | `set_default_ssh_directory`, `setup_github_cli`, `setup_aws_cli`, `setup_docker`, `setup_android_sdk`, `write_env_file` |
-| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_bun`, `setup_mise`, `setup_uv`, `setup_openjdk`                                                    |
+| Category                                           | Actions                                                                                                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| [Utility tools](/actions/built-ins/utility-tools/) | `set_default_ssh_directory`, `setup_github_cli`, `setup_aws_cli`, `setup_docker`, `setup_android_sdk`, `setup_maestro`, `write_env_file` |
+| [Runtimes](/actions/built-ins/runtimes/)           | `setup_node`, `setup_bun`, `setup_mise`, `setup_uv`, `setup_openjdk`                                                                     |
 
 ## Package Layout
 

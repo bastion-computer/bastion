@@ -1,0 +1,9 @@
+{
+  "inputs": {
+    "version": {
+      "type": "string",
+      "description": "Maestro CLI version to install, for example 1.39.0. Defaults to latest."
+    }
+  },
+  "run": "sh ./install_maestro.sh"
+}
