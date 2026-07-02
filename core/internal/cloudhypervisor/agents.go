@@ -192,6 +192,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=HOME=/root
+EnvironmentFile=-/etc/environment
 WorkingDirectory=%s
 ExecStart=/usr/local/bin/opencode serve --hostname 127.0.0.1 --port %d
 Restart=always

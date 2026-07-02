@@ -303,9 +303,12 @@ the action creates a Pixel 9 AVD named `pixel_9` and installs
 The action installs command-line tools under `/opt/android-sdk`, installs
 `platform-tools`, `emulator`, one Android platform, and one Build Tools version,
 accepts Android SDK licenses non-interactively, sets `ANDROID_HOME` and
-`ANDROID_SDK_ROOT`, and exposes common tools such as `sdkmanager`, `avdmanager`,
-`adb`, and `emulator` on `PATH`. When `create_avd` is `true`, it also installs
-the selected system image and creates the AVD under `/root/.android/avd`.
+`ANDROID_SDK_ROOT`, creates `/root/Android/sdk` as a compatibility symlink for
+tools that look in Android's default SDK location, and exposes common tools such
+as `sdkmanager`, `avdmanager`, `adb`, and `emulator` on `PATH`. Agent services
+import `/etc/environment`, so the SDK variables are also available to commands
+run from built-in agents. When `create_avd` is `true`, it also installs the
+selected system image and creates the AVD under `/root/.android/avd`.
 
 ## `setup_maestro`
 

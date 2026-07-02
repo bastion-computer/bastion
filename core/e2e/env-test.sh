@@ -637,6 +637,7 @@ toolchain_config() {
     'avdmanager list avd > /opt/bastion-e2e-android-sdk/avdmanager-avds' \
     'adb version > /opt/bastion-e2e-android-sdk/adb-version' \
     'emulator -version > /opt/bastion-e2e-android-sdk/emulator-version 2>&1' \
+    'test "$(readlink -f /root/Android/sdk)" = /opt/android-sdk' \
     'test -d "$ANDROID_HOME/platforms/android-36"' \
     'test -d "$ANDROID_HOME/build-tools/36.0.0"' \
     'grep -q "Name: pixel_9" /opt/bastion-e2e-android-sdk/avdmanager-avds' \

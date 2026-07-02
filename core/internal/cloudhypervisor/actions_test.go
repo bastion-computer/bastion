@@ -1037,6 +1037,16 @@ func TestOpenCodeStartCommandWaitsForHealthyAgent(t *testing.T) {
 	}
 }
 
+func TestOpenCodeSystemdUnitImportsEnvironmentFile(t *testing.T) {
+	t.Parallel()
+
+	unit := openCodeSystemdUnit("/workspace/project", 4096)
+
+	if !strings.Contains(unit, "EnvironmentFile=-/etc/environment") {
+		t.Fatalf("opencode systemd unit = %q, want to import /etc/environment", unit)
+	}
+}
+
 func TestLoadPresetActionRejectsInvalidManifest(t *testing.T) {
 	t.Parallel()
 
