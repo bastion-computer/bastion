@@ -61,7 +61,7 @@ type cloudHypervisorProbe struct {
 func Check(_ context.Context, dataDir string) Node {
 	return Node{
 		Name:     bastionName,
-		Children: []Node{checkCloudHypervisor(newCloudHypervisorProbe(dataDir))},
+		Children: []Node{checkCloudHypervisor(newCloudHypervisorProbe(dataDir)), checkOpenCode(newOpenCodeProbe(dataDir))},
 	}
 }
 

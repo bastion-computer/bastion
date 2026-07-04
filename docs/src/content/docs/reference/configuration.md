@@ -147,6 +147,7 @@ Important paths:
 | `<data-dir>/sqlite.db`             | Host API metadata database.                                   |
 | `<data-dir>/actions`               | Built-in and custom action packages.                          |
 | `<data-dir>/cloud-hypervisor`      | Cloud Hypervisor binary, guest images, SSH key, and manifest. |
+| `<data-dir>/opencode`              | Pinned OpenCode binary and manifest.                          |
 | `<data-dir>/templates/<tpl-id>`    | Prepared template root disk, cloud-init seed, and snapshot.   |
 | `<data-dir>/environments/<env-id>` | Persistent per-environment VM files and metadata.             |
 | `/run/bastion/vms/<vm-id>`         | Runtime symlink and socket files for live VMs.                |

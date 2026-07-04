@@ -36,7 +36,7 @@ The core package lives in `core/`. On Linux it builds the `bastion` and `bastion
 | `internal/services/utilization` | Host capacity and live environment resource usage service. |
 | `internal/tunnel` | Shared guest-proxy tunnel constants and Cloud Hypervisor vsock dial helpers. |
 | `internal/schema` | Embedded JSON Schema documents and validation helpers. |
-| `internal/system` | Host setup/check commands for Cloud Hypervisor assets and utilities. |
+| `internal/system` | Host setup/check commands for Cloud Hypervisor assets, OpenCode assets, and utilities. |
 | `internal/migrations` | Embedded SQL migrations applied by core. |
 | `internal/clustermigrations` | Embedded Postgres migrations applied by the cluster control plane. |
 

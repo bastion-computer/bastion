@@ -19,6 +19,7 @@ import (
 
 const (
 	testSSHCommand             = "ssh"
+	testSCPCommand             = "scp"
 	testVersionInputName       = "version"
 	testPythonVersionInputName = "python_version"
 )
@@ -271,7 +272,7 @@ func TestRunInitActionsRunsPresetActionWithInputs(t *testing.T) {
 		t.Fatalf("prepare guest directory call = %#v", calls[0])
 	}
 
-	if calls[1].name != "scp" || !containsArg(calls[1].args, "-r") || !containsArg(calls[1].args, SSHUser+"@10.241.0.2:"+guestActionsDir) {
+	if calls[1].name != testSCPCommand || !containsArg(calls[1].args, "-r") || !containsArg(calls[1].args, SSHUser+"@10.241.0.2:"+guestActionsDir) {
 		t.Fatalf("copy preset call = %#v", calls[1])
 	}
 
@@ -413,7 +414,7 @@ func recordPresetStagedFiles(t *testing.T, captured *stagedPresetActionContext) 
 	t.Helper()
 
 	return func(_ context.Context, name string, args ...string) error {
-		if name != "scp" {
+		if name != testSCPCommand {
 			return nil
 		}
 
@@ -497,7 +498,7 @@ func TestRunInitActionsRemovesHostPresetInputFileWhenCopyFails(t *testing.T) {
 			return nil
 		},
 		run: func(_ context.Context, name string, _ ...string) error {
-			if name == "scp" {
+			if name == testSCPCommand {
 				return errors.New("copy failed")
 			}
 
@@ -955,12 +956,32 @@ func TestSetupDockerPresetInputs(t *testing.T) {
 	}
 }
 
-func TestSetupTemplateAgentsInstallsOpenCodeAndWritesInputs(t *testing.T) {
+func TestSetupTemplateAgentsCopiesOpenCodeAndWritesInputs(t *testing.T) {
 	t.Parallel()
 
-	var commands []string
+	dataDir := t.TempDir()
+	writeTestOpenCodeAssets(t, dataDir)
 
-	manager := Manager{stream: recordSSHCommands(t, &commands)}
+	type call struct {
+		name string
+		args []string
+	}
+
+	var calls []call
+
+	manager := Manager{
+		DataDir: dataDir,
+		stream: func(_ context.Context, _ io.Writer, name string, args ...string) error {
+			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+
+			return nil
+		},
+		run: func(_ context.Context, name string, args ...string) error {
+			calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+
+			return nil
+		},
+	}
 
 	config := json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/project dir","auth":{"anthropic":{"type":"api","key":"test-key"}},"config":{"model":"anthropic/claude-sonnet-4-5","server":{"port":4097}}}},"actions":{"init":[]}}`)
 
@@ -968,12 +989,26 @@ func TestSetupTemplateAgentsInstallsOpenCodeAndWritesInputs(t *testing.T) {
 		t.Fatalf("setup template agents: %v", err)
 	}
 
-	if len(commands) != 1 {
-		t.Fatalf("commands = %#v, want one opencode setup command", commands)
+	if len(calls) != 2 {
+		t.Fatalf("commands = %#v, want opencode copy and setup command", calls)
+	}
+
+	if calls[0].name != testSCPCommand || !containsArg(calls[0].args, filepath.Join(dataDir, "opencode", "opencode-linux-x64.tar.gz")) || !containsArg(calls[0].args, SSHUser+"@10.241.0.2:/tmp/opencode-linux-x64.tar.gz") {
+		t.Fatalf("opencode copy call = %#v, want scp from system archive to guest tmp", calls[0])
+	}
+
+	if calls[1].name != testSSHCommand {
+		t.Fatalf("opencode setup call name = %q, want %s", calls[1].name, testSSHCommand)
+	}
+
+	command := calls[1].args[len(calls[1].args)-1]
+	if strings.Contains(command, "https://opencode.ai/install") {
+		t.Fatalf("opencode setup command = %q, want no install script", command)
 	}
 
 	for _, want := range []string{
-		"https://opencode.ai/install",
+		"tar -xzf /tmp/opencode-linux-x64.tar.gz -C /tmp opencode",
+		"install -m 0755 /tmp/opencode /usr/local/bin/opencode",
 		"/root/.config/opencode/opencode.json",
 		"/root/.local/share/opencode/auth.json",
 		"anthropic/claude-sonnet-4-5",
@@ -983,8 +1018,8 @@ func TestSetupTemplateAgentsInstallsOpenCodeAndWritesInputs(t *testing.T) {
 		`WorkingDirectory=/workspace/project\x20dir`,
 		"--port 4097",
 	} {
-		if !strings.Contains(commands[0], want) {
-			t.Fatalf("opencode setup command = %q, want to contain %q", commands[0], want)
+		if !strings.Contains(command, want) {
+			t.Fatalf("opencode setup command = %q, want to contain %q", command, want)
 		}
 	}
 }
@@ -1148,6 +1183,33 @@ func writeTestPresetAction(t *testing.T, dataDir, name, manifest string) {
 
 	if err := os.WriteFile(filepath.Join(dir, "install_node.sh"), []byte("#!/usr/bin/env sh\n"), 0o600); err != nil {
 		t.Fatalf("write preset action script: %v", err)
+	}
+}
+
+func writeTestOpenCodeAssets(t *testing.T, dataDir string) {
+	t.Helper()
+
+	dir := filepath.Join(dataDir, "opencode")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("create opencode asset dir: %v", err)
+	}
+
+	assetPath := filepath.Join(dir, "opencode")
+	if err := os.WriteFile(assetPath, []byte("test"), 0o600); err != nil {
+		t.Fatalf("write opencode asset: %v", err)
+	}
+
+	if err := os.Chmod(assetPath, 0o755); err != nil { //nolint:gosec // Test fixture must be executable.
+		t.Fatalf("chmod opencode asset: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "opencode-linux-x64.tar.gz"), []byte("archive"), 0o600); err != nil {
+		t.Fatalf("write opencode archive: %v", err)
+	}
+
+	manifest := `{"version":"v1.17.13","architecture":"x86_64","opencode":"opencode","archive":"opencode-linux-x64.tar.gz"}`
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), []byte(manifest), 0o600); err != nil {
+		t.Fatalf("write opencode manifest: %v", err)
 	}
 }
 
