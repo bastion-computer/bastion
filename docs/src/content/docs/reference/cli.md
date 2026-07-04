@@ -98,7 +98,8 @@ environment tunnels, so it should match the user running `bastion start api`.
 
 ## `bastion system`
 
-Manages host dependencies and Cloud Hypervisor assets.
+Manages host dependencies, Cloud Hypervisor assets, and the pinned OpenCode
+binary used during template preparation.
 
 On macOS, `bastion system` and its subcommands are no-ops that print a
 compatibility message because Cloud Hypervisor host setup is Linux-only.

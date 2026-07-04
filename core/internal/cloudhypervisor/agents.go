@@ -9,6 +9,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/bastion-computer/bastion/core/internal/opencodeasset"
 )
 
 const (
@@ -51,7 +53,32 @@ func (m Manager) startEnvironmentAgents(ctx context.Context, vm VM, config json.
 }
 
 func (m Manager) setupOpenCodeAgent(ctx context.Context, vm VM, agent templateOpenCodeAgent, logs io.Writer) error {
-	command, err := openCodeSetupCommand(agent)
+	m = m.withDefaults()
+
+	assets, err := loadOpenCodeAssets(m.DataDir)
+	if err != nil {
+		return err
+	}
+
+	src := assets.openCode
+	guestPath := openCodeTmpPath
+
+	useArchive := assets.archive != ""
+	if useArchive {
+		src = assets.archive
+		guestPath = openCodeArchiveTmpPath
+	}
+
+	args, err := scpGuestFileArgs(vm, src, guestPath)
+	if err != nil {
+		return err
+	}
+
+	if err := m.runForVM(ctx, vm, "scp", args...); err != nil {
+		return sanitizeGuestCommandError(err)
+	}
+
+	command, err := openCodeSetupCommand(agent, useArchive)
 	if err != nil {
 		return err
 	}
@@ -68,7 +95,7 @@ func (m Manager) startOpenCodeAgent(ctx context.Context, vm VM, agent templateOp
 	return m.runGuestCommand(ctx, vm, command, logs)
 }
 
-func openCodeSetupCommand(agent templateOpenCodeAgent) (string, error) {
+func openCodeSetupCommand(agent templateOpenCodeAgent, useArchive bool) (string, error) {
 	port, err := openCodePort(agent)
 	if err != nil {
 		return "", err
@@ -91,10 +118,20 @@ func openCodeSetupCommand(agent templateOpenCodeAgent) (string, error) {
 		"export DEBIAN_FRONTEND=noninteractive",
 		"apt-get update",
 		"apt-get install -y --no-install-recommends bash ca-certificates curl jq tar gzip",
-		"curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path",
-		"if [ ! -x /root/.opencode/bin/opencode ]; then printf '%s\\n' 'OpenCode installer did not create /root/.opencode/bin/opencode' >&2; exit 1; fi",
-		"ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode",
+		"mkdir -p /usr/local/bin",
 		"umask 077",
+	}
+	if useArchive {
+		lines = append(lines,
+			"tar -xzf "+openCodeArchiveTmpPath+" -C /tmp "+opencodeasset.BinaryName,
+			"install -m 0755 "+openCodeTmpPath+" "+openCodeGuestPath,
+			"rm -f "+openCodeArchiveTmpPath+" "+openCodeTmpPath,
+		)
+	} else {
+		lines = append(lines,
+			"install -m 0755 "+openCodeTmpPath+" "+openCodeGuestPath,
+			"rm -f "+openCodeTmpPath,
+		)
 	}
 
 	if hasConfig {
@@ -110,7 +147,7 @@ func openCodeSetupCommand(agent templateOpenCodeAgent) (string, error) {
 		"printf %s "+shellQuote(openCodeSystemdUnit(workingDirectory, port))+" > /etc/systemd/system/"+openCodeServiceName,
 		"systemctl daemon-reload",
 		"systemctl enable "+openCodeServiceName,
-		"/usr/local/bin/opencode --version",
+		openCodeGuestPath+" --version",
 	)
 
 	return strings.Join(lines, "\n"), nil
@@ -194,13 +231,13 @@ Type=simple
 Environment=HOME=/root
 EnvironmentFile=-/etc/environment
 WorkingDirectory=%s
-ExecStart=/usr/local/bin/opencode serve --hostname 127.0.0.1 --port %d
+ExecStart=%s serve --hostname 127.0.0.1 --port %d
 Restart=always
 RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
-`, systemdPath(workingDirectory), port)
+`, systemdPath(workingDirectory), openCodeGuestPath, port)
 }
 
 func openCodeHealthWaitCommand(port int) string {

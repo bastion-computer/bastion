@@ -98,10 +98,10 @@ underscores, and hyphens. Ports must be integers from `1` to `65535`.
 
 ## Agents
 
-Every template must declare an `agents` object with `opencode`. Bastion installs
-OpenCode during template preparation before `actions.init`, snapshots the result,
-and restarts the OpenCode service during environment creation before
-`actions.start`.
+Every template must declare an `agents` object with `opencode`. Bastion copies
+the OpenCode binary downloaded by `bastion system init` during template
+preparation before `actions.init`, snapshots the result, and restarts the
+OpenCode service during environment creation before `actions.start`.
 
 Minimal agent config:
 

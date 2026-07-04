@@ -18,7 +18,9 @@ type systemOptions struct {
 	dataDirValue          *string
 	check                 func(context.Context, string) system.Node
 	addCloudHypervisor    func(context.Context, system.AddCloudHypervisorOptions) (system.Result, error)
+	addOpenCode           func(context.Context, system.AddOpenCodeOptions) (system.Result, error)
 	removeCloudHypervisor func(context.Context, string) (system.Result, error)
+	removeOpenCode        func(context.Context, string) (system.Result, error)
 	newRunner             func(io.Writer, io.Writer) system.Runner
 }
 
@@ -28,7 +30,9 @@ func newSystemCommand(rootOpts *rootOptions) *cobra.Command {
 		dataDirValue:          &rootOpts.dataDir,
 		check:                 system.Check,
 		addCloudHypervisor:    system.AddCloudHypervisor,
+		addOpenCode:           system.AddOpenCode,
 		removeCloudHypervisor: system.RemoveCloudHypervisor,
+		removeOpenCode:        system.RemoveOpenCode,
 		newRunner:             defaultSystemRunner,
 	})
 }
@@ -46,8 +50,16 @@ func newSystemCommandWithOptions(opts systemOptions) *cobra.Command {
 		opts.addCloudHypervisor = system.AddCloudHypervisor
 	}
 
+	if opts.addOpenCode == nil {
+		opts.addOpenCode = system.AddOpenCode
+	}
+
 	if opts.removeCloudHypervisor == nil {
 		opts.removeCloudHypervisor = system.RemoveCloudHypervisor
+	}
+
+	if opts.removeOpenCode == nil {
+		opts.removeOpenCode = system.RemoveOpenCode
 	}
 
 	if opts.newRunner == nil {
@@ -113,7 +125,7 @@ func newSystemInitCommand(opts *systemOptions) *cobra.Command {
 
 			runner := opts.newRunner(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
-			result, err := opts.addCloudHypervisor(cmd.Context(), system.AddCloudHypervisorOptions{
+			cloudHypervisorResult, err := opts.addCloudHypervisor(cmd.Context(), system.AddCloudHypervisorOptions{
 				DataDir:       dataDir,
 				WithUtilities: withUtilities,
 				In:            cmd.InOrStdin(),
@@ -124,11 +136,19 @@ func newSystemInitCommand(opts *systemOptions) *cobra.Command {
 				return err
 			}
 
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "installed system dependencies in %s\n", result.Path); err != nil {
+			openCodeResult, err := opts.addOpenCode(cmd.Context(), system.AddOpenCodeOptions{
+				DataDir: dataDir,
+				Out:     cmd.OutOrStdout(),
+			})
+			if err != nil {
 				return err
 			}
 
-			return writeSystemNotes(cmd.OutOrStdout(), result.Notes)
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "installed system dependencies in %s\n", dataDir); err != nil {
+				return err
+			}
+
+			return writeSystemNotes(cmd.OutOrStdout(), append(cloudHypervisorResult.Notes, openCodeResult.Notes...))
 		},
 	}
 	cmd.Flags().BoolVar(&withUtilities, "with-utilities", false, "install missing system utilities without prompting")
@@ -147,16 +167,21 @@ func newSystemCleanCommand(opts *systemOptions) *cobra.Command {
 				return err
 			}
 
-			result, err := opts.removeCloudHypervisor(cmd.Context(), dataDir)
+			cloudHypervisorResult, err := opts.removeCloudHypervisor(cmd.Context(), dataDir)
 			if err != nil {
 				return err
 			}
 
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed system dependencies from %s\n", result.Path); err != nil {
+			openCodeResult, err := opts.removeOpenCode(cmd.Context(), dataDir)
+			if err != nil {
 				return err
 			}
 
-			return writeSystemNotes(cmd.OutOrStdout(), result.Notes)
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed system dependencies from %s\n", dataDir); err != nil {
+				return err
+			}
+
+			return writeSystemNotes(cmd.OutOrStdout(), append(cloudHypervisorResult.Notes, openCodeResult.Notes...))
 		},
 	}
 }

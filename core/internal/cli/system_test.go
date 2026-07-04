@@ -65,9 +65,10 @@ func TestSystemInitCommandPassesWithUtilitiesAndDataDir(t *testing.T) {
 	t.Parallel()
 
 	var (
-		gotDataDir       string
-		gotWithUtilities bool
-		gotRunner        system.Runner
+		gotDataDir         string
+		gotOpenCodeDataDir string
+		gotWithUtilities   bool
+		gotRunner          system.Runner
 	)
 
 	dataDir := t.TempDir()
@@ -79,6 +80,11 @@ func TestSystemInitCommandPassesWithUtilitiesAndDataDir(t *testing.T) {
 			gotRunner = opts.Runner
 
 			return system.Result{Path: opts.DataDir + "/cloud-hypervisor"}, nil
+		},
+		addOpenCode: func(_ context.Context, opts system.AddOpenCodeOptions) (system.Result, error) {
+			gotOpenCodeDataDir = opts.DataDir
+
+			return system.Result{Path: opts.DataDir + "/opencode"}, nil
 		},
 		newRunner: func(io.Writer, io.Writer) system.Runner {
 			return fakeCLIRunner{}
@@ -96,6 +102,10 @@ func TestSystemInitCommandPassesWithUtilitiesAndDataDir(t *testing.T) {
 		t.Fatalf("data dir = %q, want %q", gotDataDir, dataDir)
 	}
 
+	if gotOpenCodeDataDir != dataDir {
+		t.Fatalf("opencode data dir = %q, want %q", gotOpenCodeDataDir, dataDir)
+	}
+
 	if !gotWithUtilities {
 		t.Fatal("with utilities = false, want true")
 	}
@@ -109,8 +119,9 @@ func TestSystemCleanCommandPrintsUtilityNote(t *testing.T) {
 	t.Parallel()
 
 	var (
-		gotDataDir string
-		out        bytes.Buffer
+		gotDataDir         string
+		gotOpenCodeDataDir string
+		out                bytes.Buffer
 	)
 
 	dataDir := t.TempDir()
@@ -124,6 +135,11 @@ func TestSystemCleanCommandPrintsUtilityNote(t *testing.T) {
 				Notes: []string{"system utilities installed for Cloud Hypervisor were not removed"},
 			}, nil
 		},
+		removeOpenCode: func(_ context.Context, dataDir string) (system.Result, error) {
+			gotOpenCodeDataDir = dataDir
+
+			return system.Result{Path: dataDir + "/opencode"}, nil
+		},
 	})
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
@@ -135,6 +151,10 @@ func TestSystemCleanCommandPrintsUtilityNote(t *testing.T) {
 
 	if gotDataDir != dataDir {
 		t.Fatalf("data dir = %q, want %q", gotDataDir, dataDir)
+	}
+
+	if gotOpenCodeDataDir != dataDir {
+		t.Fatalf("opencode data dir = %q, want %q", gotOpenCodeDataDir, dataDir)
 	}
 
 	if !strings.Contains(out.String(), "note: system utilities installed for Cloud Hypervisor were not removed") {
