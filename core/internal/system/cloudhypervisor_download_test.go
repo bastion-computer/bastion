@@ -21,6 +21,38 @@ func TestCloudHypervisorHTTPDownloaderDoesNotApplyGlobalClientTimeout(t *testing
 	}
 }
 
+func TestCloudHypervisorHTTPDownloaderUsesPinnedAssetURLs(t *testing.T) {
+	t.Parallel()
+
+	wantURLs := map[string]string{
+		"cloud-hypervisor release": cloudHypervisorReleasesURL,
+		"Ubuntu rootfs":            ubuntuNobleImageURL,
+		"Ubuntu kernel":            ubuntuNobleKernelURL,
+		"Ubuntu initramfs":         ubuntuNobleInitramfsURL,
+	}
+	for name, url := range wantURLs {
+		if strings.Contains(url, "/latest") || strings.Contains(url, "/current/") {
+			t.Fatalf("%s URL = %q, want pinned URL", name, url)
+		}
+	}
+
+	if cloudHypervisorReleasesURL != "https://api.github.com/repos/cloud-hypervisor/cloud-hypervisor/releases/tags/v52.0" {
+		t.Fatalf("Cloud Hypervisor metadata URL = %q, want v52.0 tag URL", cloudHypervisorReleasesURL)
+	}
+
+	if ubuntuNobleImageURL != "https://cloud-images.ubuntu.com/noble/20260615/noble-server-cloudimg-amd64.img" {
+		t.Fatalf("Ubuntu image URL = %q, want 20260615 image URL", ubuntuNobleImageURL)
+	}
+
+	if ubuntuNobleKernelURL != "https://cloud-images.ubuntu.com/noble/20260615/unpacked/noble-server-cloudimg-amd64-vmlinuz-generic" {
+		t.Fatalf("Ubuntu kernel URL = %q, want 20260615 kernel URL", ubuntuNobleKernelURL)
+	}
+
+	if ubuntuNobleInitramfsURL != "https://cloud-images.ubuntu.com/noble/20260615/unpacked/noble-server-cloudimg-amd64-initrd-generic" {
+		t.Fatalf("Ubuntu initramfs URL = %q, want 20260615 initramfs URL", ubuntuNobleInitramfsURL)
+	}
+}
+
 func TestDownloadFileShowsProgressBar(t *testing.T) {
 	t.Parallel()
 

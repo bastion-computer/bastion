@@ -57,7 +57,7 @@ bastion system check
 Install Cloud Hypervisor assets and any missing supported utilities:
 
 ```sh
-bastion system add cloud-hypervisor --with-utilities
+bastion system init --with-utilities
 ```
 
 This downloads the Cloud Hypervisor binary, guest kernel, guest initramfs, root

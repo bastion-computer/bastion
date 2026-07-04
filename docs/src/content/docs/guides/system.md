@@ -50,8 +50,8 @@ Run:
 bastion system check
 ```
 
-The command renders a dependency tree and exits non-zero if any required item is
-missing.
+The command renders a dependency tree, including pinned asset versions, and exits
+non-zero if any required item is missing.
 
 Use a custom data directory if needed:
 
@@ -59,19 +59,19 @@ Use a custom data directory if needed:
 bastion system --data-dir /var/lib/bastion check
 ```
 
-## Install Cloud Hypervisor Assets
+## Initialize System Dependencies
 
 Run:
 
 ```sh
-bastion system add cloud-hypervisor
+bastion system init
 ```
 
 If required utilities are missing, Bastion prompts before attempting to install
 them. To skip the prompt:
 
 ```sh
-bastion system add cloud-hypervisor --with-utilities
+bastion system init --with-utilities
 ```
 
 The command installs runtime assets under `<data-dir>/cloud-hypervisor`.
@@ -85,12 +85,12 @@ The command installs runtime assets under `<data-dir>/cloud-hypervisor`.
 | SSH key                 | Host-side key used for root SSH into guests.          |
 | Manifest                | Metadata for versions, paths, sources, and checksums. |
 
-## Remove Cloud Hypervisor Assets
+## Clean System Dependencies
 
 Run:
 
 ```sh
-bastion system remove cloud-hypervisor
+bastion system clean
 ```
 
 This removes Bastion-managed Cloud Hypervisor assets from the data directory. It

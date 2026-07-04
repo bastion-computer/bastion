@@ -85,7 +85,7 @@ precheck() {
   fi
 
   if ! "$BASTION" system --data-dir "$DATA_DIR" check >/dev/null 2>&1; then
-    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' add cloud-hypervisor"
+    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' init --with-utilities"
   fi
 }
 

@@ -13,8 +13,6 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/system"
 )
 
-const cloudHypervisorDependency = "cloud-hypervisor"
-
 type systemOptions struct {
 	dataDir               string
 	dataDirValue          *string
@@ -68,8 +66,8 @@ func newSystemCommandWithOptions(opts systemOptions) *cobra.Command {
 
 	cmd.AddCommand(
 		newSystemCheckCommand(cmdOpts),
-		newSystemAddCommand(cmdOpts),
-		newSystemRemoveCommand(cmdOpts),
+		newSystemInitCommand(cmdOpts),
+		newSystemCleanCommand(cmdOpts),
 	)
 
 	return cmd
@@ -100,22 +98,12 @@ func newSystemCheckCommand(opts *systemOptions) *cobra.Command {
 	}
 }
 
-func newSystemAddCommand(opts *systemOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "add",
-		Short: "Add a host system dependency",
-	}
-	cmd.AddCommand(newSystemAddCloudHypervisorCommand(opts))
-
-	return cmd
-}
-
-func newSystemAddCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
+func newSystemInitCommand(opts *systemOptions) *cobra.Command {
 	var withUtilities bool
 
 	cmd := &cobra.Command{
-		Use:   cloudHypervisorDependency,
-		Short: "Install Cloud Hypervisor system assets",
+		Use:   "init",
+		Short: "Install host system dependencies",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dataDir, err := config.ExpandPath(opts.currentDataDir())
@@ -136,7 +124,7 @@ func newSystemAddCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 				return err
 			}
 
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "installed cloud-hypervisor system assets in %s\n", result.Path); err != nil {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "installed system dependencies in %s\n", result.Path); err != nil {
 				return err
 			}
 
@@ -148,20 +136,10 @@ func newSystemAddCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 	return cmd
 }
 
-func newSystemRemoveCommand(opts *systemOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   removeUse,
-		Short: "Remove a host system dependency",
-	}
-	cmd.AddCommand(newSystemRemoveCloudHypervisorCommand(opts))
-
-	return cmd
-}
-
-func newSystemRemoveCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
+func newSystemCleanCommand(opts *systemOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   cloudHypervisorDependency,
-		Short: "Remove Cloud Hypervisor system assets",
+		Use:   "clean",
+		Short: "Remove host system dependencies",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dataDir, err := config.ExpandPath(opts.currentDataDir())
@@ -174,7 +152,7 @@ func newSystemRemoveCloudHypervisorCommand(opts *systemOptions) *cobra.Command {
 				return err
 			}
 
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed cloud-hypervisor system assets from %s\n", result.Path); err != nil {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed system dependencies from %s\n", result.Path); err != nil {
 				return err
 			}
 

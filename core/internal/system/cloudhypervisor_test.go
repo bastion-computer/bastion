@@ -29,6 +29,28 @@ func TestCheckCloudHypervisorReportsAvailableSystem(t *testing.T) {
 	}
 }
 
+func TestCheckCloudHypervisorDisplaysPinnedAssetVersions(t *testing.T) {
+	t.Parallel()
+
+	tree := checkCloudHypervisor(testProbe(t.TempDir(), utilityAvailability(cloudHypervisorUtilities...)))
+
+	var out bytes.Buffer
+	if err := tree.Render(&out); err != nil {
+		t.Fatalf("render tree: %v", err)
+	}
+
+	for _, want := range []string{
+		"cloud-hypervisor binary (v52.0)",
+		"guest kernel (Ubuntu 24.04 20260615)",
+		"guest initramfs (Ubuntu 24.04 20260615)",
+		"guest rootfs image (Ubuntu 24.04 20260615)",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("check output missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestAddCloudHypervisorInstallsMissingUtilitiesWithFlag(t *testing.T) {
 	t.Parallel()
 
@@ -69,7 +91,7 @@ func TestAddCloudHypervisorInstallsMissingUtilitiesWithFlag(t *testing.T) {
 		euid:          func() int { return 0 },
 	})
 	if err != nil {
-		t.Fatalf("add cloud-hypervisor: %v", err)
+		t.Fatalf("AddCloudHypervisor: %v", err)
 	}
 
 	if result.Path != filepath.Join(dataDir, cloudHypervisorName) {
@@ -141,7 +163,7 @@ func TestAddCloudHypervisorPromptsBeforeInstallingUtilities(t *testing.T) {
 		euid:    func() int { return 0 },
 	})
 	if err == nil {
-		t.Fatal("add cloud-hypervisor error = nil, want error")
+		t.Fatal("AddCloudHypervisor error = nil, want error")
 	}
 
 	if !strings.Contains(out.String(), "install missing utilities? [y/N]") {
@@ -159,7 +181,7 @@ func TestRemoveCloudHypervisorOnlyRemovesCloudHypervisorData(t *testing.T) {
 
 	result, err := RemoveCloudHypervisor(context.Background(), dataDir)
 	if err != nil {
-		t.Fatalf("remove cloud-hypervisor: %v", err)
+		t.Fatalf("RemoveCloudHypervisor: %v", err)
 	}
 
 	if _, err := os.Stat(store.dir); !os.IsNotExist(err) {

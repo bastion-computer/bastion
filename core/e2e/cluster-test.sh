@@ -121,7 +121,7 @@ precheck() {
   fi
 
   if ! "$BASTION" system --data-dir "$DATA_DIR" check >/dev/null 2>&1; then
-    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' add cloud-hypervisor"
+    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' init --with-utilities"
   fi
 }
 
@@ -352,7 +352,7 @@ choose_inner_network_prefix() {
 rm -rf "$INNER_DATA_DIR"
 mkdir -p "$INNER_DATA_DIR" /run/bastion-cluster-node
 
-./core/tmp/bastion system --data-dir "$INNER_DATA_DIR" add cloud-hypervisor --with-utilities
+./core/tmp/bastion system --data-dir "$INNER_DATA_DIR" init --with-utilities
 ./core/tmp/bastion system --data-dir "$INNER_DATA_DIR" check
 sync
 echo 3 > /proc/sys/vm/drop_caches || true

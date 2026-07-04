@@ -11,6 +11,8 @@ const manifestFileName = "manifest.json"
 
 type cloudHypervisorManifest struct {
 	Version               string `json:"version"`
+	UbuntuVersion         string `json:"ubuntu_version,omitempty"`
+	UbuntuBuild           string `json:"ubuntu_build,omitempty"`
 	Architecture          string `json:"architecture"`
 	CloudHypervisor       string `json:"cloud_hypervisor"`
 	Kernel                string `json:"kernel"`
@@ -27,11 +29,13 @@ type cloudHypervisorManifest struct {
 }
 
 type cloudHypervisorAssets struct {
-	cloudHypervisor string
-	kernel          string
-	initramfs       string
-	rootFSImage     string
-	sshKey          string
+	cloudHypervisor        string
+	cloudHypervisorVersion string
+	kernel                 string
+	initramfs              string
+	rootFSImage            string
+	ubuntuVersion          string
+	sshKey                 string
 }
 
 type cloudHypervisorStore struct {
@@ -57,10 +61,10 @@ func (s cloudHypervisorStore) assetsNode() Node {
 	return Node{
 		Name: "assets",
 		Children: []Node{
-			{Name: "cloud-hypervisor binary", OK: s.executable(assets.cloudHypervisor)},
-			{Name: "guest kernel", OK: s.regularFile(assets.kernel)},
-			{Name: "guest initramfs", OK: s.regularFile(assets.initramfs)},
-			{Name: "guest rootfs image", OK: s.regularFile(assets.rootFSImage)},
+			{Name: versionedAssetName("cloud-hypervisor binary", assets.cloudHypervisorVersion), OK: s.executable(assets.cloudHypervisor)},
+			{Name: versionedAssetName("guest kernel", assets.ubuntuVersion), OK: s.regularFile(assets.kernel)},
+			{Name: versionedAssetName("guest initramfs", assets.ubuntuVersion), OK: s.regularFile(assets.initramfs)},
+			{Name: versionedAssetName("guest rootfs image", assets.ubuntuVersion), OK: s.regularFile(assets.rootFSImage)},
 			{Name: "SSH key", OK: s.regularFile(assets.sshKey)},
 		},
 	}
@@ -70,12 +74,42 @@ func (s cloudHypervisorStore) assets() cloudHypervisorAssets {
 	manifest := s.readManifest()
 
 	return cloudHypervisorAssets{
-		cloudHypervisor: s.firstAsset(s.relativeAsset(manifest.CloudHypervisor), cloudHypervisorName),
-		kernel:          s.firstAsset(s.relativeAsset(manifest.Kernel), "ubuntu-*-vmlinuz-*"),
-		initramfs:       s.firstAsset(s.relativeAsset(manifest.Initramfs), "ubuntu-*-initrd-*"),
-		rootFSImage:     s.firstAsset(s.relativeAsset(manifest.RootFSImage), "ubuntu-*.img"),
-		sshKey:          s.firstAsset(s.relativeAsset(manifest.SSHKey), "*.id_rsa"),
+		cloudHypervisor:        s.firstAsset(s.relativeAsset(manifest.CloudHypervisor), cloudHypervisorName),
+		cloudHypervisorVersion: manifest.firstCloudHypervisorVersion(),
+		kernel:                 s.firstAsset(s.relativeAsset(manifest.Kernel), "ubuntu-*-vmlinuz-*"),
+		initramfs:              s.firstAsset(s.relativeAsset(manifest.Initramfs), "ubuntu-*-initrd-*"),
+		rootFSImage:            s.firstAsset(s.relativeAsset(manifest.RootFSImage), "ubuntu-*.img"),
+		ubuntuVersion:          manifest.firstUbuntuVersion(),
+		sshKey:                 s.firstAsset(s.relativeAsset(manifest.SSHKey), "*.id_rsa"),
 	}
+}
+
+func versionedAssetName(name, version string) string {
+	if version == "" {
+		return name
+	}
+
+	return fmt.Sprintf("%s (%s)", name, version)
+}
+
+func (m cloudHypervisorManifest) firstCloudHypervisorVersion() string {
+	if m.Version != "" {
+		return m.Version
+	}
+
+	return cloudHypervisorVersion
+}
+
+func (m cloudHypervisorManifest) firstUbuntuVersion() string {
+	if m.UbuntuVersion == "" {
+		return ubuntuNobleAssetVersion
+	}
+
+	if m.UbuntuBuild == "" {
+		return m.UbuntuVersion
+	}
+
+	return m.UbuntuVersion + " " + m.UbuntuBuild
 }
 
 func (s cloudHypervisorStore) readManifest() cloudHypervisorManifest {

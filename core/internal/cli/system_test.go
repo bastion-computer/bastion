@@ -7,11 +7,34 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/bastion-computer/bastion/core/internal/system"
 )
+
+func TestSystemCommandOnlyExposesCurrentCommands(t *testing.T) {
+	t.Parallel()
+
+	cmd := newSystemCommandWithOptions(systemOptions{dataDir: t.TempDir()})
+
+	got := make([]string, 0, len(cmd.Commands()))
+	for _, child := range cmd.Commands() {
+		if child.Hidden {
+			continue
+		}
+
+		got = append(got, child.Name())
+	}
+
+	slices.Sort(got)
+
+	want := []string{"check", "clean", "init"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("system commands = %#v, want %#v", got, want)
+	}
+}
 
 func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 	t.Parallel()
@@ -21,7 +44,7 @@ func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 	cmd := newSystemCommandWithOptions(systemOptions{
 		dataDir: t.TempDir(),
 		check: func(context.Context, string) system.Node {
-			return system.Node{Name: "bastion", Children: []system.Node{{Name: cloudHypervisorDependency, OK: false}}}
+			return system.Node{Name: "bastion", Children: []system.Node{{Name: "cloud-hypervisor", OK: false}}}
 		},
 	})
 	cmd.SetOut(&out)
@@ -38,7 +61,7 @@ func TestSystemCheckCommandReturnsMissingDependencies(t *testing.T) {
 	}
 }
 
-func TestSystemAddCloudHypervisorCommandPassesWithUtilitiesAndDataDir(t *testing.T) {
+func TestSystemInitCommandPassesWithUtilitiesAndDataDir(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -63,7 +86,7 @@ func TestSystemAddCloudHypervisorCommandPassesWithUtilitiesAndDataDir(t *testing
 	})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{cliTestDataDirFlag, dataDir, "add", cloudHypervisorDependency, "--with-utilities"})
+	cmd.SetArgs([]string{cliTestDataDirFlag, dataDir, "init", "--with-utilities"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -82,7 +105,7 @@ func TestSystemAddCloudHypervisorCommandPassesWithUtilitiesAndDataDir(t *testing
 	}
 }
 
-func TestSystemRemoveCloudHypervisorCommandPrintsUtilityNote(t *testing.T) {
+func TestSystemCleanCommandPrintsUtilityNote(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -104,7 +127,7 @@ func TestSystemRemoveCloudHypervisorCommandPrintsUtilityNote(t *testing.T) {
 	})
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{cliTestDataDirFlag, dataDir, removeUse, cloudHypervisorDependency})
+	cmd.SetArgs([]string{cliTestDataDirFlag, dataDir, "clean"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)

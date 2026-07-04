@@ -105,8 +105,8 @@ compatibility message because Cloud Hypervisor host setup is Linux-only.
 
 ```sh
 bastion system [--data-dir DIR] check
-bastion system [--data-dir DIR] add cloud-hypervisor [--with-utilities]
-bastion system [--data-dir DIR] remove cloud-hypervisor
+bastion system [--data-dir DIR] init [--with-utilities]
+bastion system [--data-dir DIR] clean
 ```
 
 | Flag               | Default      | Description                                                           |
