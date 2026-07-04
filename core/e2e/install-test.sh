@@ -146,7 +146,7 @@ precheck() {
   fi
 
   if ! "$BASTION" system --data-dir "$DATA_DIR" check >/dev/null 2>&1; then
-    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' add cloud-hypervisor"
+    fail "Bastion system check is not ok for $DATA_DIR; run bastion system --data-dir '$DATA_DIR' init --with-utilities"
   fi
 
   LATEST_VERSION="$LOCAL_RELEASE_VERSION"
@@ -375,7 +375,7 @@ verify_bastiond_restart_preserves_environment() {
 
   data_dir="$(service_data_dir)"
 
-  bastion system --data-dir "$data_dir" add cloud-hypervisor --with-utilities
+  bastion system --data-dir "$data_dir" init --with-utilities
   bastion system --data-dir "$data_dir" check
   sync
   echo 3 > /proc/sys/vm/drop_caches || true

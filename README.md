@@ -52,7 +52,7 @@ The host needs:
 curl -fsSL https://bastion.computer/install.sh | bash
 
 bastion system check
-bastion system add cloud-hypervisor --with-utilities
+bastion system init --with-utilities
 ```
 
 The installer adds the `bastion` CLI, guest proxy, and systemd services for the host API and privileged VM daemon. Release archives are also available from [GitHub Releases](https://github.com/bastion-computer/bastion/releases).

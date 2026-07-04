@@ -115,7 +115,7 @@ Most client commands call the host API configured by `--api-url`, `BASTION_API_U
 Supported top-level commands are intentionally limited to the current product scope:
 
 - `bastion start api`, `bastion start cluster`, and `bastion start daemon`
-- `bastion system check`, `bastion system add cloud-hypervisor`, and `bastion system remove cloud-hypervisor`
+- `bastion system check`, `bastion system init`, and `bastion system clean`
 - `bastion cluster nodes ...` and `bastion cluster namespaces ...`
 - `bastion utilization`
 - `bastion secrets ...`

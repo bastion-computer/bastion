@@ -33,7 +33,7 @@ On each Linux machine that will run environments, install Bastion and prepare th
 Cloud Hypervisor runtime as usual:
 
 ```sh
-bastion system add cloud-hypervisor --with-utilities
+bastion system init --with-utilities
 sudo bastion start daemon
 bastion start api --addr 0.0.0.0:3148
 ```

@@ -16,10 +16,15 @@ import (
 )
 
 const (
-	cloudHypervisorReleasesURL = "https://api.github.com/repos/cloud-hypervisor/cloud-hypervisor/releases/latest"
-	ubuntuNobleImageURL        = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
-	ubuntuNobleKernelURL       = "https://cloud-images.ubuntu.com/noble/current/unpacked/noble-server-cloudimg-amd64-vmlinuz-generic"
-	ubuntuNobleInitramfsURL    = "https://cloud-images.ubuntu.com/noble/current/unpacked/noble-server-cloudimg-amd64-initrd-generic"
+	cloudHypervisorVersion     = "v52.0"
+	cloudHypervisorReleasesURL = "https://api.github.com/repos/cloud-hypervisor/cloud-hypervisor/releases/tags/" + cloudHypervisorVersion
+	ubuntuNobleVersion         = "Ubuntu 24.04"
+	ubuntuNobleBuild           = "20260615"
+	ubuntuNobleAssetVersion    = ubuntuNobleVersion + " " + ubuntuNobleBuild
+	ubuntuNobleBaseURL         = "https://cloud-images.ubuntu.com/noble/" + ubuntuNobleBuild
+	ubuntuNobleImageURL        = ubuntuNobleBaseURL + "/noble-server-cloudimg-amd64.img"
+	ubuntuNobleKernelURL       = ubuntuNobleBaseURL + "/unpacked/noble-server-cloudimg-amd64-vmlinuz-generic"
+	ubuntuNobleInitramfsURL    = ubuntuNobleBaseURL + "/unpacked/noble-server-cloudimg-amd64-initrd-generic"
 	ubuntuNobleImageName       = "ubuntu-24.04.img"
 	ubuntuNobleKernelName      = "ubuntu-24.04-vmlinuz-generic"
 	ubuntuNobleInitramfsName   = "ubuntu-24.04-initrd-generic"
@@ -49,17 +54,19 @@ func (d cloudHypervisorHTTPDownloader) download(ctx context.Context, store cloud
 		return cloudHypervisorManifest{}, fmt.Errorf("cloud-hypervisor setup supports %s hosts only, got %s", archX8664, arch)
 	}
 
-	if err := logCloudHypervisorProgress(d.out, "fetching latest Cloud Hypervisor release metadata"); err != nil {
+	if err := logCloudHypervisorProgress(d.out, "fetching Cloud Hypervisor %s release metadata", cloudHypervisorVersion); err != nil {
 		return cloudHypervisorManifest{}, err
 	}
 
-	release, err := d.latestRelease(ctx, cloudHypervisorReleasesURL)
+	release, err := d.releaseMetadata(ctx, cloudHypervisorReleasesURL)
 	if err != nil {
 		return cloudHypervisorManifest{}, err
 	}
 
 	manifest := cloudHypervisorManifest{
 		Version:         release.TagName,
+		UbuntuVersion:   ubuntuNobleVersion,
+		UbuntuBuild:     ubuntuNobleBuild,
 		Architecture:    arch,
 		RootFSImageType: "Qcow2",
 		CreatedAt:       time.Now().UTC().Format(time.RFC3339Nano),
@@ -92,14 +99,18 @@ func (d cloudHypervisorHTTPDownloader) withDefaults() cloudHypervisorHTTPDownloa
 	return d
 }
 
-func (d cloudHypervisorHTTPDownloader) latestRelease(ctx context.Context, target string) (githubRelease, error) {
+func (d cloudHypervisorHTTPDownloader) releaseMetadata(ctx context.Context, target string) (githubRelease, error) {
 	var release githubRelease
 	if err := d.getJSON(ctx, target, &release); err != nil {
 		return release, err
 	}
 
 	if release.TagName == "" {
-		return release, fmt.Errorf("latest release %s did not include a tag", target)
+		return release, fmt.Errorf("cloud-hypervisor release %s did not include a tag", target)
+	}
+
+	if release.TagName != cloudHypervisorVersion {
+		return release, fmt.Errorf("cloud-hypervisor release tag = %s, want %s", release.TagName, cloudHypervisorVersion)
 	}
 
 	return release, nil
