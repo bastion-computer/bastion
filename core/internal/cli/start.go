@@ -81,6 +81,7 @@ func newStartAPICommand(opts *rootOptions) *cobra.Command {
 
 			return api.Run(cmd.Context(), addr, db, logger,
 				api.WithDataDir(resolvedDataDir),
+				api.WithBaseOrchestrator(daemonClient),
 				api.WithTemplateOrchestrator(daemonClient),
 				api.WithEnvironmentOrchestrator(daemonClient),
 			)

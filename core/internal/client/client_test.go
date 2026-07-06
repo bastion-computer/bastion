@@ -18,6 +18,7 @@ import (
 const (
 	clientTestBaseURL  = "http://bastion.test"
 	clientTestOKStatus = "200 OK"
+	clientTestNow      = "now"
 )
 
 func TestCreateEnvironmentStreamsLogsAndResult(t *testing.T) {
@@ -128,7 +129,7 @@ func TestImportTemplateUploadsArchive(t *testing.T) {
 			return &http.Response{
 				StatusCode: http.StatusCreated,
 				Status:     "201 Created",
-				Body:       io.NopCloser(bytes.NewBufferString(`{"id":"tpl_restored","key":"restored","createdAt":"now"}`)),
+				Body:       io.NopCloser(bytes.NewBufferString(`{"id":"tpl_restored","key":"restored","createdAt":"` + clientTestNow + `"}`)),
 			}, nil
 		})},
 	}
@@ -158,7 +159,7 @@ func TestNamespacePathAppliesToResourceRequests(t *testing.T) {
 
 			switch req.URL.Path {
 			case "/v1/namespaces/ns_123/secrets":
-				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"sec_created","key":"client-secret","createdAt":"now"}`), nil
+				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"sec_created","key":"client-secret","createdAt":"`+clientTestNow+`"}`), nil
 			case "/v1/namespaces/ns_123/templates":
 				var body bytes.Buffer
 				if err := json.NewEncoder(&body).Encode(template.CreateStreamEvent{Type: template.StreamEventResult, Template: &template.Metadata{ID: "tpl_created", Key: &templateKey}}); err != nil {
@@ -169,11 +170,11 @@ func TestNamespacePathAppliesToResourceRequests(t *testing.T) {
 			case "/v1/namespaces/ns_123/templates/by-key/dev/export":
 				return &http.Response{StatusCode: http.StatusOK, Status: clientTestOKStatus, Body: io.NopCloser(bytes.NewBufferString("template-archive"))}, nil
 			case "/v1/namespaces/ns_123/templates/import":
-				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"tpl_imported","key":"dev","createdAt":"now"}`), nil
+				return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"tpl_imported","key":"dev","createdAt":"`+clientTestNow+`"}`), nil
 			case "/v1/namespaces/ns_123/environments":
 				if req.Method == http.MethodPost {
 					var body bytes.Buffer
-					if err := json.NewEncoder(&body).Encode(environment.CreateStreamEvent{Type: environment.StreamEventResult, Environment: &environment.Environment{ID: "env_created", Status: "running", TemplateID: "tpl_created", Tags: []string{}, CreatedAt: "now", UpdatedAt: "now"}}); err != nil {
+					if err := json.NewEncoder(&body).Encode(environment.CreateStreamEvent{Type: environment.StreamEventResult, Environment: &environment.Environment{ID: "env_created", Status: "running", TemplateID: "tpl_created", Tags: []string{}, CreatedAt: clientTestNow, UpdatedAt: clientTestNow}}); err != nil {
 						t.Fatalf("encode environment stream: %v", err)
 					}
 
@@ -182,7 +183,7 @@ func TestNamespacePathAppliesToResourceRequests(t *testing.T) {
 
 				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[]}`), nil
 			case "/v1/namespaces/ns_123/environments/env_created", "/v1/namespaces/ns_123/environments/by-key/dev-env":
-				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"env_created","status":"running","templateId":"tpl_created","tags":[],"createdAt":"now","updatedAt":"now"}`), nil
+				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"env_created","status":"running","templateId":"tpl_created","tags":[],"createdAt":"`+clientTestNow+`","updatedAt":"`+clientTestNow+`"}`), nil
 			case "/v1/namespaces/ns_123/environments/env_created/tunnels":
 				return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"entries":[]}`), nil
 			default:
@@ -400,15 +401,15 @@ func secretClientPathResponse(t *testing.T, req *http.Request, secretKey string)
 	case http.MethodPost:
 		assertSecretClientCreateRequest(t, req, secretKey)
 
-		return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"sec_created","key":"client-secret","createdAt":"now"}`)
+		return clientJSONResponse(http.StatusCreated, "201 Created", `{"id":"sec_created","key":"client-secret","createdAt":"`+clientTestNow+`"}`)
 	case http.MethodGet:
 		if strings.Contains(req.URL.Path, "/by-key/") {
-			return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"sec_created","key":"client-secret","value":"secret-value","createdAt":"now"}`)
+			return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"sec_created","key":"client-secret","value":"secret-value","createdAt":"`+clientTestNow+`"}`)
 		}
 
-		return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[{"id":"sec_created","key":"client-secret","createdAt":"now"}]}`)
+		return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"cursor":null,"entries":[{"id":"sec_created","key":"client-secret","createdAt":"`+clientTestNow+`"}]}`)
 	case http.MethodDelete:
-		return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"sec_created","key":"client-secret","createdAt":"now"}`)
+		return clientJSONResponse(http.StatusOK, clientTestOKStatus, `{"id":"sec_created","key":"client-secret","createdAt":"`+clientTestNow+`"}`)
 	default:
 		t.Fatalf("unexpected method %s", req.Method)
 

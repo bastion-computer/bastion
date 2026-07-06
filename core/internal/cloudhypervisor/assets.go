@@ -10,9 +10,11 @@ import (
 
 const (
 	assetDirName           = "cloud-hypervisor"
+	baseDirName            = "base"
 	environmentsDir        = "environments"
 	templatesDir           = "templates"
 	manifestFileName       = "manifest.json"
+	baseMetadataFileName   = "metadata.json"
 	cloudHypervisorName    = "cloud-hypervisor"
 	envStateFileName       = "vm.json"
 	envRootfsFileName      = "rootfs.img"
@@ -117,6 +119,10 @@ func envDir(dataDir, environmentID string) string {
 
 func templateDir(dataDir, templateID string) string {
 	return filepath.Join(dataDir, templatesDir, templateID)
+}
+
+func baseDir(dataDir string) string {
+	return filepath.Join(dataDir, baseDirName)
 }
 
 func statePath(dir string) string {

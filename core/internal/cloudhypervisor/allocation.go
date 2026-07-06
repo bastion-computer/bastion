@@ -95,6 +95,10 @@ func (m Manager) usedNetworkIndices() (map[int]struct{}, error) {
 		}
 	}
 
+	if err := m.collectUsedNetworkIndices(m.DataDir, used); err != nil {
+		return nil, err
+	}
+
 	return used, nil
 }
 

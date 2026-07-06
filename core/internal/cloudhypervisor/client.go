@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bastion-computer/bastion/core/internal/basearchive"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 )
 
@@ -39,6 +40,82 @@ func NewClient(socketPath string) *Client {
 		http: &http.Client{
 			Transport: transport,
 		},
+	}
+}
+
+// BuildBase asks bastiond to build and snapshot the base image.
+func (c *Client) BuildBase(ctx context.Context, buildReq BuildBaseRequest) (basearchive.Metadata, error) {
+	path := "/v1/base/build"
+	if buildReq.Force {
+		path += "?force=true"
+	}
+
+	return postDaemonStream(ctx, c, path, buildReq, buildReq.Logs, decodeBaseStream)
+}
+
+// GetBase asks bastiond for current base metadata.
+func (c *Client) GetBase(ctx context.Context) (basearchive.Metadata, error) {
+	var base basearchive.Metadata
+	return base, c.do(ctx, http.MethodGet, "/v1/base", nil, &base)
+}
+
+// ExportBase asks bastiond to stream base artifacts.
+func (c *Client) ExportBase(ctx context.Context, exportReq ExportBaseRequest) error {
+	if exportReq.Writer == nil {
+		return errors.New("base archive writer is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://bastiond/v1/base/export", nil)
+	if err != nil {
+		return fmt.Errorf("create bastiond request: %w", err)
+	}
+
+	req.Header.Set("Accept", BaseArchiveContentType)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("call bastiond at %s: %w", c.socketPath, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return decodeDaemonStatusError(res)
+	}
+
+	if _, err := io.Copy(exportReq.Writer, res.Body); err != nil {
+		return fmt.Errorf("read bastiond base archive: %w", err)
+	}
+
+	return nil
+}
+
+// ImportBase asks bastiond to restore base artifacts from an archive.
+func (c *Client) ImportBase(ctx context.Context, importReq ImportBaseRequest) (basearchive.Metadata, error) {
+	if importReq.Reader == nil {
+		return basearchive.Metadata{}, errors.New("base archive reader is required")
+	}
+
+	path := "/v1/base/import"
+	if importReq.Force {
+		path += "?force=true"
+	}
+
+	return postDaemonStreamBody(ctx, c, path, importReq.Reader, BaseArchiveContentType, importReq.ContentLength, importReq.Logs, decodeBaseStream)
+}
+
+func decodeBaseStream(decoder *json.Decoder, logs io.Writer) (basearchive.Metadata, error) {
+	var base basearchive.Metadata
+
+	for {
+		var event BaseStreamEvent
+		if err := decoder.Decode(&event); err != nil {
+			return base, daemonStreamDecodeError(err, "base operation")
+		}
+
+		decoded, done, err := handleDaemonStreamEvent(event.Type, event.Log, event.Error, event.Status, event.Base, "base", "base", logs)
+		if done || err != nil {
+			return decoded, err
+		}
 	}
 }
 
@@ -211,6 +288,37 @@ func postDaemonStream[T any](ctx context.Context, c *Client, path string, in any
 	return decode(json.NewDecoder(res.Body), logs)
 }
 
+func postDaemonStreamBody[T any](ctx context.Context, c *Client, path string, body io.Reader, contentType string, contentLength int64, logs io.Writer, decode func(*json.Decoder, io.Writer) (T, error)) (T, error) {
+	var out T
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://bastiond"+path, body)
+	if err != nil {
+		return out, fmt.Errorf("create bastiond request: %w", err)
+	}
+
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	if contentLength > 0 {
+		req.ContentLength = contentLength
+	}
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call bastiond at %s: %w", c.socketPath, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeDaemonStatusError(res)
+	}
+
+	return decode(json.NewDecoder(res.Body), logs)
+}
+
 func daemonStreamDecodeError(err error, operation string) error {
 	if errors.Is(err, io.EOF) {
 		return fmt.Errorf("bastiond stream ended before %s completed", operation)
@@ -330,6 +438,10 @@ func daemonStatusError(statusCode int, format string, args ...any) error {
 	switch statusCode {
 	case http.StatusBadRequest:
 		return fmt.Errorf("%w: %w", failure.ErrInvalid, err)
+	case http.StatusNotFound:
+		return fmt.Errorf("%w: %w", ErrBaseNotFound, err)
+	case http.StatusConflict:
+		return fmt.Errorf("%w: %w", ErrBaseExists, err)
 	case http.StatusFailedDependency:
 		return fmt.Errorf("%w: %w", failure.ErrFailedDependency, err)
 	}

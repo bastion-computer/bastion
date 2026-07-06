@@ -61,7 +61,7 @@ func newClusterNodesCreateCommand(opts *rootOptions) *cobra.Command {
 				nodeKey = &key
 			}
 
-			created, err := apiClient(opts).CreateClusterNode(cmd.Context(), clusterservice.CreateNodeRequest{Key: nodeKey, URL: nodeURL})
+			created, err := apiClient(opts).CreateClusterNode(cmd.Context(), clusterservice.CreateNodeRequest{Key: nodeKey, URL: nodeURL, Logs: cmd.ErrOrStderr()})
 			if err != nil {
 				return err
 			}

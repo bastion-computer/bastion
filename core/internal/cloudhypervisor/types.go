@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/bastion-computer/bastion/core/internal/basearchive"
 	"github.com/bastion-computer/bastion/core/internal/tunnel"
 )
 
@@ -29,6 +30,8 @@ const (
 	GuestProxyVsockPort = tunnel.GuestProxyVsockPort
 	// TemplateArchiveContentType is the media type used for streamed template backups.
 	TemplateArchiveContentType = "application/vnd.bastion.template+tar+zstd"
+	// BaseArchiveContentType is the media type used for streamed base backups.
+	BaseArchiveContentType = basearchive.ContentType
 
 	// NetworkIndexLimit is the number of /30 VM networks available in 10.241.0.0/16.
 	NetworkIndexLimit = 16000
@@ -120,6 +123,34 @@ type PrepareTemplateStreamEvent struct {
 	Template *PreparedTemplate `json:"template,omitempty"`
 	Error    string            `json:"error,omitempty"`
 	Status   int               `json:"status,omitempty"`
+}
+
+// BuildBaseRequest asks bastiond to build and snapshot the template-agnostic base image.
+type BuildBaseRequest struct {
+	Force bool      `json:"force,omitempty"`
+	Logs  io.Writer `json:"-"`
+}
+
+// ExportBaseRequest asks bastiond to stream base image artifacts.
+type ExportBaseRequest struct {
+	Writer io.Writer `json:"-"`
+}
+
+// ImportBaseRequest asks bastiond to restore base image artifacts from an archive.
+type ImportBaseRequest struct {
+	Force         bool      `json:"force,omitempty"`
+	Reader        io.Reader `json:"-"`
+	ContentLength int64     `json:"-"`
+	Logs          io.Writer `json:"-"`
+}
+
+// BaseStreamEvent is one line in a streamed base build/import response.
+type BaseStreamEvent struct {
+	Type   string                `json:"type"`
+	Log    string                `json:"log,omitempty"`
+	Base   *basearchive.Metadata `json:"base,omitempty"`
+	Error  string                `json:"error,omitempty"`
+	Status int                   `json:"status,omitempty"`
 }
 
 // VM describes durable VM runtime metadata.

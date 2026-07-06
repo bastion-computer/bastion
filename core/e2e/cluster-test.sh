@@ -35,6 +35,7 @@ VM_NODE_ENV_ID=""
 LAST_VM_NODE_URL=""
 LAST_VM_NODE_ENV_ID=""
 SECOND_VM_NODE_URL=""
+CLUSTER_BASE_CONTENT_ADDRESS=""
 
 log() {
   printf '[cluster-test] %s\n' "$*"
@@ -649,6 +650,65 @@ assert_minio_object_missing() {
   fi
 }
 
+assert_minio_base_object_exists() {
+  if ! minio_mc stat "local/$MINIO_BUCKET/base/base.tar.zst" >/dev/null 2>&1; then
+    fail "base archive object was not found in MinIO"
+  fi
+}
+
+assert_node_base() {
+  local label=$1
+  local node_url=$2
+  local content_address=$3
+  local output
+
+  output="$(curl -fsS "$node_url/v1/base")"
+  if ! jq -e --arg content_address "$content_address" '.contentAddress == $content_address' <<<"$output" >/dev/null; then
+    fail "$label base is $(jq -c . <<<"$output"), want $content_address"
+  fi
+}
+
+run_base_case() {
+  local output logs got archive imported import_logs imported_address
+
+  logs="$WORK_DIR/base-build.log"
+  archive="$WORK_DIR/cluster-base.tar.zst"
+  import_logs="$WORK_DIR/base-import.log"
+
+  log "building cluster base"
+  output="$(run_cli base build --force 2>"$logs")"
+  CLUSTER_BASE_CONTENT_ADDRESS="$(jq -r '.contentAddress' <<<"$output")"
+  if [[ "$CLUSTER_BASE_CONTENT_ADDRESS" != sha256:* ]]; then
+    fail "cluster base content address is $CLUSTER_BASE_CONTENT_ADDRESS, want sha256 prefix"
+  fi
+  assert_output_contains "cluster base build logs" "$(<"$logs")" "cluster: selecting cluster node"
+  assert_output_contains "cluster base build logs" "$(<"$logs")" "cluster: storing base archive"
+  assert_minio_base_object_exists
+  assert_node_base "first node" "$VM_NODE_URL" "$CLUSTER_BASE_CONTENT_ADDRESS"
+
+  got="$(run_cli base get)"
+  if ! jq -e --arg content_address "$CLUSTER_BASE_CONTENT_ADDRESS" '.contentAddress == $content_address' <<<"$got" >/dev/null; then
+    fail "cluster base get returned $(jq -c . <<<"$got"), want $CLUSTER_BASE_CONTENT_ADDRESS"
+  fi
+
+  log "exporting cluster base"
+  run_cli base export >"$archive"
+  if [ ! -s "$archive" ]; then
+    fail "cluster base export did not write an archive"
+  fi
+
+  log "verifying cluster base import without force is rejected"
+  assert_command_fails run_cli base import --file "$archive"
+
+  log "force importing cluster base"
+  imported="$(run_cli base import --force --file "$archive" 2>"$import_logs")"
+  imported_address="$(jq -r '.contentAddress' <<<"$imported")"
+  if [ "$imported_address" != "$CLUSTER_BASE_CONTENT_ADDRESS" ]; then
+    fail "cluster base import address is $imported_address, want $CLUSTER_BASE_CONTENT_ADDRESS"
+  fi
+  assert_output_contains "cluster base import logs" "$(<"$import_logs")" "cluster: importing base on cluster node"
+}
+
 run_resource_case() {
   local ns_a ns_b secret_key secret_value secret_output secret_id template_key template_output template_id got listed archive imported_key imported_output imported_id imported_archive
   local template_logs
@@ -835,7 +895,7 @@ SH
 run_environment_case() {
   local ns_a ns_b secret_key secret_value secret_id template_key template_output template_id
   local env1_key env1_tag env2_tag env3_tag env1 env2 env3 got listed output proxy_logs proxy_url derivative_env1
-  local node_b_output node_b_id
+  local node_b_output node_b_id node_b_logs
   local env1_logs env3_logs
 
   log "creating environment orchestration namespaces"
@@ -891,10 +951,15 @@ run_environment_case() {
   log "starting and registering second VM-backed cluster node"
   start_vm_node b 1 2 50
   SECOND_VM_NODE_URL="$LAST_VM_NODE_URL"
-  node_b_output="$(run_cli cluster nodes create --key "$RUN_ID-vm-node-b" --url "$SECOND_VM_NODE_URL")"
+  node_b_logs="$WORK_DIR/node-b-create.log"
+  node_b_output="$(run_cli cluster nodes create --key "$RUN_ID-vm-node-b" --url "$SECOND_VM_NODE_URL" 2>"$node_b_logs")"
   node_b_id="$(jq -r '.id' <<<"$node_b_output")"
   NODE_IDS+=("$node_b_id")
   assert_node "second VM-backed node" "$node_b_output" "$RUN_ID-vm-node-b" "$SECOND_VM_NODE_URL"
+  if [ -n "$CLUSTER_BASE_CONTENT_ADDRESS" ]; then
+    assert_output_contains "second node create logs" "$(<"$node_b_logs")" "cluster: syncing base to cluster node"
+    assert_node_base "second node" "$SECOND_VM_NODE_URL" "$CLUSTER_BASE_CONTENT_ADDRESS"
+  fi
 
   log "creating third environment on second node due first node capacity"
   output="$(run_cli --namespace-id "$ns_a" env create --template-key "$template_key" --tag "$env3_tag" 2>"$env3_logs")"
@@ -1004,6 +1069,7 @@ main() {
   start_cluster
   run_namespace_case
   run_vm_node_case
+  run_base_case
   run_template_oom_case
   run_resource_case
   run_environment_case

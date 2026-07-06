@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	"github.com/bastion-computer/bastion/core/internal/basearchive"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
@@ -68,11 +70,16 @@ func NewS3TemplateArchiveStore(ctx context.Context, opts S3ArchiveStoreOptions) 
 }
 
 func (s s3TemplateArchiveStore) Put(ctx context.Context, key string, body io.Reader) error {
+	contentType := template.ArchiveContentType
+	if strings.HasPrefix(key, "base/") {
+		contentType = basearchive.ContentType
+	}
+
 	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
 		Body:        body,
-		ContentType: aws.String(template.ArchiveContentType),
+		ContentType: aws.String(contentType),
 	}); err != nil {
 		return fmt.Errorf("put template archive: %w", err)
 	}

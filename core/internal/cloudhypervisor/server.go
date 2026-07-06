@@ -11,10 +11,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/bastion-computer/bastion/core/internal/basearchive"
 )
 
 func init() {
@@ -152,6 +155,40 @@ func NewRouter(manager Manager, logger *slog.Logger) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	v1.GET("/base", func(c *gin.Context) {
+		base, err := manager.GetBase(c.Request.Context())
+		respondDaemon(c, base, err)
+	})
+
+	v1.POST("/base/build", func(c *gin.Context) {
+		force, ok := daemonBoolQuery(c, "force")
+		if !ok {
+			return
+		}
+
+		serveDaemonBase(c, BuildBaseRequest{Force: force}, manager.BuildBase)
+	})
+
+	v1.POST("/base/import", func(c *gin.Context) {
+		force, ok := daemonBoolQuery(c, "force")
+		if !ok {
+			return
+		}
+
+		serveDaemonBase(c, ImportBaseRequest{Force: force, Reader: c.Request.Body, ContentLength: c.Request.ContentLength}, manager.ImportBase)
+	})
+
+	v1.GET("/base/export", func(c *gin.Context) {
+		c.Header("Content-Type", BaseArchiveContentType)
+
+		if err := manager.ExportBase(c.Request.Context(), ExportBaseRequest{Writer: c.Writer}); err != nil {
+			_ = c.Error(err)
+			if !c.Writer.Written() {
+				c.JSON(daemonStatusForError(err), gin.H{daemonErrorKey: err.Error()})
+			}
+		}
+	})
+
 	v1.POST("/templates", func(c *gin.Context) {
 		serveDaemonCreate(c, newDaemonTemplateStreamAdapter, func(req *PrepareTemplateRequest, logs io.Writer) {
 			req.Logs = logs
@@ -211,6 +248,59 @@ type daemonCreateStream[T any] interface {
 	Start() error
 	Result(T) error
 	Error(T, error) error
+}
+
+func daemonBoolQuery(c *gin.Context, name string) (bool, bool) {
+	value, ok := c.GetQuery(name)
+	if !ok || value == "" {
+		return false, true
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{daemonErrorKey: "invalid " + name + " query parameter"})
+
+		return false, false
+	}
+
+	return parsed, true
+}
+
+func serveDaemonBase[TReq any](
+	c *gin.Context,
+	req TReq,
+	run func(context.Context, TReq) (basearchive.Metadata, error),
+) {
+	streamCtx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+
+	stream := newDaemonBaseStream(c.Writer, cancel)
+	if err := stream.Start(); err != nil {
+		_ = c.Error(err)
+
+		return
+	}
+
+	switch typed := any(&req).(type) {
+	case *BuildBaseRequest:
+		typed.Logs = stream
+	case *ImportBaseRequest:
+		typed.Logs = stream
+	}
+
+	result, err := run(streamCtx, req)
+	if err != nil {
+		_ = c.Error(err)
+		if writeErr := stream.Error(result, err); writeErr != nil {
+			_ = c.Error(writeErr)
+		}
+
+		return
+	}
+
+	if err := stream.Result(result); err != nil {
+		_ = c.Error(err)
+	}
 }
 
 func serveDaemonCreate[TReq, TResult any](
@@ -275,6 +365,12 @@ func respondDaemon(c *gin.Context, value any, err error) {
 
 func daemonStatusForError(err error) int {
 	switch {
+	case errors.Is(err, ErrBaseNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, ErrBaseExists):
+		return http.StatusConflict
+	case errors.Is(err, ErrInvalidBaseArchive):
+		return http.StatusBadRequest
 	case errors.Is(err, ErrVMInitFailed):
 		return http.StatusFailedDependency
 	case errors.Is(err, ErrInvalidTemplateArchive):
@@ -298,6 +394,74 @@ type daemonTemplateStream struct {
 	controller *http.ResponseController
 	cancel     context.CancelFunc
 	mu         sync.Mutex
+}
+
+type daemonBaseStream struct {
+	w          http.ResponseWriter
+	encoder    *json.Encoder
+	controller *http.ResponseController
+	cancel     context.CancelFunc
+	mu         sync.Mutex
+}
+
+func newDaemonBaseStream(w http.ResponseWriter, cancel context.CancelFunc) *daemonBaseStream {
+	return &daemonBaseStream{w: w, encoder: json.NewEncoder(w), controller: http.NewResponseController(w), cancel: cancel}
+}
+
+func (s *daemonBaseStream) Start() error {
+	s.w.Header().Set("Content-Type", "application/x-ndjson")
+	s.w.Header().Set("Cache-Control", "no-cache")
+	s.w.WriteHeader(http.StatusOK)
+
+	return s.flush()
+}
+
+func (s *daemonBaseStream) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	if err := s.write(BaseStreamEvent{Type: StreamEventLog, Log: string(p)}); err != nil {
+		return 0, err
+	}
+
+	return len(p), nil
+}
+
+func (s *daemonBaseStream) Result(base basearchive.Metadata) error {
+	return s.write(BaseStreamEvent{Type: StreamEventResult, Base: &base})
+}
+
+func (s *daemonBaseStream) Error(base basearchive.Metadata, err error) error {
+	event := BaseStreamEvent{Type: StreamEventError, Error: err.Error(), Status: daemonStatusForError(err)}
+	if base.ContentAddress != "" {
+		event.Base = &base
+	}
+
+	return s.write(event)
+}
+
+func (s *daemonBaseStream) write(event BaseStreamEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.encoder.Encode(event); err != nil {
+		s.cancel()
+
+		return err
+	}
+
+	return s.flush()
+}
+
+func (s *daemonBaseStream) flush() error {
+	if err := s.controller.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		s.cancel()
+
+		return err
+	}
+
+	return nil
 }
 
 func newDaemonTemplateStream(w http.ResponseWriter, cancel context.CancelFunc) *daemonTemplateStream {
