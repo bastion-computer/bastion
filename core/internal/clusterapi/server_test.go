@@ -17,6 +17,8 @@ func TestNewRouterRegistersNamespacedResourceRoutes(t *testing.T) {
 	}
 
 	want := []string{
+		http.MethodPost + " /v1/base/build",
+		http.MethodGet + " /v1/base/export",
 		http.MethodPost + " /v1/namespaces/:namespaceID/secrets",
 		http.MethodGet + " /v1/namespaces/by-key/:namespaceKey/templates/by-key/:key/export",
 		http.MethodGet + " /v1/namespaces/:namespaceID/environments/:id/tunnels",

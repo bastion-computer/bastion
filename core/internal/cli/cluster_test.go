@@ -18,6 +18,7 @@ const (
 	cliTestClusterNodeURL      = "http://node.test"
 	cliTestClusterNamespaceID  = "ns_123"
 	cliTestClusterNamespaceKey = "namespace-key"
+	cliTestNow                 = "now"
 )
 
 func TestClusterCommandsUseResourcePaths(t *testing.T) {
@@ -107,9 +108,7 @@ func writeClusterNodesResponse(t *testing.T, w http.ResponseWriter, r *http.Requ
 			t.Fatalf("node create request = %#v, want keyed node URL", req)
 		}
 
-		w.WriteHeader(http.StatusCreated)
-
-		if err := json.NewEncoder(w).Encode(testClusterNode()); err != nil {
+		if err := json.NewEncoder(w).Encode(clusterservice.NodeStreamEvent{Type: clusterservice.StreamEventResult, Node: newTestClusterNode()}); err != nil {
 			t.Fatalf("encode node create response: %v", err)
 		}
 	case http.MethodGet:
@@ -153,10 +152,16 @@ func writeClusterNamespacesResponse(t *testing.T, w http.ResponseWriter, r *http
 
 func testClusterNode() clusterservice.Node {
 	key := cliTestClusterNodeKey
-	return clusterservice.Node{ID: cliTestClusterNodeID, Key: &key, URL: cliTestClusterNodeURL, CreatedAt: "now"}
+	return clusterservice.Node{ID: cliTestClusterNodeID, Key: &key, URL: cliTestClusterNodeURL, CreatedAt: cliTestNow}
+}
+
+func newTestClusterNode() *clusterservice.Node {
+	node := testClusterNode()
+
+	return &node
 }
 
 func testClusterNamespace() clusterservice.Namespace {
 	key := cliTestClusterNamespaceKey
-	return clusterservice.Namespace{ID: cliTestClusterNamespaceID, Key: &key, CreatedAt: "now"}
+	return clusterservice.Namespace{ID: cliTestClusterNamespaceID, Key: &key, CreatedAt: cliTestNow}
 }

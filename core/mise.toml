@@ -58,6 +58,7 @@ fi
 
 go build -ldflags "$ldflags" -o ./tmp/bastion ./cmd/bastion
 go build -o ./tmp/bastion-guest-proxy ./cmd/bastion-guest-proxy
+bash ./e2e/base-test.sh
 bash ./e2e/cluster-test.sh
 bash ./e2e/client-test.sh
 bash ./e2e/env-test.sh

@@ -22,6 +22,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/clusterdb"
 	"github.com/bastion-computer/bastion/core/internal/failure"
 	"github.com/bastion-computer/bastion/core/internal/services"
+	"github.com/bastion-computer/bastion/core/internal/services/base"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
@@ -50,8 +51,25 @@ type Node struct {
 
 // CreateNodeRequest contains the fields needed to add a node to the cluster.
 type CreateNodeRequest struct {
-	Key *string `json:"key,omitempty"`
-	URL string  `json:"url"`
+	Key  *string   `json:"key,omitempty"`
+	URL  string    `json:"url"`
+	Logs io.Writer `json:"-"`
+}
+
+// Stream event types used by streaming cluster operations.
+const (
+	StreamEventLog    = "log"
+	StreamEventResult = "result"
+	StreamEventError  = "error"
+)
+
+// NodeStreamEvent is one line in a streamed cluster node creation response.
+type NodeStreamEvent struct {
+	Type   string `json:"type"`
+	Log    string `json:"log,omitempty"`
+	Node   *Node  `json:"node,omitempty"`
+	Error  string `json:"error,omitempty"`
+	Status int    `json:"status,omitempty"`
 }
 
 // Namespace describes a resource isolation namespace in the cluster.
@@ -70,6 +88,10 @@ type CreateNamespaceRequest struct {
 type NodeClient interface {
 	Health(context.Context, string) error
 	Utilization(context.Context, string) (utilization.Utilization, error)
+	GetBase(context.Context, string) (base.Base, error)
+	BuildBase(context.Context, string, base.BuildRequest) (base.Base, error)
+	ImportBase(context.Context, string, base.ImportRequest) (base.Base, error)
+	ExportBase(context.Context, string, io.Writer) error
 	CreateSecret(context.Context, string, secret.CreateRequest) (secret.Metadata, error)
 	RemoveSecret(context.Context, string, string) error
 	CreateTemplate(context.Context, string, template.CreateRequest) (template.Metadata, error)
@@ -136,7 +158,7 @@ func WithTemplateArchiveStore(store TemplateArchiveStore) Option {
 	}
 }
 
-// CreateNode stores a cluster node.
+// CreateNode stores a cluster node after synchronizing the current cluster base, if any.
 func (s *Service) CreateNode(ctx context.Context, req CreateNodeRequest) (Node, error) {
 	if err := validateOptionalKey("cluster node", nodeIDPrefix, req.Key); err != nil {
 		return Node{}, err
@@ -152,6 +174,10 @@ func (s *Service) CreateNode(ctx context.Context, req CreateNodeRequest) (Node, 
 	}
 
 	node := Node{ID: nodeID, Key: services.CopyStringPtr(req.Key), URL: req.URL, CreatedAt: services.Now()}
+
+	if err := s.syncBaseToNewNode(ctx, node, req.Logs); err != nil {
+		return Node{}, err
+	}
 
 	_, err = s.db.Exec(ctx, `INSERT INTO cluster_nodes (id, key, url, created_at) VALUES ($1, $2, $3, $4)`, node.ID, services.OptionalStringValue(node.Key), node.URL, node.CreatedAt)
 	if err != nil {
@@ -469,6 +495,66 @@ func (c HTTPNodeClient) Utilization(ctx context.Context, nodeURL string) (utiliz
 	return out, c.getJSON(ctx, nodeURL, "/v1/utilization", &out)
 }
 
+// GetBase returns base metadata from one underlying node.
+func (c HTTPNodeClient) GetBase(ctx context.Context, nodeURL string) (base.Base, error) {
+	var out base.Base
+	return out, c.getJSON(ctx, nodeURL, "/v1/base", &out)
+}
+
+// BuildBase builds the base on one underlying node.
+func (c HTTPNodeClient) BuildBase(ctx context.Context, nodeURL string, req base.BuildRequest) (base.Base, error) {
+	path := "/v1/base/build"
+	if req.Force {
+		path += "?force=true"
+	}
+
+	return c.postBaseStream(ctx, nodeURL, path, req, req.Logs)
+}
+
+// ImportBase imports a base archive into one underlying node.
+func (c HTTPNodeClient) ImportBase(ctx context.Context, nodeURL string, req base.ImportRequest) (base.Base, error) {
+	if req.Archive == nil {
+		return base.Base{}, errors.New("base archive reader is required")
+	}
+
+	path := "/v1/base/import"
+	if req.Force {
+		path += "?force=true"
+	}
+
+	return c.postBaseStreamBody(ctx, nodeURL, path, req.Archive, req.ArchiveSize, req.Logs)
+}
+
+// ExportBase exports a base archive from one underlying node.
+func (c HTTPNodeClient) ExportBase(ctx context.Context, nodeURL string, archive io.Writer) error {
+	if archive == nil {
+		return errors.New("base archive writer is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(nodeURL, "/")+"/v1/base/export", nil)
+	if err != nil {
+		return fmt.Errorf("create node request: %w", err)
+	}
+
+	req.Header.Set("Accept", base.ArchiveContentType)
+
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("call node API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return decodeNodeStatusError(res)
+	}
+
+	if _, err := io.Copy(archive, res.Body); err != nil {
+		return fmt.Errorf("read node base archive: %w", err)
+	}
+
+	return nil
+}
+
 // CreateSecret creates a derivative secret on one underlying node.
 func (c HTTPNodeClient) CreateSecret(ctx context.Context, nodeURL string, req secret.CreateRequest) (secret.Metadata, error) {
 	var out secret.Metadata
@@ -700,6 +786,84 @@ func (c HTTPNodeClient) doJSON(ctx context.Context, method, nodeURL, path string
 	return nil
 }
 
+//nolint:dupl // Mirrors template/environment stream handling while preserving base-specific result typing.
+func (c HTTPNodeClient) postBaseStream(ctx context.Context, nodeURL, path string, in any, logs io.Writer) (base.Base, error) {
+	var out base.Base
+
+	contents, err := json.Marshal(in)
+	if err != nil {
+		return out, fmt.Errorf("encode node request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(nodeURL, "/")+path, bytes.NewReader(contents))
+	if err != nil {
+		return out, fmt.Errorf("create node request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call node API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeNodeStatusError(res)
+	}
+
+	decoder := json.NewDecoder(res.Body)
+	for {
+		created, done, err := readBaseStreamEvent(decoder, logs)
+		if err != nil {
+			return out, err
+		}
+
+		if done {
+			return created, nil
+		}
+	}
+}
+
+func (c HTTPNodeClient) postBaseStreamBody(ctx context.Context, nodeURL, path string, body io.Reader, contentLength int64, logs io.Writer) (base.Base, error) {
+	var out base.Base
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(nodeURL, "/")+path, body)
+	if err != nil {
+		return out, fmt.Errorf("create node request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", base.ArchiveContentType)
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	if contentLength > 0 {
+		req.ContentLength = contentLength
+	}
+
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call node API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeNodeStatusError(res)
+	}
+
+	decoder := json.NewDecoder(res.Body)
+	for {
+		created, done, err := readBaseStreamEvent(decoder, logs)
+		if err != nil {
+			return out, err
+		}
+
+		if done {
+			return created, nil
+		}
+	}
+}
+
 //nolint:dupl // Template and environment streams carry distinct event/result types.
 func (c HTTPNodeClient) postStream(ctx context.Context, nodeURL, path string, in any, logs io.Writer) (template.Metadata, error) {
 	var out template.Metadata
@@ -846,6 +1010,40 @@ func readTemplateCreateStreamEvent(decoder *json.Decoder, logs io.Writer) (templ
 		return template.Metadata{}, false, fmt.Errorf("node API template creation failed: %s", event.Error)
 	default:
 		return template.Metadata{}, false, fmt.Errorf("node API template stream returned unknown event type %q", event.Type)
+	}
+}
+
+//nolint:dupl // Stream event shape intentionally matches template/environment creation with a base payload.
+func readBaseStreamEvent(decoder *json.Decoder, logs io.Writer) (base.Base, bool, error) {
+	var event base.StreamEvent
+
+	if err := decoder.Decode(&event); err != nil {
+		if errors.Is(err, io.EOF) {
+			return base.Base{}, false, errors.New("node API stream ended before base operation completed")
+		}
+
+		return base.Base{}, false, fmt.Errorf("decode node base stream: %w", err)
+	}
+
+	switch event.Type {
+	case base.StreamEventLog:
+		if logs != nil && event.Log != "" {
+			if _, err := logs.Write([]byte(event.Log)); err != nil {
+				return base.Base{}, false, fmt.Errorf("stream node base logs: %w", err)
+			}
+		}
+
+		return base.Base{}, false, nil
+	case base.StreamEventResult:
+		if event.Base == nil {
+			return base.Base{}, false, errors.New("node API stream result missing base")
+		}
+
+		return *event.Base, true, nil
+	case base.StreamEventError:
+		return base.Base{}, false, fmt.Errorf("node API base operation failed: %s", event.Error)
+	default:
+		return base.Base{}, false, fmt.Errorf("node API base stream returned unknown event type %q", event.Type)
 	}
 }
 

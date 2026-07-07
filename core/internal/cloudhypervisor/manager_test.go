@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bastion-computer/bastion/core/internal/basearchive"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -338,6 +339,62 @@ func TestManagerImportTemplateRejectsUnsafeArchivePath(t *testing.T) {
 	manager := Manager{DataDir: t.TempDir()}
 	if _, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_unsafe", Reader: bytes.NewReader(archive.Bytes())}); err == nil {
 		t.Fatal("import unsafe archive path error = nil, want error")
+	}
+}
+
+func TestInstallBaseRecomputesInstalledContentAddress(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	srcDir := filepath.Join(dataDir, "source-base")
+
+	writeTestBaseArtifacts(t, srcDir)
+
+	staleAddress, err := basearchive.ContentAddressForFiles(ctx, basearchive.Files(srcDir))
+	if err != nil {
+		t.Fatalf("compute original base content address: %v", err)
+	}
+
+	rootfsPath := filepath.Join(srcDir, basearchive.RootfsName)
+	if err := os.Chmod(rootfsPath, 0o600); err != nil {
+		t.Fatalf("make source base rootfs writable: %v", err)
+	}
+
+	if err := os.WriteFile(rootfsPath, []byte("changed-rootfs"), 0o600); err != nil {
+		t.Fatalf("mutate source base rootfs: %v", err)
+	}
+
+	metadata, err := installBase(ctx, dataDir, srcDir, basearchive.Metadata{ContentAddress: staleAddress, CreatedAt: "created", UpdatedAt: "created"})
+	if err != nil {
+		t.Fatalf("install base: %v", err)
+	}
+
+	wantAddress, err := basearchive.ContentAddressForFiles(ctx, basearchive.Files(baseDir(dataDir)))
+	if err != nil {
+		t.Fatalf("compute installed base content address: %v", err)
+	}
+
+	if metadata.ContentAddress != wantAddress {
+		t.Fatalf("installed content address = %q, want %q", metadata.ContentAddress, wantAddress)
+	}
+
+	if metadata.ContentAddress == staleAddress {
+		t.Fatalf("installed content address = stale address %q", staleAddress)
+	}
+
+	loaded, err := loadBase(dataDir)
+	if err != nil {
+		t.Fatalf("load installed base: %v", err)
+	}
+
+	if loaded.ContentAddress != wantAddress {
+		t.Fatalf("loaded content address = %q, want %q", loaded.ContentAddress, wantAddress)
+	}
+
+	var archive bytes.Buffer
+	if err := basearchive.Write(ctx, &archive, loaded, basearchive.Files(baseDir(dataDir))); err != nil {
+		t.Fatalf("export installed base archive: %v", err)
 	}
 }
 
@@ -779,6 +836,20 @@ func writeTestPreparedTemplate(t *testing.T, dataDir, templateID string) {
 	for path, contents := range files {
 		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 			t.Fatalf("write prepared template file %s: %v", filepath.Base(path), err)
+		}
+	}
+}
+
+func writeTestBaseArtifacts(t *testing.T, dir string) {
+	t.Helper()
+
+	for _, file := range basearchive.Files(dir) {
+		if err := os.MkdirAll(filepath.Dir(file.Path), 0o750); err != nil {
+			t.Fatalf("create base artifact dir %s: %v", filepath.Dir(file.Path), err)
+		}
+
+		if err := os.WriteFile(file.Path, []byte(file.Name), file.Mode); err != nil {
+			t.Fatalf("write base artifact %s: %v", file.Name, err)
 		}
 	}
 }

@@ -83,6 +83,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.namespaceID, rootFlagNamespaceID, opts.namespaceID, "cluster namespace ID for resource commands")
 	cmd.PersistentFlags().StringVar(&opts.namespaceKey, rootFlagNamespaceKey, opts.namespaceKey, "cluster namespace key for resource commands")
 	cmd.AddCommand(
+		newBaseCommand(opts),
 		newStartCommand(opts),
 		newSystemCommand(opts),
 		newClientCommand(opts),
@@ -108,7 +109,7 @@ func shouldResolveClientConfig(cmd *cobra.Command) bool {
 	}
 
 	switch topLevel.Name() {
-	case clusterUse, secretsUse, utilizationUse, "templates", environmentUse, "mux", "opencode", proxyUse, "ssh":
+	case baseUse, clusterUse, secretsUse, utilizationUse, "templates", environmentUse, "mux", "opencode", proxyUse, "ssh":
 		return true
 	case clientUse:
 		return cmd.Name() == rootOptionSourceConfig

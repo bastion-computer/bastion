@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/bastion-computer/bastion/core/internal/services"
+	"github.com/bastion-computer/bastion/core/internal/services/base"
 	"github.com/bastion-computer/bastion/core/internal/services/cluster"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
@@ -69,10 +70,101 @@ func (c *Client) GetHealth(ctx context.Context) (cluster.Health, error) {
 	return out, c.do(ctx, http.MethodGet, "/v1/health", nil, &out)
 }
 
+// BuildBase builds the template-agnostic base image.
+func (c *Client) BuildBase(ctx context.Context, req base.BuildRequest) (base.Base, error) {
+	path := "/v1/base/build"
+	if req.Force {
+		path += "?force=true"
+	}
+
+	return postHostStream(ctx, c.http, c.baseURL+c.withNamespace(path), req, req.Logs, decodeBaseStream)
+}
+
+// GetBase returns current base metadata.
+func (c *Client) GetBase(ctx context.Context) (base.Base, error) {
+	var out base.Base
+	return out, c.do(ctx, http.MethodGet, "/v1/base", nil, &out)
+}
+
+// ExportBase streams the current base archive.
+func (c *Client) ExportBase(ctx context.Context, archive io.Writer) error {
+	if archive == nil {
+		return errors.New("base archive writer is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+c.withNamespace("/v1/base/export"), nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Accept", base.ArchiveContentType)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("call host API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return decodeHostStatusError(res)
+	}
+
+	if _, err := io.Copy(archive, res.Body); err != nil {
+		return fmt.Errorf("read base archive: %w", err)
+	}
+
+	return nil
+}
+
+// ImportBase uploads a base archive.
+func (c *Client) ImportBase(ctx context.Context, importReq base.ImportRequest) (base.Base, error) {
+	if importReq.Archive == nil {
+		return base.Base{}, errors.New("base archive file is required")
+	}
+
+	path := "/v1/base/import"
+	if importReq.Force {
+		path += "?force=true"
+	}
+
+	return postHostStreamBody(ctx, c.http, c.baseURL+c.withNamespace(path), importReq.Archive, base.ArchiveContentType, importReq.ArchiveSize, importReq.Logs, decodeBaseStream)
+}
+
+func decodeBaseStream(decoder *json.Decoder, logs io.Writer) (base.Base, error) {
+	var out base.Base
+
+	for {
+		var event base.StreamEvent
+		if err := decoder.Decode(&event); err != nil {
+			return out, hostStreamDecodeError(err, "base operation")
+		}
+
+		created, done, err := handleHostStreamEvent(event.Type, event.Log, event.Error, event.Status, event.Base, "base", "base", logs)
+		if done || err != nil {
+			return created, err
+		}
+	}
+}
+
 // CreateClusterNode adds a Bastion API node to the cluster.
 func (c *Client) CreateClusterNode(ctx context.Context, req cluster.CreateNodeRequest) (cluster.Node, error) {
+	return postHostStream(ctx, c.http, c.baseURL+c.withNamespace("/v1/cluster/nodes"), req, req.Logs, decodeCreateClusterNodeStream)
+}
+
+func decodeCreateClusterNodeStream(decoder *json.Decoder, logs io.Writer) (cluster.Node, error) {
 	var out cluster.Node
-	return out, c.do(ctx, http.MethodPost, "/v1/cluster/nodes", req, &out)
+
+	for {
+		var event cluster.NodeStreamEvent
+		if err := decoder.Decode(&event); err != nil {
+			return out, hostStreamDecodeError(err, "cluster node creation")
+		}
+
+		created, done, err := handleHostStreamEvent(event.Type, event.Log, event.Error, event.Status, event.Node, "cluster node", "cluster node", logs)
+		if done || err != nil {
+			return created, err
+		}
+	}
 }
 
 // ListClusterNodes returns cluster nodes.
@@ -359,6 +451,37 @@ func postHostStream[T any](ctx context.Context, client *http.Client, target stri
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/x-ndjson")
+
+	res, err := client.Do(req)
+	if err != nil {
+		return out, fmt.Errorf("call host API: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode >= http.StatusBadRequest {
+		return out, decodeHostStatusError(res)
+	}
+
+	return decode(json.NewDecoder(res.Body), logs)
+}
+
+func postHostStreamBody[T any](ctx context.Context, client *http.Client, target string, body io.Reader, contentType string, contentLength int64, logs io.Writer, decode func(*json.Decoder, io.Writer) (T, error)) (T, error) {
+	var out T
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, body)
+	if err != nil {
+		return out, fmt.Errorf("create request: %w", err)
+	}
+
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	req.Header.Set("Accept", "application/x-ndjson")
+
+	if contentLength > 0 {
+		req.ContentLength = contentLength
+	}
 
 	res, err := client.Do(req)
 	if err != nil {

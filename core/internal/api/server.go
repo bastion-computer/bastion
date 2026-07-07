@@ -12,10 +12,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/bastion-computer/bastion/core/internal/database"
+	basehandler "github.com/bastion-computer/bastion/core/internal/handlers/base"
 	"github.com/bastion-computer/bastion/core/internal/handlers/environments"
 	"github.com/bastion-computer/bastion/core/internal/handlers/secrets"
 	"github.com/bastion-computer/bastion/core/internal/handlers/templates"
 	utilizationhandler "github.com/bastion-computer/bastion/core/internal/handlers/utilization"
+	"github.com/bastion-computer/bastion/core/internal/services/base"
 	"github.com/bastion-computer/bastion/core/internal/services/environment"
 	"github.com/bastion-computer/bastion/core/internal/services/secret"
 	"github.com/bastion-computer/bastion/core/internal/services/template"
@@ -37,6 +39,7 @@ func NewServer(addr string, db *database.Client, logger *slog.Logger, opts ...Ro
 }
 
 type routerConfig struct {
+	baseOrchestrator        base.Orchestrator
 	templateOrchestrator    template.Orchestrator
 	environmentOrchestrator environment.Orchestrator
 	environmentSSHRunner    environments.SSHRunner
@@ -46,6 +49,13 @@ type routerConfig struct {
 
 // RouterOption configures the Bastion API router.
 type RouterOption func(*routerConfig)
+
+// WithBaseOrchestrator configures base image artifact management.
+func WithBaseOrchestrator(orchestrator base.Orchestrator) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.baseOrchestrator = orchestrator
+	}
+}
 
 // WithEnvironmentOrchestrator configures the VM orchestrator for environment routes.
 func WithEnvironmentOrchestrator(orchestrator environment.Orchestrator) RouterOption {
@@ -96,6 +106,13 @@ func NewRouter(db *database.Client, logger *slog.Logger, opts ...RouterOption) *
 	v1.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	baseHandler := basehandler.NewHandler(base.NewService(base.WithOrchestrator(cfg.baseOrchestrator)))
+	baseRoutes := v1.Group("/base")
+	baseRoutes.GET("", baseHandler.Get)
+	baseRoutes.POST("/build", baseHandler.Build)
+	baseRoutes.POST("/import", baseHandler.Import)
+	baseRoutes.GET("/export", baseHandler.Export)
 
 	secretHandler := secrets.NewHandler(secret.NewService(db))
 	secretRoutes := v1.Group("/secrets")

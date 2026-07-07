@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	baseUse        = "base"
 	clientUse      = "client"
 	clusterUse     = "cluster"
 	environmentUse = "env"

@@ -77,6 +77,12 @@ func NewRouter(db *clusterdb.Client, logger *slog.Logger, opts ...RouterOption) 
 	v1.GET("/health", handler.Health)
 	v1.GET("/utilization", handler.Utilization)
 
+	baseRoutes := v1.Group("/base")
+	baseRoutes.GET("", handler.GetBase)
+	baseRoutes.POST("/build", handler.BuildBase)
+	baseRoutes.POST("/import", handler.ImportBase)
+	baseRoutes.GET("/export", handler.ExportBase)
+
 	registerResourceRoutes(v1, handler)
 	registerResourceRoutes(v1.Group("/namespaces/:namespaceID"), handler)
 	registerResourceRoutes(v1.Group("/namespaces/by-key/:namespaceKey"), handler)

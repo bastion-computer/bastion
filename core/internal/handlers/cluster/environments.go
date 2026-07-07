@@ -110,7 +110,7 @@ func (h Handler) EnvironmentSSH(c *gin.Context) {
 	nodeStream, err := h.cluster.OpenEnvironmentSSH(c.Request.Context(), namespaceSelector(c), c.Param("id"), "", req)
 	if err != nil {
 		_ = c.Error(err)
-		c.JSON(handlers.ErrorStatus(err), gin.H{"error": err.Error()})
+		c.JSON(handlers.ErrorStatus(err), gin.H{clusterErrorKey: err.Error()})
 
 		return
 	}
@@ -119,7 +119,7 @@ func (h Handler) EnvironmentSSH(c *gin.Context) {
 	clientStream, err := hijackClusterSSH(c.Writer)
 	if err != nil {
 		_ = c.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{clusterErrorKey: err.Error()})
 
 		return
 	}
@@ -152,7 +152,7 @@ func (h Handler) proxyEnvironmentRoute(c *gin.Context, suffix string) {
 
 	if err != nil {
 		_ = c.Error(err)
-		c.JSON(handlers.ErrorStatus(err), gin.H{"error": err.Error()})
+		c.JSON(handlers.ErrorStatus(err), gin.H{clusterErrorKey: err.Error()})
 
 		return
 	}
