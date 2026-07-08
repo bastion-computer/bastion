@@ -119,7 +119,7 @@ func decodeBaseStream(decoder *json.Decoder, logs io.Writer) (basearchive.Metada
 	}
 }
 
-// PrepareTemplate asks bastiond to prepare and snapshot a template VM.
+// PrepareTemplate asks bastiond to prepare reusable template artifacts.
 func (c *Client) PrepareTemplate(ctx context.Context, prepareReq PrepareTemplateRequest) (PreparedTemplate, error) {
 	return postDaemonStream(ctx, c, "/v1/templates", prepareReq, prepareReq.Logs, decodePrepareTemplateStream)
 }

@@ -19,6 +19,7 @@ const (
 	templateArchiveFormat       = "bastion-template-v1"
 	templateArchiveManifestName = "manifest.json"
 	templateArchiveSSHKeyName   = "ssh_key"
+	templateArchiveSSHPubName   = "ssh_key.pub"
 	templateArchiveManifestMax  = 1 << 20
 )
 
@@ -96,6 +97,13 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 	}
 
 	if err := writeTemplateArchiveFile(ctx, tarWriter, templateArchiveSSHKeyName, sshKeyPath); err != nil {
+		_ = tarWriter.Close()
+		_ = zstdWriter.Close()
+
+		return err
+	}
+
+	if err := writeTemplateArchiveFile(ctx, tarWriter, templateArchiveSSHPubName, sshKeyPath+".pub"); err != nil {
 		_ = tarWriter.Close()
 		_ = zstdWriter.Close()
 
@@ -187,14 +195,14 @@ func preparedTemplateArchiveFiles(templateDir string) []templateArchiveFile {
 	return []templateArchiveFile{
 		{archiveName: envRootfsFileName, path: filepath.Join(templateDir, envRootfsFileName), mode: 0o400, required: true},
 		{archiveName: envSeedFileName, path: filepath.Join(templateDir, envSeedFileName), mode: 0o600, required: true},
-		{archiveName: path.Join(snapshotDirName, snapshotConfigFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotConfigFileName), mode: 0o600, required: true},
-		{archiveName: path.Join(snapshotDirName, snapshotStateFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotStateFileName), mode: 0o600, required: true},
-		{archiveName: path.Join(snapshotDirName, snapshotMemoryFileName), path: filepath.Join(templateDir, snapshotDirName, snapshotMemoryFileName), mode: 0o600, required: true},
 	}
 }
 
 func templateArchiveFiles(templateDir string) []templateArchiveFile {
-	return append(preparedTemplateArchiveFiles(templateDir), templateArchiveFile{archiveName: templateArchiveSSHKeyName, path: filepath.Join(templateDir, templateArchiveSSHKeyName), mode: 0o600})
+	return append(preparedTemplateArchiveFiles(templateDir),
+		templateArchiveFile{archiveName: templateArchiveSSHKeyName, path: filepath.Join(templateDir, templateArchiveSSHKeyName), mode: 0o600, required: true},
+		templateArchiveFile{archiveName: templateArchiveSSHPubName, path: filepath.Join(templateDir, templateArchiveSSHPubName), mode: 0o600, required: true},
+	)
 }
 
 func preparedTemplateSSHKeyPath(templateDir string) string {

@@ -17,6 +17,7 @@ import (
 const (
 	archiveFormat       = "bastion-template-v1"
 	archiveManifestName = "manifest.json"
+	archiveMemoryName   = "snapshot/memory-ranges"
 	archiveManifestMax  = 1 << 20
 )
 
@@ -48,6 +49,9 @@ func ReadTemplate(ctx context.Context, archive io.Reader) (Template, error) {
 	defer zstdReader.Close()
 
 	tarReader := tar.NewReader(zstdReader)
+	manifestSeen := false
+
+	var archiveManifest manifest
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -56,24 +60,39 @@ func ReadTemplate(ctx context.Context, archive io.Reader) (Template, error) {
 
 		header, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
-			return Template{}, fmt.Errorf("%w: template archive missing manifest", ErrInvalid)
+			break
 		}
 
 		if err != nil {
 			return Template{}, fmt.Errorf("%w: read template archive: %w", ErrInvalid, err)
 		}
 
+		if header.Name == archiveMemoryName {
+			return Template{}, fmt.Errorf("%w: template archive contains unsupported entry %s", ErrInvalid, archiveMemoryName)
+		}
+
 		if header.Name != archiveManifestName {
 			continue
 		}
 
-		archiveManifest, err := readManifest(tarReader, header.Size)
+		if manifestSeen {
+			return Template{}, fmt.Errorf("%w: template archive contains duplicate manifest", ErrInvalid)
+		}
+
+		read, err := readManifest(tarReader, header.Size)
 		if err != nil {
 			return Template{}, err
 		}
 
-		return archiveManifest.Template, nil
+		archiveManifest = read
+		manifestSeen = true
 	}
+
+	if !manifestSeen {
+		return Template{}, fmt.Errorf("%w: template archive missing manifest", ErrInvalid)
+	}
+
+	return archiveManifest.Template, nil
 }
 
 // RewriteTemplate copies archive to writer with its manifest template replaced.
@@ -151,6 +170,10 @@ func rewriteArchiveEntries(ctx context.Context, tarReader *tar.Reader, tarWriter
 
 		if err != nil {
 			return fmt.Errorf("%w: read template archive: %w", ErrInvalid, err)
+		}
+
+		if header.Name == archiveMemoryName {
+			return fmt.Errorf("%w: template archive contains unsupported entry %s", ErrInvalid, archiveMemoryName)
 		}
 
 		if header.Name == archiveManifestName {
