@@ -39,7 +39,6 @@ const (
 	vmCPUsEnv            = "BASTION_VM_CPUS"
 	vmMemoryBytesEnv     = "BASTION_VM_MEMORY_BYTES"
 	linuxCmdline         = "root=LABEL=cloudimg-rootfs rootwait ro console=ttyS0"
-	restoreMemoryMode    = "OnDemand"
 	defaultCPUs          = 2
 	defaultMemoryBytes   = 2 << 30
 	defaultRootfsSize    = "20G"
@@ -84,6 +83,11 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, errors.New("environment id is required")
 	}
 
+	resources, err := resolveTemplateResources(req.Template.Config)
+	if err != nil {
+		return VM{}, err
+	}
+
 	workspace, err := m.prepareRestoreWorkspace(ctx, req.EnvironmentID, req.Template)
 	if err != nil {
 		return VM{}, err
@@ -118,7 +122,15 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	vm, err := m.startRestoredMachine(ctx, req.EnvironmentID, workspace, plan)
+	if err := m.prepareCloudInit(ctx, req.EnvironmentID, workspace, plan); err != nil {
+		_ = terminateProcess(dhcpPID, vmmStartErrorTimeout)
+		_ = m.cleanupTap(context.Background(), plan)
+		_ = os.RemoveAll(workspace.dir)
+
+		return VM{}, err
+	}
+
+	vm, err := m.startMachine(ctx, req.EnvironmentID, workspace, plan, resources)
 	if err != nil {
 		_ = terminateProcess(dhcpPID, vmmStartErrorTimeout)
 		_ = m.cleanupTap(context.Background(), plan)
@@ -135,22 +147,16 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	if err := waitForTCP(ctx, vm.GuestIP, vm.SSHPort, sshWait); err != nil {
-		vm.State = StateError
-		vm.LastError = err.Error()
-		_ = writeVMState(vm)
-		m.cleanupVM(context.Background(), vm, true)
+	return m.completeLaunch(ctx, vm, req)
+}
 
-		return VM{}, err
+func (m Manager) completeLaunch(ctx context.Context, vm VM, req LaunchRequest) (VM, error) {
+	if err := waitForTCP(ctx, vm.GuestIP, vm.SSHPort, sshWait); err != nil {
+		return m.failLaunchReadiness(vm, err)
 	}
 
 	if err := m.waitForGuestSSH(ctx, vm, sshWait); err != nil {
-		vm.State = StateError
-		vm.LastError = err.Error()
-		_ = writeVMState(vm)
-		m.cleanupVM(context.Background(), vm, true)
-
-		return VM{}, err
+		return m.failLaunchReadiness(vm, err)
 	}
 
 	if err := m.startEnvironmentServices(ctx, vm, req); err != nil {
@@ -176,6 +182,15 @@ func (m Manager) Launch(ctx context.Context, req LaunchRequest) (VM, error) {
 	)
 
 	return vm, nil
+}
+
+func (m Manager) failLaunchReadiness(vm VM, err error) (VM, error) {
+	vm.State = StateError
+	vm.LastError = err.Error()
+	_ = writeVMState(vm)
+	m.cleanupVM(context.Background(), vm, true)
+
+	return VM{}, err
 }
 
 func (m Manager) startEnvironmentServices(ctx context.Context, vm VM, req LaunchRequest) error {
@@ -233,7 +248,7 @@ func (m Manager) waitForGuestSSHWithInterval(ctx context.Context, vm VM, timeout
 	return fmt.Errorf("timed out waiting for SSH authentication on %s", address)
 }
 
-// PrepareTemplate boots a template VM, runs init actions, snapshots it, and stores reusable artifacts.
+// PrepareTemplate boots a template VM, runs init actions, and stores reusable artifacts.
 func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest) (PreparedTemplate, error) {
 	m = m.withDefaults()
 
@@ -322,7 +337,7 @@ func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest
 		return PreparedTemplate{}, err
 	}
 
-	prepared, err := m.prepareTemplateSnapshot(ctx, req, vm, workspace)
+	prepared, err := m.prepareTemplateArtifacts(ctx, req, vm, workspace)
 	if err != nil {
 		return PreparedTemplate{}, err
 	}
@@ -334,13 +349,12 @@ func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest
 	m.Logger.InfoContext(ctx, "prepared cloud-hypervisor template",
 		slog.String("template_id", req.Template.ID),
 		slog.String("template_dir", prepared.TemplateDir),
-		slog.String("snapshot_dir", prepared.SnapshotDir),
 	)
 
 	return prepared, nil
 }
 
-func (m Manager) prepareTemplateSnapshot(ctx context.Context, req PrepareTemplateRequest, vm VM, workspace workspace) (PreparedTemplate, error) {
+func (m Manager) prepareTemplateArtifacts(ctx context.Context, req PrepareTemplateRequest, vm VM, workspace workspace) (PreparedTemplate, error) {
 	if err := m.setupTemplateGuestProxy(ctx, vm, req.Logs); err != nil {
 		return m.failTemplatePreparation(vm, workspace, err)
 	}
@@ -353,11 +367,11 @@ func (m Manager) prepareTemplateSnapshot(ctx context.Context, req PrepareTemplat
 		return m.failTemplatePreparation(vm, workspace, err)
 	}
 
-	if err := m.prepareGuestForSnapshot(ctx, vm); err != nil {
+	if err := m.prepareGuestForTemplateClone(ctx, vm); err != nil {
 		return m.failTemplatePreparation(vm, workspace, err)
 	}
 
-	prepared, err := m.snapshotTemplate(ctx, req.Template.ID, vm, workspace)
+	prepared, err := m.finishTemplateArtifacts(req.Template.ID, workspace)
 	if err != nil {
 		return m.failTemplatePreparation(vm, workspace, err)
 	}
@@ -411,14 +425,15 @@ func (m Manager) RemoveTemplate(_ context.Context, templateID string) (PreparedT
 }
 
 type workspace struct {
-	dir           string
-	rootfsPath    string
-	seedPath      string
-	snapshotPath  string
-	kernelPath    string
-	initramfsPath string
-	sshKeyPath    string
-	assets        assets
+	dir                string
+	rootfsPath         string
+	rootfsBackingFiles bool
+	seedPath           string
+	snapshotPath       string
+	kernelPath         string
+	initramfsPath      string
+	sshKeyPath         string
+	assets             assets
 }
 
 func (m Manager) prepareTemplateWorkspace(ctx context.Context, templateID string, resources resolvedResources) (workspace, error) {
@@ -495,18 +510,13 @@ func (m Manager) prepareRestoreWorkspace(ctx context.Context, environmentID stri
 	}
 
 	snapshotPath := filepath.Join(dir, snapshotDirName)
-	if err := prepareRestoreSnapshot(snapshotPath, prepared.SnapshotDir); err != nil {
-		_ = os.RemoveAll(dir)
-
-		return workspace{}, err
-	}
-
 	sshKeyPath := prepared.SSHKeyPath
+
 	if sshKeyPath == "" {
 		sshKeyPath = assetSet.sshKey
 	}
 
-	return workspace{dir: dir, rootfsPath: rootfsPath, seedPath: prepared.SeedPath, snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, sshKeyPath: sshKeyPath, assets: assetSet}, nil
+	return workspace{dir: dir, rootfsPath: rootfsPath, rootfsBackingFiles: true, seedPath: filepath.Join(dir, envSeedFileName), snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, sshKeyPath: sshKeyPath, assets: assetSet}, nil
 }
 
 func loadPreparedTemplate(dataDir, templateID string) (PreparedTemplate, error) {
@@ -527,10 +537,11 @@ func loadPreparedTemplate(dataDir, templateID string) (PreparedTemplate, error) 
 	checks := []string{
 		prepared.RootfsPath,
 		prepared.SeedPath,
-		filepath.Join(prepared.SnapshotDir, snapshotConfigFileName),
-		filepath.Join(prepared.SnapshotDir, snapshotStateFileName),
-		filepath.Join(prepared.SnapshotDir, snapshotMemoryFileName),
 	}
+	if prepared.SSHKeyPath != "" {
+		checks = append(checks, prepared.SSHKeyPath, prepared.SSHKeyPath+".pub")
+	}
+
 	for _, path := range checks {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -543,108 +554,6 @@ func loadPreparedTemplate(dataDir, templateID string) (PreparedTemplate, error) 
 	}
 
 	return prepared, nil
-}
-
-func prepareRestoreSnapshot(dstDir, srcDir string) error {
-	if err := os.RemoveAll(dstDir); err != nil {
-		return fmt.Errorf("remove stale restore snapshot: %w", err)
-	}
-
-	if err := os.MkdirAll(dstDir, 0o750); err != nil {
-		return fmt.Errorf("create restore snapshot directory: %w", err)
-	}
-
-	for _, name := range []string{snapshotStateFileName, snapshotMemoryFileName} {
-		if err := linkSnapshotFile(filepath.Join(srcDir, name), filepath.Join(dstDir, name)); err != nil {
-			return err
-		}
-	}
-
-	return copyFile(filepath.Join(srcDir, snapshotConfigFileName), filepath.Join(dstDir, snapshotConfigFileName), 0o600)
-}
-
-func linkSnapshotFile(src, dst string) error {
-	if err := os.Link(src, dst); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrExist) {
-		if symlinkErr := os.Symlink(src, dst); symlinkErr == nil {
-			return nil
-		}
-	}
-
-	if err := copyFile(src, dst, 0o600); err != nil {
-		return fmt.Errorf("link snapshot file %s: %w", filepath.Base(src), err)
-	}
-
-	return nil
-}
-
-func patchSnapshotConfig(contents []byte, workspace workspace, plan networkPlan) ([]byte, error) {
-	var config map[string]any
-	if err := json.Unmarshal(contents, &config); err != nil {
-		return nil, fmt.Errorf("parse snapshot config: %w", err)
-	}
-
-	disks, ok := config["disks"].([]any)
-	if !ok || len(disks) == 0 {
-		return nil, errors.New("snapshot config missing root disk")
-	}
-
-	rootfs, ok := disks[0].(map[string]any)
-	if !ok {
-		return nil, errors.New("snapshot config root disk is invalid")
-	}
-
-	rootfs["path"] = workspace.rootfsPath
-	rootfs["image_type"] = "Qcow2"
-	rootfs["backing_files"] = true
-
-	if len(disks) < 2 {
-		return nil, errors.New("snapshot config missing seed disk")
-	}
-
-	seed, ok := disks[1].(map[string]any)
-	if !ok {
-		return nil, errors.New("snapshot config seed disk is invalid")
-	}
-
-	seed["path"] = workspace.seedPath
-	seed["image_type"] = "Raw"
-	seed["readonly"] = true
-
-	nets, ok := config["net"].([]any)
-	if !ok || len(nets) == 0 {
-		return nil, errors.New("snapshot config missing network device")
-	}
-
-	netConfig, ok := nets[0].(map[string]any)
-	if !ok {
-		return nil, errors.New("snapshot config network device is invalid")
-	}
-
-	netConfig["tap"] = plan.tapName
-	netConfig["ip"] = plan.guestIP
-	netConfig["mask"] = "255.255.255.252"
-	netConfig["mac"] = strings.ToLower(plan.guestMAC)
-
-	if serial, ok := config["serial"].(map[string]any); ok {
-		serial["file"] = filepath.Join(workspace.dir, "serial.log")
-	}
-
-	vsock, ok := config["vsock"].(map[string]any)
-	if !ok {
-		return nil, errors.New("snapshot config missing vsock device")
-	}
-
-	vsock["cid"] = vsockCID(plan.networkIndex)
-	vsock["socket"] = vsockSocketPath(workspace)
-
-	patched, err := json.Marshal(config)
-	if err != nil {
-		return nil, fmt.Errorf("encode snapshot config: %w", err)
-	}
-
-	return patched, nil
 }
 
 // State reconciles durable VM state with the running Cloud Hypervisor process.
@@ -825,124 +734,6 @@ func (m Manager) startMachine(
 	return vm, nil
 }
 
-func (m Manager) startRestoredMachine(
-	ctx context.Context,
-	environmentID string,
-	workspace workspace,
-	plan networkPlan,
-) (VM, error) {
-	vm, err := m.startRestoredMachineWithMode(ctx, environmentID, workspace, plan, restoreMemoryMode)
-	if err == nil {
-		return vm, nil
-	}
-
-	m.Logger.WarnContext(ctx, "on-demand restore failed; retrying copy restore",
-		slog.String("environment_id", environmentID),
-		slog.String("error", err.Error()),
-	)
-
-	return m.startRestoredMachineWithMode(ctx, environmentID, workspace, plan, "")
-}
-
-func (m Manager) startRestoredMachineWithMode(
-	ctx context.Context,
-	environmentID string,
-	workspace workspace,
-	plan networkPlan,
-	memoryRestoreMode string,
-) (VM, error) {
-	stdoutPath := filepath.Join(workspace.dir, "stdout.log")
-
-	stdout, err := os.OpenFile(stdoutPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // Log path is rooted in the generated environment directory.
-	if err != nil {
-		return VM{}, fmt.Errorf("open vm stdout log: %w", err)
-	}
-
-	defer func() { _ = stdout.Close() }()
-
-	stderrPath := filepath.Join(workspace.dir, "stderr.log")
-
-	stderr, err := os.OpenFile(stderrPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // Log path is rooted in the generated environment directory.
-	if err != nil {
-		return VM{}, fmt.Errorf("open vm stderr log: %w", err)
-	}
-
-	defer func() { _ = stderr.Close() }()
-
-	vmID := shortID(environmentID)
-
-	runtimeBase, err := m.prepareRuntimeLink(workspace.dir, vmID)
-	if err != nil {
-		return VM{}, err
-	}
-
-	socketPath := filepath.Join(runtimeBase, apiSocketName)
-
-	pid, err := startVMMProcess(workspace.assets.cloudHypervisor, socketPath, stdout, stderr)
-	if err != nil {
-		_ = os.Remove(runtimeBase)
-
-		return VM{}, err
-	}
-
-	if err := waitForCloudHypervisorAPI(ctx, socketPath, pid, apiWait); err != nil {
-		_ = terminateProcess(pid, vmmStartErrorTimeout)
-		_ = os.Remove(runtimeBase)
-
-		return VM{}, fmt.Errorf("start cloud-hypervisor API: %w%s", err, logSuffix(stderrPath))
-	}
-
-	if err := preparePatchedRestoreConfig(workspace, plan); err != nil {
-		_ = terminateProcess(pid, vmmStartErrorTimeout)
-		_ = os.Remove(runtimeBase)
-
-		return VM{}, err
-	}
-
-	restore := cloudHypervisorRestoreConfig{SourceURL: fileURL(workspace.snapshotPath), Resume: true, MemoryRestoreMode: memoryRestoreMode}
-	if err := cloudHypervisorCall(ctx, socketPath, http.MethodPut, "/vm.restore", restore, nil); err != nil {
-		_ = terminateProcess(pid, vmmStartErrorTimeout)
-		_ = os.Remove(runtimeBase)
-
-		return VM{}, fmt.Errorf("restore cloud-hypervisor vm: %w%s", err, logSuffix(stderrPath))
-	}
-
-	createdAt := now()
-	vm := VM{
-		EnvironmentID:   environmentID,
-		VMID:            vmID,
-		State:           StateCreating,
-		PID:             pid,
-		EnvDir:          workspace.dir,
-		RuntimeDir:      runtimeBase,
-		SocketPath:      socketPath,
-		VsockSocketPath: vsockSocketPath(workspace),
-		KernelPath:      workspace.kernelPath,
-		InitramfsPath:   workspace.initramfsPath,
-		RootfsPath:      workspace.rootfsPath,
-		TapName:         plan.tapName,
-		HostIP:          plan.hostIP,
-		GuestIP:         plan.guestIP,
-		GuestCIDR:       plan.guestCIDR,
-		GuestMAC:        plan.guestMAC,
-		NetworkIndex:    plan.networkIndex,
-		SSHUser:         SSHUser,
-		SSHPort:         SSHPort,
-		SSHKeyPath:      workspace.sshKeyPath,
-		CreatedAt:       createdAt,
-		UpdatedAt:       createdAt,
-	}
-
-	if err := m.ensureVMProxyAccess(vm); err != nil {
-		_ = terminateProcess(pid, vmmStartErrorTimeout)
-		_ = os.Remove(runtimeBase)
-
-		return VM{}, err
-	}
-
-	return vm, nil
-}
-
 func (m Manager) ensureVMProxyAccess(vm VM) error {
 	if vm.VsockSocketPath == "" {
 		return nil
@@ -996,20 +787,6 @@ func (m Manager) proxyOwner() (int, int, bool) {
 	}
 
 	return uid, gid, uid != 0 || gid != 0
-}
-
-func preparePatchedRestoreConfig(workspace workspace, plan networkPlan) error {
-	contents, err := os.ReadFile(filepath.Join(workspace.snapshotPath, snapshotConfigFileName))
-	if err != nil {
-		return fmt.Errorf("read restore snapshot config: %w", err)
-	}
-
-	patched, err := patchSnapshotConfig(contents, workspace, plan)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(filepath.Join(workspace.snapshotPath, snapshotConfigFileName), patched, 0o600)
 }
 
 func (m Manager) prepareRuntimeLink(envDir, vmID string) (string, error) {
@@ -1093,12 +870,6 @@ type cloudHypervisorSnapshotConfig struct {
 	DestinationURL string `json:"destination_url"`
 }
 
-type cloudHypervisorRestoreConfig struct {
-	SourceURL         string `json:"source_url"`
-	Resume            bool   `json:"resume"`
-	MemoryRestoreMode string `json:"memory_restore_mode,omitempty"`
-}
-
 func buildVMConfig(workspace workspace, plan networkPlan, cpus int, memoryBytes int64) cloudHypervisorVMConfig {
 	return cloudHypervisorVMConfig{
 		CPUs: cloudHypervisorCPUs{
@@ -1113,7 +884,7 @@ func buildVMConfig(workspace workspace, plan networkPlan, cpus int, memoryBytes 
 			Initramfs: workspace.initramfsPath,
 		},
 		Disks: []cloudHypervisorDisk{
-			{Path: workspace.rootfsPath, ImageType: "Qcow2"},
+			{Path: workspace.rootfsPath, ImageType: "Qcow2", BackingFiles: workspace.rootfsBackingFiles},
 			{Path: workspace.seedPath, Readonly: true, ImageType: "Raw"},
 		},
 		Net: []cloudHypervisorNet{{
@@ -1255,6 +1026,24 @@ func cloudHypervisorVMInfo(ctx context.Context, socketPath string) (cloudHypervi
 	return info, err
 }
 
+func (m Manager) prepareGuestForTemplateClone(ctx context.Context, vm VM) error {
+	command := strings.Join([]string{
+		shellStrictMode,
+		"sync",
+		"cloud-init clean --logs || true",
+		"rm -f /etc/netplan/50-cloud-init.yaml /etc/netplan/50-cloud-init.yaml.bak || true",
+		"truncate -s 0 /etc/machine-id || true",
+		"rm -f /var/lib/dbus/machine-id || true",
+		"sync",
+	}, "\n")
+
+	if err := m.runGuestCommand(ctx, vm, command, nil); err != nil {
+		return fmt.Errorf("prepare guest for template clone: %w", err)
+	}
+
+	return nil
+}
+
 func (m Manager) prepareGuestForSnapshot(ctx context.Context, vm VM) error {
 	command := strings.Join([]string{
 		shellStrictMode,
@@ -1272,6 +1061,20 @@ func (m Manager) prepareGuestForSnapshot(ctx context.Context, vm VM) error {
 	case <-time.After(snapshotNetworkDelay):
 		return nil
 	}
+}
+
+func (m Manager) finishTemplateArtifacts(templateID string, workspace workspace) (PreparedTemplate, error) {
+	if err := os.RemoveAll(workspace.snapshotPath); err != nil {
+		return PreparedTemplate{}, fmt.Errorf("remove stale template snapshot: %w", err)
+	}
+
+	if err := os.Chmod(workspace.rootfsPath, 0o400); err != nil {
+		return PreparedTemplate{}, fmt.Errorf("mark template rootfs immutable: %w", err)
+	}
+
+	createdAt := now()
+
+	return PreparedTemplate{TemplateID: templateID, TemplateDir: workspace.dir, RootfsPath: workspace.rootfsPath, SeedPath: workspace.seedPath, SSHKeyPath: workspace.sshKeyPath, CreatedAt: createdAt, UpdatedAt: createdAt}, nil
 }
 
 func (m Manager) snapshotTemplate(ctx context.Context, templateID string, vm VM, workspace workspace) (PreparedTemplate, error) {

@@ -70,7 +70,7 @@ type LaunchRequest struct {
 	Logs          io.Writer `json:"-"`
 }
 
-// PrepareTemplateRequest asks bastiond to prepare and snapshot a template VM.
+// PrepareTemplateRequest asks bastiond to prepare reusable template artifacts.
 type PrepareTemplateRequest struct {
 	Template Template  `json:"template"`
 	Logs     io.Writer `json:"-"`

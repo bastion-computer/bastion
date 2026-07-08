@@ -265,6 +265,65 @@ func TestManagerExportsAndImportsPreparedTemplateArchive(t *testing.T) {
 	}
 }
 
+func TestManagerExportsPreparedTemplateArchiveWithoutSnapshotMemory(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	sourceID := "tpl_source"
+	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
+
+	writeTestCloudHypervisorAssets(t, dataDir)
+	writeTestPreparedTemplate(t, dataDir, sourceID)
+
+	manager := Manager{DataDir: dataDir}
+
+	var archive bytes.Buffer
+	if err := manager.ExportTemplate(context.Background(), ExportTemplateRequest{
+		Template: Template{ID: sourceID, Config: config},
+		Writer:   &archive,
+	}); err != nil {
+		t.Fatalf("export template archive: %v", err)
+	}
+
+	entries := templateArchiveEntryNames(t, archive.Bytes())
+	if entries[path.Join(snapshotDirName, snapshotMemoryFileName)] {
+		t.Fatalf("archive unexpectedly contains %s", path.Join(snapshotDirName, snapshotMemoryFileName))
+	}
+}
+
+func TestManagerImportsPreparedTemplateArchiveWithoutSnapshotMemory(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	restoredID := "tpl_restored"
+	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
+
+	writeTestCloudHypervisorAssets(t, dataDir)
+
+	var archive bytes.Buffer
+	writeZstdTemplateArchive(t, &archive, config, map[string][]byte{
+		envRootfsFileName:         []byte("rootfs"),
+		envSeedFileName:           []byte("seed"),
+		templateArchiveSSHKeyName: []byte("imported-key"),
+		templateArchiveSSHPubName: []byte("imported-key-pub"),
+	})
+
+	manager := Manager{DataDir: dataDir}
+
+	imported, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: restoredID, Reader: bytes.NewReader(archive.Bytes())})
+	if err != nil {
+		t.Fatalf("import disk-only template archive: %v", err)
+	}
+
+	if imported.Template.ID != restoredID || !jsonEqual(imported.Template.Config, config) {
+		t.Fatalf("imported template = %#v, want restored id/config", imported.Template)
+	}
+
+	if _, err := os.Stat(filepath.Join(templateDir(dataDir, restoredID), snapshotDirName, snapshotMemoryFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("imported snapshot memory stat error = %v, want not exist", err)
+	}
+}
+
 func TestPrepareRestoreWorkspaceUsesImportedTemplateSSHKey(t *testing.T) {
 	t.Parallel()
 
@@ -279,6 +338,10 @@ func TestPrepareRestoreWorkspaceUsesImportedTemplateSSHKey(t *testing.T) {
 		t.Fatalf("write imported key: %v", err)
 	}
 
+	if err := os.WriteFile(importedKeyPath+".pub", []byte("imported-key-pub"), 0o600); err != nil {
+		t.Fatalf("write imported public key: %v", err)
+	}
+
 	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error { return nil }}
 
 	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_imported_key", Template{ID: templateID})
@@ -288,6 +351,28 @@ func TestPrepareRestoreWorkspaceUsesImportedTemplateSSHKey(t *testing.T) {
 
 	if workspace.sshKeyPath != importedKeyPath {
 		t.Fatalf("restore workspace ssh key = %q, want imported key %q", workspace.sshKeyPath, importedKeyPath)
+	}
+}
+
+func TestPrepareRestoreWorkspaceDoesNotRequireTemplateSnapshot(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestCloudHypervisorAssets(t, dataDir)
+
+	templateID := "tpl_disk_only"
+	writeDiskOnlyPreparedTemplate(t, dataDir, templateID)
+
+	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error { return nil }}
+
+	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_disk_boot", Template{ID: templateID})
+	if err != nil {
+		t.Fatalf("prepare restore workspace: %v", err)
+	}
+
+	wantSeedPath := filepath.Join(envDir(dataDir, "env_disk_boot"), envSeedFileName)
+	if workspace.seedPath != wantSeedPath {
+		t.Fatalf("restore workspace seed path = %q, want environment seed %q", workspace.seedPath, wantSeedPath)
 	}
 }
 
@@ -427,84 +512,11 @@ func TestPrepareRestoreWorkspaceCreatesQCOW2Overlay(t *testing.T) {
 	if !slicesEqual(qemuImgArgs, want) {
 		t.Fatalf("qemu-img args = %#v, want %#v", qemuImgArgs, want)
 	}
-}
 
-//nolint:gocyclo // Verifies all mutable restore snapshot fields in one fixture.
-func TestPatchSnapshotConfigUsesEnvironmentDiskAndNetwork(t *testing.T) {
-	t.Parallel()
-
-	workspace := workspace{dir: t.TempDir(), rootfsPath: "/env/rootfs.img", seedPath: "/env/cidata.img"}
-	plan := networkPlan{networkIndex: 3, tapName: "bt123", guestIP: "10.241.0.6", guestMAC: "06:00:0A:F1:00:06"}
-	input := []byte(`{
-  "disks": [
-    {"path":"/template/rootfs.img","image_type":"Qcow2"},
-    {"path":"/template/cidata.img","readonly":true,"image_type":"Raw"}
-  ],
-  "net": [{"tap":"btold","ip":"10.241.0.2","mask":"255.255.255.252","mac":"06:00:0A:F1:00:02"}],
-  "vsock": {"cid": 3, "socket":"/template/vsock.socket"},
-  "serial": {"mode":"File","file":"/template/serial.log"}
-}`)
-
-	patched, err := patchSnapshotConfig(input, workspace, plan)
-	if err != nil {
-		t.Fatalf("patch snapshot config: %v", err)
+	config := buildVMConfig(workspace, networkPlan{}, 1, gibBytes)
+	if !config.Disks[0].BackingFiles {
+		t.Fatalf("rootfs backing files = false, want true for environment overlay")
 	}
-
-	var got map[string]any
-	if err := json.Unmarshal(patched, &got); err != nil {
-		t.Fatalf("unmarshal patched config: %v", err)
-	}
-
-	disks := requireJSONArray(t, got["disks"], "disks")
-
-	rootfs := requireJSONObject(t, disks[0], "rootfs disk")
-	if rootfs["path"] != workspace.rootfsPath || rootfs["backing_files"] != true {
-		t.Fatalf("rootfs disk = %#v, want env overlay with backing files", rootfs)
-	}
-
-	seed := requireJSONObject(t, disks[1], "seed disk")
-	if seed["path"] != workspace.seedPath || seed["image_type"] != "Raw" || seed["readonly"] != true {
-		t.Fatalf("seed disk = %#v, want imported template seed path", seed)
-	}
-
-	nets := requireJSONArray(t, got["net"], "net")
-
-	net := requireJSONObject(t, nets[0], "net config")
-	if net["tap"] != plan.tapName || net["ip"] != plan.guestIP || net["mac"] != strings.ToLower(plan.guestMAC) {
-		t.Fatalf("net config = %#v, want env network", net)
-	}
-
-	serial := requireJSONObject(t, got["serial"], "serial config")
-	if serial["file"] != filepath.Join(workspace.dir, "serial.log") {
-		t.Fatalf("serial config = %#v, want env serial log", serial)
-	}
-
-	vsock := requireJSONObject(t, got["vsock"], "vsock config")
-	if vsock["cid"] != float64(vsockCID(plan.networkIndex)) || vsock["socket"] != filepath.Join(workspace.dir, vsockSocketName) {
-		t.Fatalf("vsock config = %#v, want env vsock socket", vsock)
-	}
-}
-
-func requireJSONArray(t *testing.T, value any, name string) []any {
-	t.Helper()
-
-	items, ok := value.([]any)
-	if !ok || len(items) == 0 {
-		t.Fatalf("%s = %#v, want non-empty array", name, value)
-	}
-
-	return items
-}
-
-func requireJSONObject(t *testing.T, value any, name string) map[string]any {
-	t.Helper()
-
-	object, ok := value.(map[string]any)
-	if !ok {
-		t.Fatalf("%s = %#v, want object", name, value)
-	}
-
-	return object
 }
 
 func TestBuildVMConfigUsesResolvedCPUAndMemory(t *testing.T) {
@@ -801,6 +813,7 @@ func writeTestCloudHypervisorAssets(t *testing.T, dataDir string) {
 		{name: "initramfs.img", mode: 0o600},
 		{name: "rootfs.img", mode: 0o600},
 		{name: "id_rsa", mode: 0o600},
+		{name: "id_rsa.pub", mode: 0o600},
 	}
 
 	for _, file := range files {
@@ -831,6 +844,26 @@ func writeTestPreparedTemplate(t *testing.T, dataDir, templateID string) {
 		filepath.Join(snapshotDir, snapshotConfigFileName): `{"disks":[{"path":"rootfs.img"}],"net":[{}]}`,
 		filepath.Join(snapshotDir, snapshotStateFileName):  "{}",
 		filepath.Join(snapshotDir, snapshotMemoryFileName): "memory",
+	}
+
+	for path, contents := range files {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatalf("write prepared template file %s: %v", filepath.Base(path), err)
+		}
+	}
+}
+
+func writeDiskOnlyPreparedTemplate(t *testing.T, dataDir, templateID string) {
+	t.Helper()
+
+	dir := templateDir(dataDir, templateID)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("create prepared template dir: %v", err)
+	}
+
+	files := map[string]string{
+		filepath.Join(dir, envRootfsFileName): "rootfs",
+		filepath.Join(dir, envSeedFileName):   "seed",
 	}
 
 	for path, contents := range files {
@@ -878,9 +911,8 @@ func writeGzipTemplateArchive(t *testing.T, writer io.Writer, config json.RawMes
 		templateArchiveManifestName: manifestContents,
 		envRootfsFileName:           []byte("rootfs"),
 		envSeedFileName:             []byte("seed"),
-		path.Join(snapshotDirName, snapshotConfigFileName): []byte(`{"disks":[{"path":"rootfs.img"}],"net":[{}]}`),
-		path.Join(snapshotDirName, snapshotStateFileName):  []byte(`{}`),
-		path.Join(snapshotDirName, snapshotMemoryFileName): []byte("memory"),
+		templateArchiveSSHKeyName:   []byte("ssh-key"),
+		templateArchiveSSHPubName:   []byte("ssh-key-pub"),
 	}
 
 	for name, contents := range entries {
@@ -902,6 +934,77 @@ func writeGzipTemplateArchive(t *testing.T, writer io.Writer, config json.RawMes
 	}
 }
 
+func writeZstdTemplateArchive(t *testing.T, writer io.Writer, config json.RawMessage, entries map[string][]byte) {
+	t.Helper()
+
+	zstdWriter, err := zstd.NewWriter(writer)
+	if err != nil {
+		t.Fatalf("create zstd writer: %v", err)
+	}
+
+	tarWriter := tar.NewWriter(zstdWriter)
+
+	manifest := templateArchiveManifest{
+		Format: templateArchiveFormat,
+		Template: Template{
+			ID:     "tpl_source",
+			Config: config,
+		},
+	}
+
+	manifestContents, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+
+	manifestContents = append(manifestContents, '\n')
+	entries[templateArchiveManifestName] = manifestContents
+
+	for name, contents := range entries {
+		if err := tarWriter.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(contents))}); err != nil {
+			t.Fatalf("write header %s: %v", name, err)
+		}
+
+		if _, err := tarWriter.Write(contents); err != nil {
+			t.Fatalf("write entry %s: %v", name, err)
+		}
+	}
+
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("close tar: %v", err)
+	}
+
+	if err := zstdWriter.Close(); err != nil {
+		t.Fatalf("close zstd: %v", err)
+	}
+}
+
+func templateArchiveEntryNames(t *testing.T, archive []byte) map[string]bool {
+	t.Helper()
+
+	zstdReader, err := zstd.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	defer zstdReader.Close()
+
+	tarReader := tar.NewReader(zstdReader)
+	entries := map[string]bool{}
+
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			return entries
+		}
+
+		if err != nil {
+			t.Fatalf("read archive: %v", err)
+		}
+
+		entries[header.Name] = true
+	}
+}
+
 func assertPreparedTemplateFiles(t *testing.T, dataDir, templateID string) {
 	t.Helper()
 
@@ -909,9 +1012,8 @@ func assertPreparedTemplateFiles(t *testing.T, dataDir, templateID string) {
 	for _, path := range []string{
 		filepath.Join(dir, envRootfsFileName),
 		filepath.Join(dir, envSeedFileName),
-		filepath.Join(dir, snapshotDirName, snapshotConfigFileName),
-		filepath.Join(dir, snapshotDirName, snapshotStateFileName),
-		filepath.Join(dir, snapshotDirName, snapshotMemoryFileName),
+		filepath.Join(dir, templateArchiveSSHKeyName),
+		filepath.Join(dir, templateArchiveSSHPubName),
 	} {
 		info, err := os.Stat(path)
 		if err != nil {

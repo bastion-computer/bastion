@@ -48,7 +48,31 @@ func TestReadAndRewriteTemplateArchiveManifest(t *testing.T) {
 	}
 }
 
+func TestReadAndRewriteRejectSnapshotMemoryEntry(t *testing.T) {
+	t.Parallel()
+
+	source := buildArchiveEntries(t,
+		Template{ID: "tpl_memory", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)},
+		map[string]string{archiveMemoryName: "memory"},
+	)
+
+	if _, err := ReadTemplate(context.Background(), bytes.NewReader(source)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("read archive error = %v, want invalid", err)
+	}
+
+	var rewritten bytes.Buffer
+	if err := RewriteTemplate(context.Background(), bytes.NewReader(source), &rewritten, Template{ID: "tpl_rewritten", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("rewrite archive error = %v, want invalid", err)
+	}
+}
+
 func buildArchive(t *testing.T, archiveTemplate Template) []byte {
+	t.Helper()
+
+	return buildArchiveEntries(t, archiveTemplate, map[string]string{"payload.txt": "payload"})
+}
+
+func buildArchiveEntries(t *testing.T, archiveTemplate Template, entries map[string]string) []byte {
 	t.Helper()
 
 	var out bytes.Buffer
@@ -75,12 +99,14 @@ func buildArchive(t *testing.T, archiveTemplate Template) []byte {
 		t.Fatalf("write manifest: %v", err)
 	}
 
-	if err := tarWriter.WriteHeader(&tar.Header{Name: "payload.txt", Mode: 0o600, Size: int64(len("payload"))}); err != nil {
-		t.Fatalf("write payload header: %v", err)
-	}
+	for name, contents := range entries {
+		if err := tarWriter.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(contents))}); err != nil {
+			t.Fatalf("write %s header: %v", name, err)
+		}
 
-	if _, err := io.WriteString(tarWriter, "payload"); err != nil {
-		t.Fatalf("write payload: %v", err)
+		if _, err := io.WriteString(tarWriter, contents); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
 	}
 
 	if err := tarWriter.Close(); err != nil {
