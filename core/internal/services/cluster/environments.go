@@ -398,11 +398,54 @@ func (s *Service) nodeHasCapacity(ctx context.Context, node Node, usage ch.Resou
 		return false, fmt.Errorf("%w: cluster node %s utilization failed: %w", failure.ErrFailedDependency, node.ID, err)
 	}
 
-	return resourceHasCapacity(current.VCPU, usage.VCPU) && resourceHasCapacity(current.Memory, usage.MemoryBytes) && resourceHasCapacity(current.Volume, usage.VolumeBytes), nil
+	sourceUsed, err := s.nodeSourceResourceUsage(ctx, node.ID)
+	if err != nil {
+		return false, err
+	}
+
+	return resourceHasCapacity(current.VCPU, sourceUsed.VCPU, usage.VCPU) && resourceHasCapacity(current.Memory, sourceUsed.MemoryBytes, usage.MemoryBytes) && resourceHasCapacity(current.Volume, sourceUsed.VolumeBytes, usage.VolumeBytes), nil
 }
 
-func resourceHasCapacity(resource utilization.Resource, required int64) bool {
-	return resource.Available >= required
+func (s *Service) nodeSourceResourceUsage(ctx context.Context, nodeID string) (ch.ResourceUsage, error) {
+	rows, err := s.db.Query(ctx, `
+SELECT e.id, t.config
+FROM cluster_environments e
+JOIN cluster_templates t ON t.id = e.template_id
+WHERE e.node_id = $1 AND e.status IN ($2, $3, $4)
+`, nodeID, ch.StateCreating, ch.StateRunning, ch.StatePaused)
+	if err != nil {
+		return ch.ResourceUsage{}, fmt.Errorf("query cluster node source resource usage: %w", err)
+	}
+	defer rows.Close()
+
+	var used ch.ResourceUsage
+	for rows.Next() {
+		var environmentID, config string
+		if err := rows.Scan(&environmentID, &config); err != nil {
+			return ch.ResourceUsage{}, fmt.Errorf("scan cluster node source resource usage: %w", err)
+		}
+
+		usage, err := ch.ResolveTemplateResourceUsage(json.RawMessage(config))
+		if err != nil {
+			return ch.ResourceUsage{}, fmt.Errorf("resolve resource usage for cluster environment %s: %w", environmentID, err)
+		}
+
+		used.VCPU += usage.VCPU
+		used.MemoryBytes += usage.MemoryBytes
+		used.VolumeBytes += usage.VolumeBytes
+	}
+
+	if err := rows.Err(); err != nil {
+		return ch.ResourceUsage{}, fmt.Errorf("iterate cluster node source resource usage: %w", err)
+	}
+
+	return used, nil
+}
+
+func resourceHasCapacity(resource utilization.Resource, sourceUsed, required int64) bool {
+	available := max(resource.Total-max(resource.Used, sourceUsed), int64(0))
+
+	return available >= required
 }
 
 //nolint:gocyclo // Coordinates archive restore/rewrite/import, DB persistence, cleanup, and streamed progress.
@@ -448,7 +491,7 @@ func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID stri
 		return templateDerivative{}, fmt.Errorf("rewind source template archive: %w", err)
 	}
 
-	archiveTemplate := templatearchive.Template{ID: sourceTemplate.ID, Config: derivativeConfig}
+	archiveTemplate := derivativeArchiveTemplate(sourceTemplate, derivativeConfig)
 	if err := writeClusterProgress(logs, "rewriting template derivative archive"); err != nil {
 		return templateDerivative{}, err
 	}
@@ -494,6 +537,10 @@ func (s *Service) createTemplateDerivative(ctx context.Context, namespaceID stri
 	cleanupDerivatives = false
 
 	return derivative, nil
+}
+
+func derivativeArchiveTemplate(sourceTemplate template.Template, derivativeConfig json.RawMessage) templatearchive.Template {
+	return templatearchive.Template{ID: sourceTemplate.ID, Config: derivativeConfig, BaseContentAddress: sourceTemplate.BaseContentAddress}
 }
 
 func tempFileSize(file *os.File) (int64, error) {

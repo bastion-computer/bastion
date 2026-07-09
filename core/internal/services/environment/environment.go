@@ -171,9 +171,10 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Environment, e
 	vm, err := s.orchestrator.Launch(ctx, ch.LaunchRequest{
 		EnvironmentID: environment.ID,
 		Template: ch.Template{
-			ID:     template.ID,
-			Key:    services.CopyStringPtr(template.Key),
-			Config: resolvedConfig,
+			ID:                 template.ID,
+			Key:                services.CopyStringPtr(template.Key),
+			Config:             resolvedConfig,
+			BaseContentAddress: template.BaseContentAddress,
 		},
 		Logs: req.Logs,
 	})
@@ -449,9 +450,10 @@ func (s *Service) remove(ctx context.Context, environment Environment) (Environm
 }
 
 type resolvedTemplate struct {
-	ID     string
-	Key    *string
-	Config json.RawMessage
+	ID                 string
+	Key                *string
+	Config             json.RawMessage
+	BaseContentAddress string
 }
 
 func (s *Service) resolveTemplate(ctx context.Context, templateID, templateKey string) (resolvedTemplate, error) {
@@ -463,7 +465,7 @@ func (s *Service) resolveTemplate(ctx context.Context, templateID, templateKey s
 		config   string
 	)
 
-	err := s.db.QueryRowContext(ctx, `SELECT id, key, config FROM templates WHERE `+where, value).Scan(&template.ID, &key, &config)
+	err := s.db.QueryRowContext(ctx, `SELECT id, key, config, base_content_address FROM templates WHERE `+where, value).Scan(&template.ID, &key, &config, &template.BaseContentAddress)
 	if errors.Is(err, sql.ErrNoRows) {
 		return resolvedTemplate{}, fmt.Errorf("%w: template not found", failure.ErrNotFound)
 	}

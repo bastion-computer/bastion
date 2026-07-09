@@ -41,10 +41,7 @@ func (m Manager) BuildBase(ctx context.Context, req BuildBaseRequest) (basearchi
 		}
 	}
 
-	resources, err := (templateResources{}).resolve()
-	if err != nil {
-		return basearchive.Metadata{}, err
-	}
+	resources := resolvedResources{cpus: vmCPUs(), memoryBytes: vmMemoryBytes()}
 
 	workspace, err := m.prepareBaseWorkspace(ctx, resources)
 	if err != nil {
@@ -281,10 +278,12 @@ func (m Manager) prepareBaseWorkspace(ctx context.Context, resources resolvedRes
 		return workspace{}, err
 	}
 
-	if err := m.run(ctx, "qemu-img", "resize", rootfsPath, resources.rootfsSize); err != nil {
-		_ = os.RemoveAll(dir)
+	if resources.rootfsSize != "" {
+		if err := m.run(ctx, "qemu-img", "resize", rootfsPath, resources.rootfsSize); err != nil {
+			_ = os.RemoveAll(dir)
 
-		return workspace{}, err
+			return workspace{}, err
+		}
 	}
 
 	if err := chownIfConfigured(rootfsPath, m.UID, m.GID); err != nil {
@@ -302,6 +301,14 @@ func (m Manager) prepareBaseSnapshot(ctx context.Context, vm VM, workspace works
 	}
 
 	if err := m.setupTemplateGuestProxy(ctx, vm, logs); err != nil {
+		return m.failBasePreparation(vm, workspace, err)
+	}
+
+	if err := writeLog(logs, "installing base agents\n"); err != nil {
+		return m.failBasePreparation(vm, workspace, err)
+	}
+
+	if err := m.setupBaseAgents(ctx, vm, logs); err != nil {
 		return m.failBasePreparation(vm, workspace, err)
 	}
 

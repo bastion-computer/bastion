@@ -120,6 +120,15 @@ func (s *Service) CreateTemplate(ctx context.Context, namespaceSelector Namespac
 		return template.Metadata{}, err
 	}
 
+	if err := writeClusterProgress(req.Logs, "resolving cluster base"); err != nil {
+		return template.Metadata{}, err
+	}
+
+	baseRecord, err := s.requireBaseRecord(ctx)
+	if err != nil {
+		return template.Metadata{}, err
+	}
+
 	if err := writeClusterProgress(req.Logs, "selecting cluster node"); err != nil {
 		return template.Metadata{}, err
 	}
@@ -135,7 +144,7 @@ func (s *Service) CreateTemplate(ctx context.Context, namespaceSelector Namespac
 	}
 
 	createdAt := services.Now()
-	sourceTemplate := template.Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append(json.RawMessage(nil), req.Config...), CreatedAt: createdAt}
+	sourceTemplate := template.Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append(json.RawMessage(nil), req.Config...), BaseContentAddress: baseRecord.Metadata.ContentAddress, CreatedAt: createdAt}
 	archiveKey := templateArchiveObjectKey(namespace.ID, sourceTemplate.ID)
 	derivatives := derivativeCleanup{service: s, nodeURL: node.URL}
 	cleanupDerivatives := true
@@ -198,6 +207,8 @@ func (s *Service) CreateTemplate(ctx context.Context, namespaceSelector Namespac
 }
 
 // ImportTemplate stores an uploaded prepared template archive as a source template in a namespace.
+//
+//nolint:gocyclo // Coordinates upload validation, base matching, archive rewrite, storage, and DB insert.
 func (s *Service) ImportTemplate(ctx context.Context, namespaceSelector NamespaceSelector, req template.ImportRequest) (template.Metadata, error) {
 	namespace, err := s.resolveNamespace(ctx, namespaceSelector)
 	if err != nil {
@@ -213,6 +224,11 @@ func (s *Service) ImportTemplate(ctx context.Context, namespaceSelector Namespac
 	}
 
 	if err := s.requireArchiveStore(); err != nil {
+		return template.Metadata{}, err
+	}
+
+	baseRecord, err := s.requireBaseRecord(ctx)
+	if err != nil {
 		return template.Metadata{}, err
 	}
 
@@ -239,6 +255,10 @@ func (s *Service) ImportTemplate(ctx context.Context, namespaceSelector Namespac
 		return template.Metadata{}, fmt.Errorf("import template archive: %w", err)
 	}
 
+	if archiveTemplate.BaseContentAddress != baseRecord.Metadata.ContentAddress {
+		return template.Metadata{}, fmt.Errorf("%w: imported template base content address %s does not match cluster base %s", failure.ErrInvalid, archiveTemplate.BaseContentAddress, baseRecord.Metadata.ContentAddress)
+	}
+
 	if err := validateTemplateConfig(req.Key, archiveTemplate.Config, "imported template"); err != nil {
 		return template.Metadata{}, err
 	}
@@ -248,7 +268,7 @@ func (s *Service) ImportTemplate(ctx context.Context, namespaceSelector Namespac
 		return template.Metadata{}, err
 	}
 
-	sourceTemplate := template.Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append(json.RawMessage(nil), archiveTemplate.Config...), CreatedAt: services.Now()}
+	sourceTemplate := template.Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append(json.RawMessage(nil), archiveTemplate.Config...), BaseContentAddress: archiveTemplate.BaseContentAddress, CreatedAt: services.Now()}
 	archiveKey := templateArchiveObjectKey(namespace.ID, sourceTemplate.ID)
 
 	if err := s.insertTemplateWithArchive(ctx, namespace.ID, sourceTemplate, archiveKey, sourceArchive.file, "", "", nil, nil); err != nil {
@@ -394,6 +414,15 @@ func (s *Service) requireArchiveStore() error {
 	return nil
 }
 
+func (s *Service) requireBaseRecord(ctx context.Context) (baseRecord, error) {
+	record, err := s.getBaseRecord(ctx)
+	if errors.Is(err, failure.ErrNotFound) {
+		return baseRecord{}, fmt.Errorf("%w: base not found", failure.ErrFailedDependency)
+	}
+
+	return record, err
+}
+
 func (s *Service) selectNode(ctx context.Context) (Node, error) {
 	nodes, err := s.allNodes(ctx)
 	if err != nil {
@@ -505,7 +534,11 @@ func (s *Service) insertTemplateWithArchive(ctx context.Context, namespaceID str
 		return fmt.Errorf("rewind template archive: %w", err)
 	}
 
-	archiveTemplate := templatearchive.Template{ID: resource.ID, Key: services.CopyStringPtr(resource.Key), Config: resource.Config}
+	if err := validateTemplateArchiveBase(ctx, sourceArchive, resource.BaseContentAddress); err != nil {
+		return err
+	}
+
+	archiveTemplate := templatearchive.Template{ID: resource.ID, Key: services.CopyStringPtr(resource.Key), Config: resource.Config, BaseContentAddress: resource.BaseContentAddress}
 
 	if err := writeClusterProgress(logs, "rewriting source template archive"); err != nil {
 		return err
@@ -547,8 +580,33 @@ func (s *Service) insertTemplateWithArchive(ctx context.Context, namespaceID str
 	return nil
 }
 
+func validateTemplateArchiveBase(ctx context.Context, archive *os.File, baseContentAddress string) error {
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind template archive: %w", err)
+	}
+
+	archiveTemplate, err := templatearchive.ReadTemplate(ctx, archive)
+	if err != nil {
+		if errors.Is(err, templatearchive.ErrInvalid) {
+			return fmt.Errorf("%w: import template archive: %w", failure.ErrInvalid, err)
+		}
+
+		return fmt.Errorf("import template archive: %w", err)
+	}
+
+	if archiveTemplate.BaseContentAddress != baseContentAddress {
+		return fmt.Errorf("%w: template archive base content address %s does not match cluster base %s", failure.ErrInvalid, archiveTemplate.BaseContentAddress, baseContentAddress)
+	}
+
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind template archive: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) insertTemplate(ctx context.Context, namespaceID string, resource template.Template, archiveKey, nodeID, derivativeTemplateID string, derivativeSecrets []derivativeSecretMapping) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO cluster_templates (id, namespace_id, key, config, archive_key, node_id, derivative_template_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, resource.ID, namespaceID, services.OptionalStringValue(resource.Key), string(resource.Config), archiveKey, optionalEmptyString(nodeID), optionalEmptyString(derivativeTemplateID), resource.CreatedAt)
+	_, err := s.db.Exec(ctx, `INSERT INTO cluster_templates (id, namespace_id, key, config, base_content_address, archive_key, node_id, derivative_template_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, resource.ID, namespaceID, services.OptionalStringValue(resource.Key), string(resource.Config), resource.BaseContentAddress, archiveKey, optionalEmptyString(nodeID), optionalEmptyString(derivativeTemplateID), resource.CreatedAt)
 	if err != nil {
 		if clusterdb.IsConstraint(err) {
 			return fmt.Errorf("%w: template already exists", failure.ErrConflict)
@@ -599,9 +657,9 @@ func (s *Service) getTemplateInNamespace(ctx context.Context, namespaceID, templ
 
 	var err error
 	if templateID != "" {
-		err = s.db.QueryRow(ctx, `SELECT id, key, config, archive_key, node_id, derivative_template_id, created_at FROM cluster_templates WHERE namespace_id = $1 AND id = $2`, namespaceID, templateID).Scan(&resource.ID, &templateKey, &config, &archiveKey, &nodeID, &derivativeTemplateID, &resource.CreatedAt)
+		err = s.db.QueryRow(ctx, `SELECT id, key, config, base_content_address, archive_key, node_id, derivative_template_id, created_at FROM cluster_templates WHERE namespace_id = $1 AND id = $2`, namespaceID, templateID).Scan(&resource.ID, &templateKey, &config, &resource.BaseContentAddress, &archiveKey, &nodeID, &derivativeTemplateID, &resource.CreatedAt)
 	} else {
-		err = s.db.QueryRow(ctx, `SELECT id, key, config, archive_key, node_id, derivative_template_id, created_at FROM cluster_templates WHERE namespace_id = $1 AND key = $2`, namespaceID, key).Scan(&resource.ID, &templateKey, &config, &archiveKey, &nodeID, &derivativeTemplateID, &resource.CreatedAt)
+		err = s.db.QueryRow(ctx, `SELECT id, key, config, base_content_address, archive_key, node_id, derivative_template_id, created_at FROM cluster_templates WHERE namespace_id = $1 AND key = $2`, namespaceID, key).Scan(&resource.ID, &templateKey, &config, &resource.BaseContentAddress, &archiveKey, &nodeID, &derivativeTemplateID, &resource.CreatedAt)
 	}
 
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -627,20 +685,20 @@ type metadataListQuery struct {
 
 var (
 	secretMetadataListQuery = metadataListQuery{
-		all:         `SELECT id, key, created_at FROM cluster_secrets WHERE namespace_id = $1 ORDER BY created_at LIMIT $2`,
-		afterCursor: `SELECT id, key, created_at FROM cluster_secrets WHERE namespace_id = $1 AND created_at > $2 ORDER BY created_at LIMIT $3`,
+		all:         `SELECT id, key, '' AS base_content_address, created_at FROM cluster_secrets WHERE namespace_id = $1 ORDER BY created_at LIMIT $2`,
+		afterCursor: `SELECT id, key, '' AS base_content_address, created_at FROM cluster_secrets WHERE namespace_id = $1 AND created_at > $2 ORDER BY created_at LIMIT $3`,
 		listLabel:   "secrets",
 		scanLabel:   "secret",
 	}
 	templateMetadataListQuery = metadataListQuery{
-		all:         `SELECT id, key, created_at FROM cluster_templates WHERE namespace_id = $1 ORDER BY created_at LIMIT $2`,
-		afterCursor: `SELECT id, key, created_at FROM cluster_templates WHERE namespace_id = $1 AND created_at > $2 ORDER BY created_at LIMIT $3`,
+		all:         `SELECT id, key, base_content_address, created_at FROM cluster_templates WHERE namespace_id = $1 ORDER BY created_at LIMIT $2`,
+		afterCursor: `SELECT id, key, base_content_address, created_at FROM cluster_templates WHERE namespace_id = $1 AND created_at > $2 ORDER BY created_at LIMIT $3`,
 		listLabel:   "templates",
 		scanLabel:   "template",
 	}
 )
 
-func listMetadata[T any](ctx context.Context, service *Service, namespaceSelector NamespaceSelector, limit int, cursor string, query metadataListQuery, build func(string, *string, string) T, cursorValue func(T) string) (services.Page[T], error) {
+func listMetadata[T any](ctx context.Context, service *Service, namespaceSelector NamespaceSelector, limit int, cursor string, query metadataListQuery, build func(string, *string, string, string) T, cursorValue func(T) string) (services.Page[T], error) {
 	namespace, err := service.resolveNamespace(ctx, namespaceSelector)
 	if err != nil {
 		return services.Page[T]{}, err
@@ -649,7 +707,7 @@ func listMetadata[T any](ctx context.Context, service *Service, namespaceSelecto
 	return listClusterMetadata(ctx, service.db, namespace.ID, limit, cursor, query, build, cursorValue)
 }
 
-func listClusterMetadata[T any](ctx context.Context, db *clusterdb.Client, namespaceID string, limit int, cursor string, query metadataListQuery, build func(string, *string, string) T, cursorValue func(T) string) (services.Page[T], error) {
+func listClusterMetadata[T any](ctx context.Context, db *clusterdb.Client, namespaceID string, limit int, cursor string, query metadataListQuery, build func(string, *string, string, string) T, cursorValue func(T) string) (services.Page[T], error) {
 	limit = services.NormalizeLimit(limit)
 
 	rows, err := queryClusterMetadataRows(ctx, db, namespaceID, limit, cursor, query)
@@ -674,21 +732,22 @@ func queryClusterMetadataRows(ctx context.Context, db *clusterdb.Client, namespa
 	return db.Query(ctx, query.afterCursor, namespaceID, cursor, limit+1)
 }
 
-func scanResourceMetadataRows[T any](rows pgx.Rows, capacity int, query metadataListQuery, build func(string, *string, string) T) ([]T, error) {
+func scanResourceMetadataRows[T any](rows pgx.Rows, capacity int, query metadataListQuery, build func(string, *string, string, string) T) ([]T, error) {
 	entries := make([]T, 0, capacity)
 
 	for rows.Next() {
 		var (
-			id        string
-			key       sql.NullString
-			createdAt string
+			id                 string
+			key                sql.NullString
+			baseContentAddress string
+			createdAt          string
 		)
 
-		if err := rows.Scan(&id, &key, &createdAt); err != nil {
+		if err := rows.Scan(&id, &key, &baseContentAddress, &createdAt); err != nil {
 			return nil, fmt.Errorf("scan cluster %s: %w", query.scanLabel, err)
 		}
 
-		entries = append(entries, build(id, services.NullStringPtr(key), createdAt))
+		entries = append(entries, build(id, services.NullStringPtr(key), baseContentAddress, createdAt))
 	}
 
 	if err := rows.Err(); err != nil {
@@ -698,7 +757,9 @@ func scanResourceMetadataRows[T any](rows pgx.Rows, capacity int, query metadata
 	return entries, nil
 }
 
-func buildSecretMetadata(id string, key *string, createdAt string) secret.Metadata {
+func buildSecretMetadata(id string, key *string, baseContentAddress, createdAt string) secret.Metadata {
+	_ = baseContentAddress
+
 	return secret.Metadata{ID: id, Key: key, CreatedAt: createdAt}
 }
 
@@ -706,8 +767,8 @@ func secretMetadataCursor(entry secret.Metadata) string {
 	return entry.CreatedAt
 }
 
-func buildTemplateMetadata(id string, key *string, createdAt string) template.Metadata {
-	return template.Metadata{ID: id, Key: key, CreatedAt: createdAt}
+func buildTemplateMetadata(id string, key *string, baseContentAddress, createdAt string) template.Metadata {
+	return template.Metadata{ID: id, Key: key, BaseContentAddress: baseContentAddress, CreatedAt: createdAt}
 }
 
 func templateMetadataCursor(entry template.Metadata) string {
@@ -780,5 +841,5 @@ func secretMetadata(resource secret.Secret) secret.Metadata {
 }
 
 func templateMetadata(resource template.Template) template.Metadata {
-	return template.Metadata{ID: resource.ID, Key: services.CopyStringPtr(resource.Key), CreatedAt: resource.CreatedAt}
+	return template.Metadata{ID: resource.ID, Key: services.CopyStringPtr(resource.Key), BaseContentAddress: resource.BaseContentAddress, CreatedAt: resource.CreatedAt}
 }

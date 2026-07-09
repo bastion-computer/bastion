@@ -10,17 +10,19 @@ import (
 
 // Template contains an environment template and its JSON configuration.
 type Template struct {
-	ID        string          `json:"id"`
-	Key       *string         `json:"key,omitempty"`
-	Config    json.RawMessage `json:"config"`
-	CreatedAt string          `json:"createdAt"`
+	ID                 string          `json:"id"`
+	Key                *string         `json:"key,omitempty"`
+	Config             json.RawMessage `json:"config"`
+	BaseContentAddress string          `json:"baseContentAddress"`
+	CreatedAt          string          `json:"createdAt"`
 }
 
 // Metadata describes a template without its full configuration payload.
 type Metadata struct {
-	ID        string  `json:"id"`
-	Key       *string `json:"key,omitempty"`
-	CreatedAt string  `json:"createdAt"`
+	ID                 string  `json:"id"`
+	Key                *string `json:"key,omitempty"`
+	BaseContentAddress string  `json:"baseContentAddress"`
+	CreatedAt          string  `json:"createdAt"`
 }
 
 // CreateRequest contains the fields needed to create a template.

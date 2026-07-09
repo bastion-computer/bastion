@@ -18,6 +18,7 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/services/template"
 )
 
+//nolint:gocyclo // End-to-end service CRUD coverage intentionally exercises create, list, get, and remove.
 func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -37,6 +38,10 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 		t.Fatalf("unexpected created template: %#v", created)
 	}
 
+	if created.BaseContentAddress != "sha256:noop" {
+		t.Fatalf("created base content address = %q, want noop base", created.BaseContentAddress)
+	}
+
 	requireTemplateKey(t, created.Key, "dev-env")
 
 	page, err := service.List(ctx, 20, "")
@@ -53,7 +58,7 @@ func TestServiceCreatesListsGetsAndRemovesTemplate(t *testing.T) {
 		t.Fatalf("get template: %v", err)
 	}
 
-	if got.ID != created.ID || !jsonEqual(got.Config, json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)) {
+	if got.ID != created.ID || got.BaseContentAddress != created.BaseContentAddress || !jsonEqual(got.Config, json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)) {
 		t.Fatalf("unexpected template: %#v", got)
 	}
 
@@ -160,12 +165,25 @@ func TestServiceExportsAndImportsTemplateWithNewIdentity(t *testing.T) {
 		t.Fatalf("get imported template: %v", err)
 	}
 
-	if got.ID != imported.ID || !jsonEqual(got.Config, config) {
+	if got.ID != imported.ID || got.BaseContentAddress != "sha256:imported-base" || !jsonEqual(got.Config, config) {
 		t.Fatalf("imported template = %#v, want restored config", got)
 	}
 
 	if len(orchestrator.importedIDs) != 1 || orchestrator.importedIDs[0] != imported.ID || len(orchestrator.importedArchives) != 1 || string(orchestrator.importedArchives[0]) != "template-archive" {
 		t.Fatalf("imported artifacts = ids %#v archives %q, want generated id and archive", orchestrator.importedIDs, orchestrator.importedArchives)
+	}
+}
+
+func TestServiceCreateMapsMissingBaseToFailedDependency(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	orchestrator := &fakeTemplateOrchestrator{prepareErr: ch.ErrBaseNotFound}
+	service := template.NewService(db, template.WithOrchestrator(orchestrator))
+
+	_, err := service.Create(context.Background(), template.CreateRequest{Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)})
+	if !errors.Is(err, failure.ErrFailedDependency) {
+		t.Fatalf("create template error = %v, want failed dependency", err)
 	}
 }
 
@@ -566,14 +584,19 @@ type fakeTemplateOrchestrator struct {
 	removed          []string
 	exported         []ch.Template
 	importConfig     json.RawMessage
+	prepareErr       error
 	importedIDs      []string
 	importedArchives [][]byte
 }
 
 func (o *fakeTemplateOrchestrator) PrepareTemplate(_ context.Context, req ch.PrepareTemplateRequest) (ch.PreparedTemplate, error) {
+	if o.prepareErr != nil {
+		return ch.PreparedTemplate{}, o.prepareErr
+	}
+
 	o.prepared = append(o.prepared, ch.Template{ID: req.Template.ID, Key: req.Template.Key, Config: append(json.RawMessage(nil), req.Template.Config...)})
 
-	return ch.PreparedTemplate{TemplateID: req.Template.ID}, nil
+	return ch.PreparedTemplate{TemplateID: req.Template.ID, BaseContentAddress: "sha256:test-base"}, nil
 }
 
 func (o *fakeTemplateOrchestrator) RemoveTemplate(_ context.Context, templateID string) (ch.PreparedTemplate, error) {
@@ -598,5 +621,5 @@ func (o *fakeTemplateOrchestrator) ImportTemplate(_ context.Context, req ch.Impo
 	o.importedIDs = append(o.importedIDs, req.TemplateID)
 	o.importedArchives = append(o.importedArchives, contents)
 
-	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID, Config: append(json.RawMessage(nil), o.importConfig...)}}, nil
+	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID, Config: append(json.RawMessage(nil), o.importConfig...), BaseContentAddress: "sha256:imported-base"}}, nil
 }

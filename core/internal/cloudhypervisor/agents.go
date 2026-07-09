@@ -35,6 +35,14 @@ func (m Manager) setupTemplateAgents(ctx context.Context, vm VM, config json.Raw
 	return nil
 }
 
+func (m Manager) setupBaseAgents(ctx context.Context, vm VM, logs io.Writer) error {
+	if err := m.setupBaseOpenCodeAgent(ctx, vm, logs); err != nil {
+		return agentError{name: AgentOpenCode, operation: "base setup", err: err}
+	}
+
+	return nil
+}
+
 func (m Manager) startEnvironmentAgents(ctx context.Context, vm VM, config json.RawMessage, logs io.Writer) error {
 	agents, err := parseTemplateAgents(config)
 	if err != nil {
@@ -53,6 +61,15 @@ func (m Manager) startEnvironmentAgents(ctx context.Context, vm VM, config json.
 }
 
 func (m Manager) setupOpenCodeAgent(ctx context.Context, vm VM, agent templateOpenCodeAgent, logs io.Writer) error {
+	command, err := openCodeSetupCommand(agent)
+	if err != nil {
+		return err
+	}
+
+	return m.runGuestCommand(ctx, vm, command, logs)
+}
+
+func (m Manager) setupBaseOpenCodeAgent(ctx context.Context, vm VM, logs io.Writer) error {
 	m = m.withDefaults()
 
 	assets, err := loadOpenCodeAssets(m.DataDir)
@@ -78,12 +95,7 @@ func (m Manager) setupOpenCodeAgent(ctx context.Context, vm VM, agent templateOp
 		return sanitizeGuestCommandError(err)
 	}
 
-	command, err := openCodeSetupCommand(agent, useArchive)
-	if err != nil {
-		return err
-	}
-
-	return m.runGuestCommand(ctx, vm, command, logs)
+	return m.runGuestCommand(ctx, vm, openCodeBaseSetupCommand(useArchive), logs)
 }
 
 func (m Manager) startOpenCodeAgent(ctx context.Context, vm VM, agent templateOpenCodeAgent, logs io.Writer) error {
@@ -95,7 +107,35 @@ func (m Manager) startOpenCodeAgent(ctx context.Context, vm VM, agent templateOp
 	return m.runGuestCommand(ctx, vm, command, logs)
 }
 
-func openCodeSetupCommand(agent templateOpenCodeAgent, useArchive bool) (string, error) {
+func openCodeBaseSetupCommand(useArchive bool) string {
+	lines := []string{
+		shellStrictMode,
+		"export DEBIAN_FRONTEND=noninteractive",
+		"apt-get update",
+		"apt-get install -y --no-install-recommends bash ca-certificates curl jq tar gzip",
+		"mkdir -p /usr/local/bin",
+		"umask 077",
+	}
+
+	if useArchive {
+		lines = append(lines,
+			"tar -xzf "+openCodeArchiveTmpPath+" -C /tmp "+opencodeasset.BinaryName,
+			"install -m 0755 "+openCodeTmpPath+" "+openCodeGuestPath,
+			"rm -f "+openCodeArchiveTmpPath+" "+openCodeTmpPath,
+		)
+	} else {
+		lines = append(lines,
+			"install -m 0755 "+openCodeTmpPath+" "+openCodeGuestPath,
+			"rm -f "+openCodeTmpPath,
+		)
+	}
+
+	lines = append(lines, openCodeGuestPath+" --version")
+
+	return strings.Join(lines, "\n")
+}
+
+func openCodeSetupCommand(agent templateOpenCodeAgent) (string, error) {
 	port, err := openCodePort(agent)
 	if err != nil {
 		return "", err
@@ -115,23 +155,7 @@ func openCodeSetupCommand(agent templateOpenCodeAgent, useArchive bool) (string,
 
 	lines := []string{
 		shellStrictMode,
-		"export DEBIAN_FRONTEND=noninteractive",
-		"apt-get update",
-		"apt-get install -y --no-install-recommends bash ca-certificates curl jq tar gzip",
-		"mkdir -p /usr/local/bin",
 		"umask 077",
-	}
-	if useArchive {
-		lines = append(lines,
-			"tar -xzf "+openCodeArchiveTmpPath+" -C /tmp "+opencodeasset.BinaryName,
-			"install -m 0755 "+openCodeTmpPath+" "+openCodeGuestPath,
-			"rm -f "+openCodeArchiveTmpPath+" "+openCodeTmpPath,
-		)
-	} else {
-		lines = append(lines,
-			"install -m 0755 "+openCodeTmpPath+" "+openCodeGuestPath,
-			"rm -f "+openCodeTmpPath,
-		)
 	}
 
 	if hasConfig {
@@ -147,7 +171,6 @@ func openCodeSetupCommand(agent templateOpenCodeAgent, useArchive bool) (string,
 		"printf %s "+shellQuote(openCodeSystemdUnit(workingDirectory, port))+" > /etc/systemd/system/"+openCodeServiceName,
 		"systemctl daemon-reload",
 		"systemctl enable "+openCodeServiceName,
-		openCodeGuestPath+" --version",
 	)
 
 	return strings.Join(lines, "\n"), nil

@@ -21,17 +21,19 @@ import (
 
 // Template contains an environment template and its JSON configuration.
 type Template struct {
-	ID        string          `json:"id"`
-	Key       *string         `json:"key,omitempty"`
-	Config    json.RawMessage `json:"config"`
-	CreatedAt string          `json:"createdAt"`
+	ID                 string          `json:"id"`
+	Key                *string         `json:"key,omitempty"`
+	Config             json.RawMessage `json:"config"`
+	BaseContentAddress string          `json:"baseContentAddress"`
+	CreatedAt          string          `json:"createdAt"`
 }
 
 // Metadata describes a template without its full configuration payload.
 type Metadata struct {
-	ID        string  `json:"id"`
-	Key       *string `json:"key,omitempty"`
-	CreatedAt string  `json:"createdAt"`
+	ID                 string  `json:"id"`
+	Key                *string `json:"key,omitempty"`
+	BaseContentAddress string  `json:"baseContentAddress"`
+	CreatedAt          string  `json:"createdAt"`
 }
 
 // CreateRequest contains the fields needed to create a template.
@@ -135,18 +137,27 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Metadata, erro
 
 	template := Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append([]byte(nil), req.Config...), CreatedAt: services.Now()}
 
-	if _, err := s.orchestrator.PrepareTemplate(ctx, ch.PrepareTemplateRequest{
+	prepared, err := s.orchestrator.PrepareTemplate(ctx, ch.PrepareTemplateRequest{
 		Template: ch.Template{
 			ID:     template.ID,
 			Key:    services.CopyStringPtr(template.Key),
 			Config: preparedConfig,
 		},
 		Logs: req.Logs,
-	}); err != nil {
-		return Metadata{}, fmt.Errorf("prepare template vm: %w", err)
+	})
+	if err != nil {
+		return Metadata{}, mapOrchestratorError("prepare template vm", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, created_at) VALUES (?, ?, ?, ?)`, template.ID, services.OptionalStringValue(template.Key), string(template.Config), template.CreatedAt)
+	if prepared.BaseContentAddress == "" {
+		_, _ = s.orchestrator.RemoveTemplate(context.Background(), template.ID)
+
+		return Metadata{}, fmt.Errorf("prepare template vm: %w: prepared template missing base content address", failure.ErrFailedDependency)
+	}
+
+	template.BaseContentAddress = prepared.BaseContentAddress
+
+	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, base_content_address, created_at) VALUES (?, ?, ?, ?, ?)`, template.ID, services.OptionalStringValue(template.Key), string(template.Config), template.BaseContentAddress, template.CreatedAt)
 	if err != nil {
 		_, _ = s.orchestrator.RemoveTemplate(context.Background(), template.ID)
 
@@ -190,13 +201,14 @@ func (s *Service) Export(ctx context.Context, templateID, key string, archive io
 
 	if err := s.orchestrator.ExportTemplate(ctx, ch.ExportTemplateRequest{
 		Template: ch.Template{
-			ID:     template.ID,
-			Key:    services.CopyStringPtr(template.Key),
-			Config: template.Config,
+			ID:                 template.ID,
+			Key:                services.CopyStringPtr(template.Key),
+			Config:             template.Config,
+			BaseContentAddress: template.BaseContentAddress,
 		},
 		Writer: archive,
 	}); err != nil {
-		return fmt.Errorf("export template artifacts: %w", err)
+		return mapOrchestratorError("export template artifacts", err)
 	}
 
 	return nil
@@ -225,7 +237,7 @@ func (s *Service) Import(ctx context.Context, req ImportRequest) (Metadata, erro
 			return Metadata{}, fmt.Errorf("%w: import template artifacts: %w", failure.ErrInvalid, err)
 		}
 
-		return Metadata{}, fmt.Errorf("import template artifacts: %w", err)
+		return Metadata{}, mapOrchestratorError("import template artifacts", err)
 	}
 
 	cleanupImported := true
@@ -247,9 +259,13 @@ func (s *Service) Import(ctx context.Context, req ImportRequest) (Metadata, erro
 		return Metadata{}, fmt.Errorf("%w: imported template config does not match schema: %w", failure.ErrInvalid, err)
 	}
 
-	template := Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append([]byte(nil), imported.Template.Config...), CreatedAt: services.Now()}
+	if imported.Template.BaseContentAddress == "" {
+		return Metadata{}, fmt.Errorf("%w: imported template missing base content address", failure.ErrInvalid)
+	}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, created_at) VALUES (?, ?, ?, ?)`, template.ID, services.OptionalStringValue(template.Key), string(template.Config), template.CreatedAt)
+	template := Template{ID: templateID, Key: services.CopyStringPtr(req.Key), Config: append([]byte(nil), imported.Template.Config...), BaseContentAddress: imported.Template.BaseContentAddress, CreatedAt: services.Now()}
+
+	_, err = s.db.ExecContext(ctx, `INSERT INTO templates (id, key, config, base_content_address, created_at) VALUES (?, ?, ?, ?, ?)`, template.ID, services.OptionalStringValue(template.Key), string(template.Config), template.BaseContentAddress, template.CreatedAt)
 	if err != nil {
 		if database.IsConstraint(err) {
 			return Metadata{}, fmt.Errorf("%w: template already exists", failure.ErrConflict)
@@ -267,7 +283,7 @@ func (s *Service) Import(ctx context.Context, req ImportRequest) (Metadata, erro
 func (s *Service) List(ctx context.Context, limit int, cursor string) (services.Page[Metadata], error) {
 	limit = services.NormalizeLimit(limit)
 
-	rows, err := services.QueryPage(ctx, s.db, `SELECT id, key, created_at FROM templates`, limit, cursor)
+	rows, err := services.QueryPage(ctx, s.db, `SELECT id, key, base_content_address, created_at FROM templates`, limit, cursor)
 	if err != nil {
 		return services.Page[Metadata]{}, fmt.Errorf("list templates: %w", err)
 	}
@@ -281,7 +297,7 @@ func (s *Service) List(ctx context.Context, limit int, cursor string) (services.
 			template Metadata
 			key      sql.NullString
 		)
-		if err := rows.Scan(&template.ID, &key, &template.CreatedAt); err != nil {
+		if err := rows.Scan(&template.ID, &key, &template.BaseContentAddress, &template.CreatedAt); err != nil {
 			return services.Page[Metadata]{}, fmt.Errorf("scan template: %w", err)
 		}
 
@@ -311,7 +327,7 @@ func (s *Service) Get(ctx context.Context, templateID, key string) (Template, er
 		config      string
 	)
 
-	err := s.db.QueryRowContext(ctx, `SELECT id, key, config, created_at FROM templates WHERE `+where, value).Scan(&template.ID, &templateKey, &config, &template.CreatedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT id, key, config, base_content_address, created_at FROM templates WHERE `+where, value).Scan(&template.ID, &templateKey, &config, &template.BaseContentAddress, &template.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Template{}, fmt.Errorf("%w: template not found", failure.ErrNotFound)
 	}
@@ -350,13 +366,21 @@ func (s *Service) Remove(ctx context.Context, templateID, key string) (Template,
 
 // Metadata returns the template's metadata view.
 func (t Template) Metadata() Metadata {
-	return Metadata{ID: t.ID, Key: services.CopyStringPtr(t.Key), CreatedAt: t.CreatedAt}
+	return Metadata{ID: t.ID, Key: services.CopyStringPtr(t.Key), BaseContentAddress: t.BaseContentAddress, CreatedAt: t.CreatedAt}
+}
+
+func mapOrchestratorError(operation string, err error) error {
+	if errors.Is(err, ch.ErrBaseNotFound) {
+		return fmt.Errorf("%w: %s: base not found", failure.ErrFailedDependency, operation)
+	}
+
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 type noopOrchestrator struct{}
 
 func (noopOrchestrator) PrepareTemplate(_ context.Context, req ch.PrepareTemplateRequest) (ch.PreparedTemplate, error) {
-	return ch.PreparedTemplate{TemplateID: req.Template.ID, UpdatedAt: services.Now()}, nil
+	return ch.PreparedTemplate{TemplateID: req.Template.ID, BaseContentAddress: "sha256:noop", UpdatedAt: services.Now()}, nil
 }
 
 func (noopOrchestrator) RemoveTemplate(_ context.Context, templateID string) (ch.PreparedTemplate, error) {
@@ -368,5 +392,5 @@ func (noopOrchestrator) ExportTemplate(_ context.Context, _ ch.ExportTemplateReq
 }
 
 func (noopOrchestrator) ImportTemplate(_ context.Context, req ch.ImportTemplateRequest) (ch.ImportedTemplate, error) {
-	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID}, UpdatedAt: services.Now()}, nil
+	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID, BaseContentAddress: "sha256:noop"}, UpdatedAt: services.Now()}, nil
 }

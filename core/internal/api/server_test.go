@@ -333,7 +333,7 @@ func TestTemplateImportExportRoutes(t *testing.T) {
 func TestTemplateImportRejectsInvalidArchive(t *testing.T) {
 	t.Parallel()
 
-	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithTemplateOrchestrator(ch.NewManager(t.TempDir(), 0, 0, slog.New(slog.DiscardHandler))))
+	router := newTestRouter(t, slog.New(slog.DiscardHandler), api.WithTemplateOrchestrator(&templateArchiveOrchestrator{importErr: ch.ErrInvalidTemplateArchive}))
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/templates/import", strings.NewReader(""))
 	req.Header.Set("Content-Type", ch.TemplateArchiveContentType)
 
@@ -1194,6 +1194,7 @@ type templateArchiveOrchestrator struct {
 	prepared         []ch.Template
 	removed          []string
 	importConfig     json.RawMessage
+	importErr        error
 	importedArchives [][]byte
 	importSizes      []int64
 }
@@ -1201,7 +1202,7 @@ type templateArchiveOrchestrator struct {
 func (o *templateArchiveOrchestrator) PrepareTemplate(_ context.Context, req ch.PrepareTemplateRequest) (ch.PreparedTemplate, error) {
 	o.prepared = append(o.prepared, req.Template)
 
-	return ch.PreparedTemplate{TemplateID: req.Template.ID}, nil
+	return ch.PreparedTemplate{TemplateID: req.Template.ID, BaseContentAddress: "sha256:test-base"}, nil
 }
 
 func (o *templateArchiveOrchestrator) RemoveTemplate(_ context.Context, templateID string) (ch.PreparedTemplate, error) {
@@ -1222,10 +1223,14 @@ func (o *templateArchiveOrchestrator) ImportTemplate(_ context.Context, req ch.I
 		return ch.ImportedTemplate{}, err
 	}
 
+	if o.importErr != nil {
+		return ch.ImportedTemplate{}, o.importErr
+	}
+
 	o.importedArchives = append(o.importedArchives, contents)
 	o.importSizes = append(o.importSizes, req.ContentLength)
 
-	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID, Config: append(json.RawMessage(nil), o.importConfig...)}}, nil
+	return ch.ImportedTemplate{Template: ch.Template{ID: req.TemplateID, Config: append(json.RawMessage(nil), o.importConfig...), BaseContentAddress: "sha256:test-base"}}, nil
 }
 
 func (failedDependencyOrchestrator) Launch(_ context.Context, req ch.LaunchRequest) (ch.VM, error) {

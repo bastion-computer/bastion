@@ -93,7 +93,9 @@ cleanup() {
     log "cluster log: $WORK_DIR/cluster.log"
   fi
 
-  rm -rf "$WORK_DIR"
+  if [ "$status" -eq 0 ] || [ -z "${BASTION_E2E_KEEP_FAILED:-}" ]; then
+    rm -rf "$WORK_DIR"
+  fi
   exit "$status"
 }
 
@@ -293,7 +295,7 @@ assert_cluster_utilization_shape() {
 
 vm_node_template_config() {
   local vcpu=${1:-2}
-  local memory=${2:-3}
+  local memory=${2:-4}
   local volume=${3:-60}
 
   jq -nc --argjson vcpu "$vcpu" --argjson memory "$memory" --argjson volume "$volume" '{
@@ -387,7 +389,7 @@ INNER
 start_vm_node() {
   local label=${1:-a}
   local vcpu=${2:-2}
-  local memory=${3:-3}
+  local memory=${3:-4}
   local volume=${4:-60}
   local template_key="$RUN_ID-vm-node-template-$label"
   local template_output template_id env_output env_id
@@ -949,7 +951,7 @@ run_environment_case() {
   assert_node_counts "after second environment" "$VM_NODE_URL" 1 1 2
 
   log "starting and registering second VM-backed cluster node"
-  start_vm_node b 1 2 50
+  start_vm_node b 1 3 50
   SECOND_VM_NODE_URL="$LAST_VM_NODE_URL"
   node_b_logs="$WORK_DIR/node-b-create.log"
   node_b_output="$(run_cli cluster nodes create --key "$RUN_ID-vm-node-b" --url "$SECOND_VM_NODE_URL" 2>"$node_b_logs")"
