@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,7 +35,6 @@ const (
 	guestReadyCommand    = "if command -v cloud-init >/dev/null 2>&1; then timeout 120s cloud-init status --wait >/dev/null 2>&1 || true; fi"
 	apiWait              = 15 * time.Second
 	vmmStartErrorTimeout = 5 * time.Second
-	snapshotNetworkDelay = 1500 * time.Millisecond
 	vmLivenessPoll       = 100 * time.Millisecond
 	vmCPUsEnv            = "BASTION_VM_CPUS"
 	vmMemoryBytesEnv     = "BASTION_VM_MEMORY_BYTES"
@@ -892,10 +890,6 @@ type cloudHypervisorInfo struct {
 	State string `json:"state"`
 }
 
-type cloudHypervisorSnapshotConfig struct {
-	DestinationURL string `json:"destination_url"`
-}
-
 func buildVMConfig(workspace workspace, plan networkPlan, cpus int, memoryBytes int64) cloudHypervisorVMConfig {
 	return cloudHypervisorVMConfig{
 		CPUs: cloudHypervisorCPUs{
@@ -1070,23 +1064,17 @@ func (m Manager) prepareGuestForTemplateClone(ctx context.Context, vm VM) error 
 	return nil
 }
 
-func (m Manager) prepareGuestForSnapshot(ctx context.Context, vm VM) error {
+func (m Manager) syncGuestFilesystem(ctx context.Context, vm VM) error {
 	command := strings.Join([]string{
 		shellStrictMode,
 		"sync",
-		"nohup sh -c 'sleep 1; ip addr flush dev eth0 || true; ip link set eth0 down || true; sleep 2; ip link set eth0 up || true; netplan apply || systemctl restart systemd-networkd || systemctl restart networking || dhclient eth0 || true' >/tmp/bastion-resume-network.log 2>&1 &",
 	}, "\n")
 
 	if err := m.runGuestCommand(ctx, vm, command, nil); err != nil {
-		return fmt.Errorf("prepare guest for snapshot: %w", err)
+		return fmt.Errorf("sync guest filesystem: %w", err)
 	}
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(snapshotNetworkDelay):
-		return nil
-	}
+	return nil
 }
 
 func (m Manager) finishTemplateArtifacts(templateID string, workspace workspace, baseContentAddress string) (PreparedTemplate, error) {
@@ -1117,37 +1105,6 @@ func (m Manager) finishTemplateArtifacts(templateID string, workspace workspace,
 	}
 
 	return prepared, nil
-}
-
-func (m Manager) snapshotTemplate(ctx context.Context, templateID string, vm VM, workspace workspace) (PreparedTemplate, error) {
-	if err := cloudHypervisorCall(ctx, vm.SocketPath, http.MethodPut, "/vm.pause", nil, nil); err != nil {
-		return PreparedTemplate{}, fmt.Errorf("pause template vm: %w", err)
-	}
-
-	if err := os.RemoveAll(workspace.snapshotPath); err != nil {
-		return PreparedTemplate{}, fmt.Errorf("remove stale template snapshot: %w", err)
-	}
-
-	if err := os.MkdirAll(workspace.snapshotPath, 0o750); err != nil {
-		return PreparedTemplate{}, fmt.Errorf("create template snapshot directory: %w", err)
-	}
-
-	snapshot := cloudHypervisorSnapshotConfig{DestinationURL: fileURL(workspace.snapshotPath)}
-	if err := cloudHypervisorCall(ctx, vm.SocketPath, http.MethodPut, "/vm.snapshot", snapshot, nil); err != nil {
-		return PreparedTemplate{}, fmt.Errorf("snapshot template vm: %w", err)
-	}
-
-	if err := os.Chmod(workspace.rootfsPath, 0o400); err != nil {
-		return PreparedTemplate{}, fmt.Errorf("mark template rootfs immutable: %w", err)
-	}
-
-	createdAt := now()
-
-	return PreparedTemplate{TemplateID: templateID, TemplateDir: workspace.dir, RootfsPath: workspace.rootfsPath, SeedPath: workspace.seedPath, SnapshotDir: workspace.snapshotPath, SSHKeyPath: workspace.sshKeyPath, CreatedAt: createdAt, UpdatedAt: createdAt}, nil
-}
-
-func fileURL(path string) string {
-	return (&url.URL{Scheme: "file", Path: path}).String()
 }
 
 func templateNetworkID(templateID string) string {

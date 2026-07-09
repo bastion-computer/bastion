@@ -209,6 +209,7 @@ allow_docs_from_guests() {
 
 install_template_config() {
   jq -nc '{
+    resources: {memory: 4},
     agents: {opencode: {}},
     actions: {
       init: [
@@ -454,7 +455,19 @@ grep -q '^ExecStart=.*/bastion start daemon --socket-uid ' /etc/systemd/system/b
 grep -q '^ExecStart=.*/bastion start api$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not run bastion start api"
 
 inner_network_prefix="$(choose_inner_network_prefix)"
-printf '\nBASTION_E2E_SENTINEL=preserve\nBASTION_VM_CPUS=1\nBASTION_VM_MEMORY_BYTES=805306368\nBASTION_VM_NETWORK_PREFIX=%s\n' "$inner_network_prefix" >>/etc/default/bastion
+printf '\nBASTION_E2E_SENTINEL=preserve\nBASTION_VM_CPUS=1\nBASTION_VM_NETWORK_PREFIX=%s\n' "$inner_network_prefix" >>/etc/default/bastion
+
+systemctl restart bastiond.service
+wait_active bastiond.service
+wait_active bastion-api.service
+wait_bastion_api
+
+data_dir="$(service_data_dir)"
+bastion system --data-dir "$data_dir" init --with-utilities
+bastion system --data-dir "$data_dir" check
+printf '[remote-install] building base before restart-preservation checks\n'
+bastion base build --force >/dev/null
+
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastiond.service
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastion-api.service
 

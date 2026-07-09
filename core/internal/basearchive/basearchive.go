@@ -27,7 +27,7 @@ const (
 	// ContentType is the media type used for base import/export streams.
 	ContentType = "application/vnd.bastion.base+tar+zstd"
 
-	archiveFormat       = "bastion-base-v1"
+	archiveFormat       = "bastion-base-v2"
 	archiveManifestName = "manifest.json"
 	archiveManifestMax  = 1 << 20
 
@@ -37,14 +37,6 @@ const (
 	SeedName = "cidata.img"
 	// SSHKeyName is the private SSH key archive entry.
 	SSHKeyName = "ssh_key"
-	// SnapshotDirName is the snapshot artifact directory archive entry.
-	SnapshotDirName = "snapshot"
-	// SnapshotConfigName is the Cloud Hypervisor snapshot config file name.
-	SnapshotConfigName = "config.json"
-	// SnapshotStateName is the Cloud Hypervisor snapshot state file name.
-	SnapshotStateName = "state.json"
-	// SnapshotMemoryName is the Cloud Hypervisor snapshot memory file name.
-	SnapshotMemoryName = "memory-ranges"
 )
 
 // ErrInvalid marks malformed or unsupported base archives.
@@ -80,9 +72,6 @@ func Files(dir string) []File {
 	return []File{
 		{Name: RootfsName, Path: filepath.Join(dir, RootfsName), Mode: 0o400},
 		{Name: SeedName, Path: filepath.Join(dir, SeedName), Mode: 0o600},
-		{Name: path.Join(SnapshotDirName, SnapshotConfigName), Path: filepath.Join(dir, SnapshotDirName, SnapshotConfigName), Mode: 0o600},
-		{Name: path.Join(SnapshotDirName, SnapshotStateName), Path: filepath.Join(dir, SnapshotDirName, SnapshotStateName), Mode: 0o600},
-		{Name: path.Join(SnapshotDirName, SnapshotMemoryName), Path: filepath.Join(dir, SnapshotDirName, SnapshotMemoryName), Mode: 0o600},
 		{Name: SSHKeyName, Path: filepath.Join(dir, SSHKeyName), Mode: 0o600},
 	}
 }
