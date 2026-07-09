@@ -544,6 +544,17 @@ func TestInstallBaseRecomputesInstalledContentAddress(t *testing.T) {
 	}
 }
 
+func TestInstalledBaseDoesNotIncludeSnapshotArtifacts(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeInstalledTestBase(t, dataDir)
+
+	if _, err := os.Stat(filepath.Join(baseDir(dataDir), snapshotDirName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("installed base snapshot directory stat error = %v, want not exist", err)
+	}
+}
+
 func TestPrepareRestoreWorkspaceCreatesQCOW2Overlay(t *testing.T) {
 	t.Parallel()
 

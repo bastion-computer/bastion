@@ -127,7 +127,7 @@ type PrepareTemplateStreamEvent struct {
 	Status   int               `json:"status,omitempty"`
 }
 
-// BuildBaseRequest asks bastiond to build and snapshot the template-agnostic base image.
+// BuildBaseRequest asks bastiond to build the template-agnostic base image.
 type BuildBaseRequest struct {
 	Force bool      `json:"force,omitempty"`
 	Logs  io.Writer `json:"-"`

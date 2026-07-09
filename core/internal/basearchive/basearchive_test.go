@@ -2,13 +2,19 @@
 package basearchive
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 func TestWriteReadAndExtractBaseArchive(t *testing.T) {
@@ -49,6 +55,25 @@ func TestWriteReadAndExtractBaseArchive(t *testing.T) {
 		if _, err := os.Stat(file.Path); err != nil {
 			t.Fatalf("extracted file %s missing: %v", file.Name, err)
 		}
+	}
+}
+
+func TestFilesExcludeSnapshotArtifacts(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range Files(t.TempDir()) {
+		if strings.HasPrefix(file.Name, "snapshot/") {
+			t.Fatalf("base archive file set includes snapshot artifact %s", file.Name)
+		}
+	}
+}
+
+func TestReadRejectsLegacySnapshotBaseArchive(t *testing.T) {
+	t.Parallel()
+
+	archive := writeLegacySnapshotBaseArchive(t)
+	if _, err := Read(context.Background(), bytes.NewReader(archive)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("read legacy snapshot archive error = %v, want invalid", err)
 	}
 }
 
@@ -98,9 +123,6 @@ func writeTestBaseFiles(t *testing.T) string {
 		RootfsName: "rootfs",
 		SeedName:   "seed",
 		SSHKeyName: "ssh-key",
-		filepath.Join(SnapshotDirName, SnapshotConfigName): `{"disks":[]}`,
-		filepath.Join(SnapshotDirName, SnapshotStateName):  `{}`,
-		filepath.Join(SnapshotDirName, SnapshotMemoryName): "memory",
 	}
 
 	for name, contents := range files {
@@ -115,4 +137,59 @@ func writeTestBaseFiles(t *testing.T) string {
 	}
 
 	return dir
+}
+
+func writeLegacySnapshotBaseArchive(t *testing.T) []byte {
+	t.Helper()
+
+	var out bytes.Buffer
+	zstdWriter, err := zstd.NewWriter(&out)
+	if err != nil {
+		t.Fatalf("create compressor: %v", err)
+	}
+
+	tarWriter := tar.NewWriter(zstdWriter)
+	manifestContents, err := json.Marshal(manifest{Format: "bastion-base-v1", Base: Metadata{}})
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+
+	manifestContents = append(manifestContents, '\n')
+	writeTarEntry(t, tarWriter, archiveManifestName, string(manifestContents))
+
+	entries := map[string]string{
+		RootfsName:                             "rootfs",
+		SeedName:                               "seed",
+		SSHKeyName:                             "ssh-key",
+		path.Join("snapshot", "config.json"):   `{"disks":[]}`,
+		path.Join("snapshot", "state.json"):    `{}`,
+		path.Join("snapshot", "memory-ranges"): "memory",
+	}
+
+	for name, contents := range entries {
+		writeTarEntry(t, tarWriter, name, contents)
+	}
+
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("close tar: %v", err)
+	}
+
+	if err := zstdWriter.Close(); err != nil {
+		t.Fatalf("close compressor: %v", err)
+	}
+
+	return out.Bytes()
+}
+
+func writeTarEntry(t *testing.T, writer *tar.Writer, name, contents string) {
+	t.Helper()
+
+	header := &tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o600, Size: int64(len(contents))}
+	if err := writer.WriteHeader(header); err != nil {
+		t.Fatalf("write %s header: %v", name, err)
+	}
+
+	if _, err := io.WriteString(writer, contents); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
 }

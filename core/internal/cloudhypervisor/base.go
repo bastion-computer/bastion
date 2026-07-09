@@ -24,9 +24,9 @@ var (
 	ErrInvalidBaseArchive = basearchive.ErrInvalid
 )
 
-// BuildBase boots a VM, installs template-agnostic runtime components, snapshots it, and stores it as the singleton base.
+// BuildBase boots a VM, installs template-agnostic runtime components, and stores it as the singleton base.
 //
-//nolint:gocyclo,funlen // Coordinates VM boot, networking, guest preparation, snapshotting, cleanup, and artifact install.
+//nolint:gocyclo,funlen // Coordinates VM boot, networking, guest preparation, cleanup, and artifact install.
 func (m Manager) BuildBase(ctx context.Context, req BuildBaseRequest) (basearchive.Metadata, error) {
 	m = m.withDefaults()
 	if err := writeLog(req.Logs, "preparing base workspace\n"); err != nil {
@@ -131,13 +131,19 @@ func (m Manager) BuildBase(ctx context.Context, req BuildBaseRequest) (basearchi
 		return basearchive.Metadata{}, err
 	}
 
-	metadata, err := m.prepareBaseSnapshot(ctx, vm, workspace, req.Logs)
+	metadata, err := m.prepareBaseArtifacts(ctx, vm, workspace, req.Logs)
 	if err != nil {
 		return basearchive.Metadata{}, err
 	}
 
 	m.cleanupVM(context.Background(), vm, false)
 	_ = os.Remove(statePath(workspace.dir))
+
+	if err := os.Chmod(workspace.rootfsPath, 0o400); err != nil {
+		_ = os.RemoveAll(workspace.dir)
+
+		return basearchive.Metadata{}, fmt.Errorf("mark base rootfs immutable: %w", err)
+	}
 
 	if err := writeLog(req.Logs, "installing base artifacts\n"); err != nil {
 		_ = os.RemoveAll(workspace.dir)
@@ -295,7 +301,7 @@ func (m Manager) prepareBaseWorkspace(ctx context.Context, resources resolvedRes
 	return workspace{dir: dir, rootfsPath: rootfsPath, seedPath: seedPath, snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, sshKeyPath: assetSet.sshKey, assets: assetSet}, nil
 }
 
-func (m Manager) prepareBaseSnapshot(ctx context.Context, vm VM, workspace workspace, logs io.Writer) (basearchive.Metadata, error) {
+func (m Manager) prepareBaseArtifacts(ctx context.Context, vm VM, workspace workspace, logs io.Writer) (basearchive.Metadata, error) {
 	if err := writeLog(logs, "installing base guest proxy\n"); err != nil {
 		return m.failBasePreparation(vm, workspace, err)
 	}
@@ -312,19 +318,11 @@ func (m Manager) prepareBaseSnapshot(ctx context.Context, vm VM, workspace works
 		return m.failBasePreparation(vm, workspace, err)
 	}
 
-	if err := writeLog(logs, "preparing base guest for snapshot\n"); err != nil {
+	if err := writeLog(logs, "syncing base guest filesystem\n"); err != nil {
 		return m.failBasePreparation(vm, workspace, err)
 	}
 
-	if err := m.prepareGuestForSnapshot(ctx, vm); err != nil {
-		return m.failBasePreparation(vm, workspace, err)
-	}
-
-	if err := writeLog(logs, "snapshotting base vm\n"); err != nil {
-		return m.failBasePreparation(vm, workspace, err)
-	}
-
-	if _, err := m.snapshotTemplate(ctx, "base", vm, workspace); err != nil {
+	if err := m.syncGuestFilesystem(ctx, vm); err != nil {
 		return m.failBasePreparation(vm, workspace, err)
 	}
 
@@ -332,14 +330,9 @@ func (m Manager) prepareBaseSnapshot(ctx context.Context, vm VM, workspace works
 		return m.failBasePreparation(vm, workspace, err)
 	}
 
-	contentAddress, err := basearchive.ContentAddressForFiles(ctx, basearchive.Files(workspace.dir))
-	if err != nil {
-		return m.failBasePreparation(vm, workspace, err)
-	}
-
 	createdAt := now()
 
-	return basearchive.Metadata{ContentAddress: contentAddress, CreatedAt: createdAt, UpdatedAt: createdAt}, nil
+	return basearchive.Metadata{CreatedAt: createdAt, UpdatedAt: createdAt}, nil
 }
 
 func (m Manager) failBasePreparation(vm VM, workspace workspace, err error) (basearchive.Metadata, error) {

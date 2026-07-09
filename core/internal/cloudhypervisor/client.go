@@ -43,7 +43,7 @@ func NewClient(socketPath string) *Client {
 	}
 }
 
-// BuildBase asks bastiond to build and snapshot the base image.
+// BuildBase asks bastiond to build the base image.
 func (c *Client) BuildBase(ctx context.Context, buildReq BuildBaseRequest) (basearchive.Metadata, error) {
 	path := "/v1/base/build"
 	if buildReq.Force {
