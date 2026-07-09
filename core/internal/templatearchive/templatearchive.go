@@ -17,6 +17,7 @@ import (
 const (
 	archiveFormat       = "bastion-template-v1"
 	archiveManifestName = "manifest.json"
+	archiveRootfsName   = "rootfs.img"
 	archiveMemoryName   = "snapshot/memory-ranges"
 	archiveManifestMax  = 1 << 20
 )
@@ -26,9 +27,10 @@ var ErrInvalid = errors.New("invalid template archive")
 
 // Template describes the template metadata embedded in an archive manifest.
 type Template struct {
-	ID     string          `json:"id"`
-	Key    *string         `json:"key,omitempty"`
-	Config json.RawMessage `json:"config"`
+	ID                 string          `json:"id"`
+	Key                *string         `json:"key,omitempty"`
+	Config             json.RawMessage `json:"config"`
+	BaseContentAddress string          `json:"baseContentAddress"`
 }
 
 type manifest struct {
@@ -37,6 +39,8 @@ type manifest struct {
 }
 
 // ReadTemplate returns the template metadata from an archive manifest.
+//
+//nolint:gocyclo // Archive validation branches by tar entry type and required manifest state.
 func ReadTemplate(ctx context.Context, archive io.Reader) (Template, error) {
 	if archive == nil {
 		return Template{}, errors.New("template archive reader is required")
@@ -50,6 +54,7 @@ func ReadTemplate(ctx context.Context, archive io.Reader) (Template, error) {
 
 	tarReader := tar.NewReader(zstdReader)
 	manifestSeen := false
+	rootfsSeen := false
 
 	var archiveManifest manifest
 
@@ -67,32 +72,64 @@ func ReadTemplate(ctx context.Context, archive io.Reader) (Template, error) {
 			return Template{}, fmt.Errorf("%w: read template archive: %w", ErrInvalid, err)
 		}
 
-		if header.Name == archiveMemoryName {
-			return Template{}, fmt.Errorf("%w: template archive contains unsupported entry %s", ErrInvalid, archiveMemoryName)
-		}
-
-		if header.Name != archiveManifestName {
-			continue
-		}
-
-		if manifestSeen {
-			return Template{}, fmt.Errorf("%w: template archive contains duplicate manifest", ErrInvalid)
-		}
-
-		read, err := readManifest(tarReader, header.Size)
-		if err != nil {
+		if err := validateArchiveEntry(header); err != nil {
 			return Template{}, err
 		}
 
-		archiveManifest = read
-		manifestSeen = true
+		switch header.Name {
+		case archiveManifestName:
+			if manifestSeen {
+				return Template{}, fmt.Errorf("%w: template archive contains duplicate manifest", ErrInvalid)
+			}
+
+			read, err := readManifest(tarReader, header.Size)
+			if err != nil {
+				return Template{}, err
+			}
+
+			archiveManifest = read
+			manifestSeen = true
+		case archiveRootfsName:
+			rootfsSeen = true
+
+			if _, err := io.CopyN(io.Discard, tarReader, header.Size); err != nil {
+				return Template{}, fmt.Errorf("%w: read template archive overlay: %w", ErrInvalid, err)
+			}
+		default:
+			return Template{}, fmt.Errorf("%w: template archive contains unexpected entry %s", ErrInvalid, header.Name)
+		}
 	}
 
 	if !manifestSeen {
 		return Template{}, fmt.Errorf("%w: template archive missing manifest", ErrInvalid)
 	}
 
+	if !rootfsSeen {
+		return Template{}, fmt.Errorf("%w: template archive missing %s", ErrInvalid, archiveRootfsName)
+	}
+
 	return archiveManifest.Template, nil
+}
+
+func validateArchiveEntry(header *tar.Header) error {
+	if header.Typeflag != tar.TypeReg {
+		return fmt.Errorf("%w: template archive entry %s is not a regular file", ErrInvalid, header.Name)
+	}
+
+	if header.Size < 0 {
+		return fmt.Errorf("%w: template archive entry %s has invalid size", ErrInvalid, header.Name)
+	}
+
+	if header.Name == archiveMemoryName {
+		return fmt.Errorf("%w: template archive contains unsupported entry %s", ErrInvalid, archiveMemoryName)
+	}
+
+	switch header.Name {
+	case archiveManifestName, archiveRootfsName:
+		return nil
+	default:
+		return fmt.Errorf("%w: template archive contains unexpected entry %s", ErrInvalid, header.Name)
+	}
 }
 
 // RewriteTemplate copies archive to writer with its manifest template replaced.
@@ -152,11 +189,16 @@ func validateRewriteTemplateRequest(archive io.Reader, writer io.Writer, archive
 		return errors.New("template config must be valid JSON")
 	}
 
+	if strings.TrimSpace(archiveTemplate.BaseContentAddress) == "" {
+		return errors.New("template base content address is required")
+	}
+
 	return nil
 }
 
 func rewriteArchiveEntries(ctx context.Context, tarReader *tar.Reader, tarWriter *tar.Writer, archiveTemplate Template) error {
 	manifestSeen := false
+	rootfsSeen := false
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -172,8 +214,8 @@ func rewriteArchiveEntries(ctx context.Context, tarReader *tar.Reader, tarWriter
 			return fmt.Errorf("%w: read template archive: %w", ErrInvalid, err)
 		}
 
-		if header.Name == archiveMemoryName {
-			return fmt.Errorf("%w: template archive contains unsupported entry %s", ErrInvalid, archiveMemoryName)
+		if err := validateArchiveEntry(header); err != nil {
+			return err
 		}
 
 		if header.Name == archiveManifestName {
@@ -190,6 +232,10 @@ func rewriteArchiveEntries(ctx context.Context, tarReader *tar.Reader, tarWriter
 			continue
 		}
 
+		if header.Name == archiveRootfsName {
+			rootfsSeen = true
+		}
+
 		if err := copyArchiveEntry(tarReader, tarWriter, header); err != nil {
 			return err
 		}
@@ -197,6 +243,10 @@ func rewriteArchiveEntries(ctx context.Context, tarReader *tar.Reader, tarWriter
 
 	if !manifestSeen {
 		return fmt.Errorf("%w: template archive missing manifest", ErrInvalid)
+	}
+
+	if !rootfsSeen {
+		return fmt.Errorf("%w: template archive missing %s", ErrInvalid, archiveRootfsName)
 	}
 
 	return nil
@@ -228,10 +278,6 @@ func writeReplacementManifest(tarReader *tar.Reader, tarWriter *tar.Writer, head
 }
 
 func copyArchiveEntry(tarReader *tar.Reader, tarWriter *tar.Writer, header *tar.Header) error {
-	if header.Size < 0 {
-		return fmt.Errorf("%w: template archive entry %s has invalid size", ErrInvalid, header.Name)
-	}
-
 	copiedHeader := *header
 	if err := tarWriter.WriteHeader(&copiedHeader); err != nil {
 		return fmt.Errorf("write template archive header %s: %w", header.Name, err)
@@ -283,6 +329,10 @@ func readManifest(reader io.Reader, size int64) (manifest, error) {
 
 	if len(archiveManifest.Template.Config) == 0 || !json.Valid(archiveManifest.Template.Config) {
 		return manifest{}, fmt.Errorf("%w: template archive manifest config must be valid JSON", ErrInvalid)
+	}
+
+	if strings.TrimSpace(archiveManifest.Template.BaseContentAddress) == "" {
+		return manifest{}, fmt.Errorf("%w: template archive manifest missing base content address", ErrInvalid)
 	}
 
 	return archiveManifest, nil

@@ -12,14 +12,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bastion-computer/bastion/core/internal/basearchive"
 	"github.com/klauspost/compress/zstd"
 )
 
 const (
 	templateArchiveFormat       = "bastion-template-v1"
 	templateArchiveManifestName = "manifest.json"
-	templateArchiveSSHKeyName   = "ssh_key"
-	templateArchiveSSHPubName   = "ssh_key.pub"
 	templateArchiveManifestMax  = 1 << 20
 )
 
@@ -54,14 +53,17 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 		return err
 	}
 
-	sshKeyPath := prepared.SSHKeyPath
-	if sshKeyPath == "" {
-		assetSet, err := loadAssets(m.DataDir)
-		if err != nil {
-			return err
-		}
+	baseContentAddress := req.Template.BaseContentAddress
+	if baseContentAddress == "" {
+		baseContentAddress = prepared.BaseContentAddress
+	}
 
-		sshKeyPath = assetSet.sshKey
+	if strings.TrimSpace(baseContentAddress) == "" {
+		return errors.New("template base content address is required")
+	}
+
+	if prepared.BaseContentAddress != baseContentAddress {
+		return fmt.Errorf("prepared template base content address %s does not match template metadata %s", prepared.BaseContentAddress, baseContentAddress)
 	}
 
 	zstdWriter, err := zstd.NewWriter(req.Writer, zstd.WithEncoderLevel(zstd.SpeedDefault))
@@ -74,9 +76,10 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 	manifest := templateArchiveManifest{
 		Format: templateArchiveFormat,
 		Template: Template{
-			ID:     req.Template.ID,
-			Key:    req.Template.Key,
-			Config: append(json.RawMessage(nil), req.Template.Config...),
+			ID:                 req.Template.ID,
+			Key:                req.Template.Key,
+			Config:             append(json.RawMessage(nil), req.Template.Config...),
+			BaseContentAddress: baseContentAddress,
 		},
 	}
 
@@ -96,20 +99,6 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 		}
 	}
 
-	if err := writeTemplateArchiveFile(ctx, tarWriter, templateArchiveSSHKeyName, sshKeyPath); err != nil {
-		_ = tarWriter.Close()
-		_ = zstdWriter.Close()
-
-		return err
-	}
-
-	if err := writeTemplateArchiveFile(ctx, tarWriter, templateArchiveSSHPubName, sshKeyPath+".pub"); err != nil {
-		_ = tarWriter.Close()
-		_ = zstdWriter.Close()
-
-		return err
-	}
-
 	if err := tarWriter.Close(); err != nil {
 		_ = zstdWriter.Close()
 
@@ -124,6 +113,8 @@ func (m Manager) ExportTemplate(ctx context.Context, req ExportTemplateRequest) 
 }
 
 // ImportTemplate restores prepared artifacts from a compressed template archive.
+//
+//nolint:gocyclo // Coordinates archive validation, base matching, overlay rebase, permissions, and atomic install.
 func (m Manager) ImportTemplate(ctx context.Context, req ImportTemplateRequest) (ImportedTemplate, error) {
 	m = m.withDefaults()
 
@@ -134,6 +125,11 @@ func (m Manager) ImportTemplate(ctx context.Context, req ImportTemplateRequest) 
 
 	if req.Reader == nil {
 		return ImportedTemplate{}, errors.New("template archive reader is required")
+	}
+
+	baseMetadata, err := loadBase(m.DataDir)
+	if err != nil {
+		return ImportedTemplate{}, err
 	}
 
 	templatesPath := filepath.Join(m.DataDir, templatesDir)
@@ -165,8 +161,24 @@ func (m Manager) ImportTemplate(ctx context.Context, req ImportTemplateRequest) 
 		return ImportedTemplate{}, err
 	}
 
+	if manifest.Template.BaseContentAddress != baseMetadata.ContentAddress {
+		return ImportedTemplate{}, fmt.Errorf("%w: template base content address %s does not match host base %s", ErrInvalidTemplateArchive, manifest.Template.BaseContentAddress, baseMetadata.ContentAddress)
+	}
+
+	if err := m.rebaseTemplateOverlay(ctx, filepath.Join(tmpDir, envRootfsFileName)); err != nil {
+		return ImportedTemplate{}, err
+	}
+
 	if err := chownIfConfigured(filepath.Join(tmpDir, envRootfsFileName), m.UID, m.GID); err != nil {
 		return ImportedTemplate{}, fmt.Errorf("chown imported template rootfs: %w", err)
+	}
+
+	if err := os.Chmod(filepath.Join(tmpDir, envRootfsFileName), 0o400); err != nil {
+		return ImportedTemplate{}, fmt.Errorf("mark imported template rootfs immutable: %w", err)
+	}
+
+	if err := writePreparedTemplateMetadata(tmpDir, PreparedTemplate{BaseContentAddress: manifest.Template.BaseContentAddress, CreatedAt: now(), UpdatedAt: now()}); err != nil {
+		return ImportedTemplate{}, err
 	}
 
 	if err := os.Rename(tmpDir, finalDir); err != nil {
@@ -177,8 +189,9 @@ func (m Manager) ImportTemplate(ctx context.Context, req ImportTemplateRequest) 
 
 	return ImportedTemplate{
 		Template: Template{
-			ID:     templateID,
-			Config: append(json.RawMessage(nil), manifest.Template.Config...),
+			ID:                 templateID,
+			Config:             append(json.RawMessage(nil), manifest.Template.Config...),
+			BaseContentAddress: manifest.Template.BaseContentAddress,
 		},
 		UpdatedAt: now(),
 	}, nil
@@ -193,20 +206,16 @@ type templateArchiveFile struct {
 
 func preparedTemplateArchiveFiles(templateDir string) []templateArchiveFile {
 	return []templateArchiveFile{
-		{archiveName: envRootfsFileName, path: filepath.Join(templateDir, envRootfsFileName), mode: 0o400, required: true},
-		{archiveName: envSeedFileName, path: filepath.Join(templateDir, envSeedFileName), mode: 0o600, required: true},
+		{archiveName: envRootfsFileName, path: filepath.Join(templateDir, envRootfsFileName), mode: 0o600, required: true},
 	}
 }
 
 func templateArchiveFiles(templateDir string) []templateArchiveFile {
-	return append(preparedTemplateArchiveFiles(templateDir),
-		templateArchiveFile{archiveName: templateArchiveSSHKeyName, path: filepath.Join(templateDir, templateArchiveSSHKeyName), mode: 0o600, required: true},
-		templateArchiveFile{archiveName: templateArchiveSSHPubName, path: filepath.Join(templateDir, templateArchiveSSHPubName), mode: 0o600, required: true},
-	)
+	return preparedTemplateArchiveFiles(templateDir)
 }
 
 func preparedTemplateSSHKeyPath(templateDir string) string {
-	keyPath := filepath.Join(templateDir, templateArchiveSSHKeyName)
+	keyPath := filepath.Join(templateDir, "ssh_key")
 
 	info, err := os.Stat(keyPath)
 	if err != nil || !info.Mode().IsRegular() {
@@ -395,7 +404,20 @@ func (s templateArchiveReadState) validate() (templateArchiveManifest, error) {
 		return templateArchiveManifest{}, fmt.Errorf("%w: template archive manifest config must be valid JSON", ErrInvalidTemplateArchive)
 	}
 
+	if strings.TrimSpace(s.manifest.Template.BaseContentAddress) == "" {
+		return templateArchiveManifest{}, fmt.Errorf("%w: template archive manifest missing base content address", ErrInvalidTemplateArchive)
+	}
+
 	return s.manifest, nil
+}
+
+func (m Manager) rebaseTemplateOverlay(ctx context.Context, rootfsPath string) error {
+	baseRootfsPath := filepath.Join(baseDir(m.DataDir), basearchive.RootfsName)
+	if err := m.run(ctx, "qemu-img", "rebase", "-u", "-F", "qcow2", "-b", baseRootfsPath, rootfsPath); err != nil {
+		return fmt.Errorf("rebase imported template overlay: %w", err)
+	}
+
+	return nil
 }
 
 func canonicalTemplateArchiveName(name string) (string, error) {

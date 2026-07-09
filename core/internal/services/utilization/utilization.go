@@ -109,8 +109,9 @@ func (s *Service) usedCapacity(ctx context.Context) (HostCapacity, error) {
 SELECT e.id, t.config
 FROM environments e
 JOIN templates t ON t.id = e.template_id
-WHERE e.status IN (?, ?, ?)
-`, ch.StateCreating, ch.StateRunning, ch.StatePaused)
+LEFT JOIN environment_vms v ON v.environment_id = e.id
+WHERE e.status IN (?, ?, ?) OR v.state IN (?, ?, ?)
+`, ch.StateCreating, ch.StateRunning, ch.StatePaused, ch.StateCreating, ch.StateRunning, ch.StatePaused)
 	if err != nil {
 		return HostCapacity{}, fmt.Errorf("query live environment resource usage: %w", err)
 	}

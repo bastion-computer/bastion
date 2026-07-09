@@ -52,6 +52,35 @@ func TestServiceReportsUtilizationForLiveEnvironments(t *testing.T) {
 	}
 }
 
+func TestServiceCountsLiveVMRowsWhenEnvironmentStatusIsStale(t *testing.T) {
+	t.Parallel()
+
+	db := openDB(t)
+	ctx := context.Background()
+
+	insertTemplate(t, db, "tpl_stale", `{"agents":{"opencode":{}},"resources":{"vcpu":1,"memory":2,"volume":8},"actions":{"init":[]}}`)
+	insertEnvironment(t, db, "env_stale", ch.StateStopped, "tpl_stale")
+	insertEnvironmentVM(t, db, "env_stale", ch.StateRunning)
+
+	service := NewService(db, WithHostCapacityProvider(func(context.Context) (HostCapacity, error) {
+		return HostCapacity{VCPU: 4, MemoryBytes: 16 * testGiB, VolumeBytes: 100 * testGiB}, nil
+	}))
+
+	got, err := service.Get(ctx)
+	if err != nil {
+		t.Fatalf("get utilization: %v", err)
+	}
+
+	want := Utilization{
+		VCPU:   Resource{Total: 4, Used: 1, Available: 3},
+		Memory: Resource{Total: 16 * testGiB, Used: 2 * testGiB, Available: 14 * testGiB},
+		Volume: Resource{Total: 100 * testGiB, Used: 8 * testGiB, Available: 92 * testGiB},
+	}
+	if got != want {
+		t.Fatalf("utilization = %#v, want %#v", got, want)
+	}
+}
+
 func TestDetectVCPUThreadsUsesCPUTopologyFormula(t *testing.T) {
 	t.Parallel()
 
@@ -123,6 +152,21 @@ func insertEnvironment(t *testing.T, db *database.Client, id, status, templateID
 	_, err := db.ExecContext(context.Background(), `INSERT INTO environments (id, key, status, template_id, created_at, updated_at, last_error) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, nil, status, templateID, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "")
 	if err != nil {
 		t.Fatalf("insert environment %s: %v", id, err)
+	}
+}
+
+func insertEnvironmentVM(t *testing.T, db *database.Client, environmentID, state string) {
+	t.Helper()
+
+	_, err := db.ExecContext(context.Background(), `
+INSERT INTO environment_vms (
+  environment_id, vm_id, state, pid, env_dir, runtime_dir, socket_path, vsock_socket_path, kernel_path, rootfs_path,
+  tap_name, host_ip, guest_ip, guest_cidr, guest_mac, ssh_user, ssh_port, ssh_key_path,
+  created_at, updated_at, last_error
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, environmentID, "vm_"+environmentID, state, 1234, "/tmp/env", "/run/env", "/run/env/api.sock", "/run/env/vsock.sock", "/tmp/kernel", "/tmp/rootfs", "tap0", "10.0.0.1", "10.0.0.2", "10.0.0.2/30", "02:00:00:00:00:01", ch.SSHUser, ch.SSHPort, "/tmp/key", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "")
+	if err != nil {
+		t.Fatalf("insert environment vm %s: %v", environmentID, err)
 	}
 }
 

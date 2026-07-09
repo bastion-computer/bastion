@@ -21,6 +21,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/bastion-computer/bastion/core/internal/basearchive"
 )
 
 const (
@@ -252,7 +254,7 @@ func (m Manager) waitForGuestSSHWithInterval(ctx context.Context, vm VM, timeout
 func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest) (PreparedTemplate, error) {
 	m = m.withDefaults()
 
-	resources, workspace, err := m.prepareTemplateInputs(ctx, req)
+	resources, workspace, baseMetadata, err := m.prepareTemplateInputs(ctx, req)
 	if err != nil {
 		return PreparedTemplate{}, err
 	}
@@ -337,7 +339,7 @@ func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest
 		return PreparedTemplate{}, err
 	}
 
-	prepared, err := m.prepareTemplateArtifacts(ctx, req, vm, workspace)
+	prepared, err := m.prepareTemplateArtifacts(ctx, req, vm, workspace, baseMetadata.ContentAddress)
 	if err != nil {
 		return PreparedTemplate{}, err
 	}
@@ -354,11 +356,7 @@ func (m Manager) PrepareTemplate(ctx context.Context, req PrepareTemplateRequest
 	return prepared, nil
 }
 
-func (m Manager) prepareTemplateArtifacts(ctx context.Context, req PrepareTemplateRequest, vm VM, workspace workspace) (PreparedTemplate, error) {
-	if err := m.setupTemplateGuestProxy(ctx, vm, req.Logs); err != nil {
-		return m.failTemplatePreparation(vm, workspace, err)
-	}
-
+func (m Manager) prepareTemplateArtifacts(ctx context.Context, req PrepareTemplateRequest, vm VM, workspace workspace, baseContentAddress string) (PreparedTemplate, error) {
 	if err := m.setupTemplateAgents(ctx, vm, req.Template.Config, req.Logs); err != nil {
 		return m.failTemplatePreparation(vm, workspace, err)
 	}
@@ -371,7 +369,7 @@ func (m Manager) prepareTemplateArtifacts(ctx context.Context, req PrepareTempla
 		return m.failTemplatePreparation(vm, workspace, err)
 	}
 
-	prepared, err := m.finishTemplateArtifacts(req.Template.ID, workspace)
+	prepared, err := m.finishTemplateArtifacts(req.Template.ID, workspace, baseContentAddress)
 	if err != nil {
 		return m.failTemplatePreparation(vm, workspace, err)
 	}
@@ -388,22 +386,27 @@ func (m Manager) failTemplatePreparation(vm VM, workspace workspace, err error) 
 	return PreparedTemplate{}, failErr
 }
 
-func (m Manager) prepareTemplateInputs(ctx context.Context, req PrepareTemplateRequest) (resolvedResources, workspace, error) {
+func (m Manager) prepareTemplateInputs(ctx context.Context, req PrepareTemplateRequest) (resolvedResources, workspace, basearchive.Metadata, error) {
 	if strings.TrimSpace(req.Template.ID) == "" {
-		return resolvedResources{}, workspace{}, errors.New("template id is required")
+		return resolvedResources{}, workspace{}, basearchive.Metadata{}, errors.New("template id is required")
 	}
 
 	resources, err := resolveTemplateResources(req.Template.Config)
 	if err != nil {
-		return resolvedResources{}, workspace{}, err
+		return resolvedResources{}, workspace{}, basearchive.Metadata{}, err
 	}
 
-	ws, err := m.prepareTemplateWorkspace(ctx, req.Template.ID, resources)
+	baseMetadata, err := loadBase(m.DataDir)
 	if err != nil {
-		return resolvedResources{}, workspace{}, err
+		return resolvedResources{}, workspace{}, basearchive.Metadata{}, err
 	}
 
-	return resources, ws, nil
+	ws, err := m.prepareTemplateWorkspace(ctx, req.Template.ID, resources, baseMetadata)
+	if err != nil {
+		return resolvedResources{}, workspace{}, basearchive.Metadata{}, err
+	}
+
+	return resources, ws, baseMetadata, nil
 }
 
 // RemoveTemplate removes prepared template artifacts.
@@ -436,10 +439,14 @@ type workspace struct {
 	assets             assets
 }
 
-func (m Manager) prepareTemplateWorkspace(ctx context.Context, templateID string, resources resolvedResources) (workspace, error) {
+func (m Manager) prepareTemplateWorkspace(ctx context.Context, templateID string, resources resolvedResources, baseMetadata basearchive.Metadata) (workspace, error) {
 	assetSet, err := loadAssets(m.DataDir)
 	if err != nil {
 		return workspace{}, err
+	}
+
+	if strings.TrimSpace(baseMetadata.ContentAddress) == "" {
+		return workspace{}, errors.New("base content address is required")
 	}
 
 	dir := templateDir(m.DataDir, templateID)
@@ -454,14 +461,10 @@ func (m Manager) prepareTemplateWorkspace(ctx context.Context, templateID string
 	rootfsPath := filepath.Join(dir, envRootfsFileName)
 	seedPath := filepath.Join(dir, envSeedFileName)
 	snapshotPath := filepath.Join(dir, snapshotDirName)
+	baseRootfsPath := filepath.Join(baseDir(m.DataDir), basearchive.RootfsName)
+	baseSSHKeyPath := filepath.Join(baseDir(m.DataDir), basearchive.SSHKeyName)
 
-	if err := copyFile(assetSet.rootfs, rootfsPath, 0o640); err != nil {
-		_ = os.RemoveAll(dir)
-
-		return workspace{}, err
-	}
-
-	if err := m.run(ctx, "qemu-img", "resize", rootfsPath, resources.rootfsSize); err != nil {
+	if err := m.run(ctx, "qemu-img", "create", "-f", "qcow2", "-F", "qcow2", "-b", baseRootfsPath, rootfsPath, resources.rootfsSize); err != nil {
 		_ = os.RemoveAll(dir)
 
 		return workspace{}, err
@@ -473,7 +476,7 @@ func (m Manager) prepareTemplateWorkspace(ctx context.Context, templateID string
 		return workspace{}, err
 	}
 
-	return workspace{dir: dir, rootfsPath: rootfsPath, seedPath: seedPath, snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, sshKeyPath: assetSet.sshKey, assets: assetSet}, nil
+	return workspace{dir: dir, rootfsPath: rootfsPath, rootfsBackingFiles: true, seedPath: seedPath, snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, sshKeyPath: baseSSHKeyPath, assets: assetSet}, nil
 }
 
 func (m Manager) prepareRestoreWorkspace(ctx context.Context, environmentID string, template Template) (workspace, error) {
@@ -485,6 +488,23 @@ func (m Manager) prepareRestoreWorkspace(ctx context.Context, environmentID stri
 	prepared, err := loadPreparedTemplate(m.DataDir, template.ID)
 	if err != nil {
 		return workspace{}, err
+	}
+
+	if strings.TrimSpace(template.BaseContentAddress) == "" {
+		return workspace{}, errors.New("template base content address is required")
+	}
+
+	if prepared.BaseContentAddress != template.BaseContentAddress {
+		return workspace{}, fmt.Errorf("prepared template base content address %s does not match template metadata %s", prepared.BaseContentAddress, template.BaseContentAddress)
+	}
+
+	baseMetadata, err := loadBase(m.DataDir)
+	if err != nil {
+		return workspace{}, err
+	}
+
+	if baseMetadata.ContentAddress != template.BaseContentAddress {
+		return workspace{}, fmt.Errorf("base content address %s does not match template base %s", baseMetadata.ContentAddress, template.BaseContentAddress)
 	}
 
 	dir := envDir(m.DataDir, environmentID)
@@ -513,7 +533,7 @@ func (m Manager) prepareRestoreWorkspace(ctx context.Context, environmentID stri
 	sshKeyPath := prepared.SSHKeyPath
 
 	if sshKeyPath == "" {
-		sshKeyPath = assetSet.sshKey
+		sshKeyPath = filepath.Join(baseDir(m.DataDir), basearchive.SSHKeyName)
 	}
 
 	return workspace{dir: dir, rootfsPath: rootfsPath, rootfsBackingFiles: true, seedPath: filepath.Join(dir, envSeedFileName), snapshotPath: snapshotPath, kernelPath: assetSet.kernel, initramfsPath: assetSet.initramfs, sshKeyPath: sshKeyPath, assets: assetSet}, nil
@@ -534,9 +554,15 @@ func loadPreparedTemplate(dataDir, templateID string) (PreparedTemplate, error) 
 		SSHKeyPath:  preparedTemplateSSHKeyPath(dir),
 	}
 
+	metadata, err := readPreparedTemplateMetadata(dir)
+	if err != nil {
+		return PreparedTemplate{}, err
+	}
+
+	prepared.BaseContentAddress = metadata.BaseContentAddress
+
 	checks := []string{
 		prepared.RootfsPath,
-		prepared.SeedPath,
 	}
 	if prepared.SSHKeyPath != "" {
 		checks = append(checks, prepared.SSHKeyPath, prepared.SSHKeyPath+".pub")
@@ -1063,9 +1089,20 @@ func (m Manager) prepareGuestForSnapshot(ctx context.Context, vm VM) error {
 	}
 }
 
-func (m Manager) finishTemplateArtifacts(templateID string, workspace workspace) (PreparedTemplate, error) {
+func (m Manager) finishTemplateArtifacts(templateID string, workspace workspace, baseContentAddress string) (PreparedTemplate, error) {
 	if err := os.RemoveAll(workspace.snapshotPath); err != nil {
 		return PreparedTemplate{}, fmt.Errorf("remove stale template snapshot: %w", err)
+	}
+
+	for _, path := range []string{
+		workspace.seedPath,
+		filepath.Join(workspace.dir, "user-data"),
+		filepath.Join(workspace.dir, "meta-data"),
+		filepath.Join(workspace.dir, "network-config"),
+	} {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return PreparedTemplate{}, fmt.Errorf("remove template boot artifact %s: %w", filepath.Base(path), err)
+		}
 	}
 
 	if err := os.Chmod(workspace.rootfsPath, 0o400); err != nil {
@@ -1073,8 +1110,13 @@ func (m Manager) finishTemplateArtifacts(templateID string, workspace workspace)
 	}
 
 	createdAt := now()
+	prepared := PreparedTemplate{TemplateID: templateID, TemplateDir: workspace.dir, RootfsPath: workspace.rootfsPath, SeedPath: workspace.seedPath, SSHKeyPath: workspace.sshKeyPath, BaseContentAddress: baseContentAddress, CreatedAt: createdAt, UpdatedAt: createdAt}
 
-	return PreparedTemplate{TemplateID: templateID, TemplateDir: workspace.dir, RootfsPath: workspace.rootfsPath, SeedPath: workspace.seedPath, SSHKeyPath: workspace.sshKeyPath, CreatedAt: createdAt, UpdatedAt: createdAt}, nil
+	if err := writePreparedTemplateMetadata(workspace.dir, prepared); err != nil {
+		return PreparedTemplate{}, err
+	}
+
+	return prepared, nil
 }
 
 func (m Manager) snapshotTemplate(ctx context.Context, templateID string, vm VM, workspace workspace) (PreparedTemplate, error) {
@@ -1172,7 +1214,7 @@ func (m Manager) prepareCloudInit(ctx context.Context, environmentID string, wor
 		sshKeyPath = workspace.assets.sshKey
 	}
 
-	publicKey, err := os.ReadFile(sshKeyPath + ".pub") //nolint:gosec // SSH key path is resolved from Bastion assets or an imported prepared template.
+	publicKey, err := m.publicKeyForSSHKey(ctx, sshKeyPath)
 	if err != nil {
 		return fmt.Errorf("read SSH public key: %w", err)
 	}
@@ -1181,7 +1223,7 @@ func (m Manager) prepareCloudInit(ctx context.Context, environmentID string, wor
 	hostname := "bastion-" + strings.TrimPrefix(vmID, "vm-")
 
 	files := map[string]string{
-		"user-data":      cloudInitUserData(strings.TrimSpace(string(publicKey))),
+		"user-data":      cloudInitUserData(publicKey),
 		"meta-data":      cloudInitMetaData(vmID, hostname),
 		"network-config": cloudInitNetworkConfig(plan),
 	}
@@ -1209,6 +1251,61 @@ func (m Manager) prepareCloudInit(ctx context.Context, environmentID string, wor
 
 	if err := m.run(ctx, "mcopy", args...); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (m Manager) publicKeyForSSHKey(ctx context.Context, sshKeyPath string) (string, error) {
+	contents, err := os.ReadFile(sshKeyPath + ".pub") //nolint:gosec // SSH key path is resolved from Bastion assets, base artifacts, or an imported prepared template.
+	if err == nil {
+		return strings.TrimSpace(string(contents)), nil
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+
+	publicKey, err := m.output(ctx, "ssh-keygen", "-y", "-f", sshKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("derive SSH public key: %w", err)
+	}
+
+	return strings.TrimSpace(publicKey), nil
+}
+
+func readPreparedTemplateMetadata(dir string) (PreparedTemplate, error) {
+	contents, err := os.ReadFile(filepath.Join(dir, templateMetadataFileName)) //nolint:gosec // Path is rooted in a prepared template directory.
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return PreparedTemplate{}, fmt.Errorf("prepared template metadata is missing: %w", err)
+		}
+
+		return PreparedTemplate{}, fmt.Errorf("read prepared template metadata: %w", err)
+	}
+
+	var metadata PreparedTemplate
+	if err := json.Unmarshal(contents, &metadata); err != nil {
+		return PreparedTemplate{}, fmt.Errorf("parse prepared template metadata: %w", err)
+	}
+
+	if strings.TrimSpace(metadata.BaseContentAddress) == "" {
+		return PreparedTemplate{}, errors.New("prepared template metadata missing base content address")
+	}
+
+	return metadata, nil
+}
+
+func writePreparedTemplateMetadata(dir string, metadata PreparedTemplate) error {
+	contents, err := json.MarshalIndent(PreparedTemplate{BaseContentAddress: metadata.BaseContentAddress, CreatedAt: metadata.CreatedAt, UpdatedAt: metadata.UpdatedAt}, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode prepared template metadata: %w", err)
+	}
+
+	contents = append(contents, '\n')
+
+	if err := atomicWriteFile(filepath.Join(dir, templateMetadataFileName), contents, 0o600); err != nil {
+		return fmt.Errorf("write prepared template metadata: %w", err)
 	}
 
 	return nil

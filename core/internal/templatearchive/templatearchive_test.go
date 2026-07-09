@@ -12,17 +12,22 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
+const (
+	testBaseContentAddress = "sha256:base"
+	testRootfsPayload      = "rootfs"
+)
+
 func TestReadAndRewriteTemplateArchiveManifest(t *testing.T) {
 	t.Parallel()
 
-	source := buildArchive(t, Template{ID: "tpl_derivative", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo ${{ secret.sec_derivative }}"}]}}`)})
+	source := buildArchive(t, Template{ID: "tpl_derivative", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo ${{ secret.sec_derivative }}"}]}}`), BaseContentAddress: testBaseContentAddress})
 
 	read, err := ReadTemplate(context.Background(), bytes.NewReader(source))
 	if err != nil {
 		t.Fatalf("read template archive: %v", err)
 	}
 
-	if read.ID != "tpl_derivative" {
+	if read.ID != "tpl_derivative" || read.BaseContentAddress != testBaseContentAddress {
 		t.Fatalf("read id = %q, want derivative", read.ID)
 	}
 
@@ -30,7 +35,7 @@ func TestReadAndRewriteTemplateArchiveManifest(t *testing.T) {
 
 	var rewritten bytes.Buffer
 
-	if err := RewriteTemplate(context.Background(), bytes.NewReader(source), &rewritten, Template{ID: "tpl_source", Key: &key, Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo ${{ secret.source-key }}"}]}}`)}); err != nil {
+	if err := RewriteTemplate(context.Background(), bytes.NewReader(source), &rewritten, Template{ID: "tpl_source", Key: &key, Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[{"run":"echo ${{ secret.source-key }}"}]}}`), BaseContentAddress: testBaseContentAddress}); err != nil {
 		t.Fatalf("rewrite template archive: %v", err)
 	}
 
@@ -39,12 +44,12 @@ func TestReadAndRewriteTemplateArchiveManifest(t *testing.T) {
 		t.Fatalf("read rewritten template archive: %v", err)
 	}
 
-	if read.ID != "tpl_source" || read.Key == nil || *read.Key != key || !bytes.Contains(read.Config, []byte("secret.source-key")) {
+	if read.ID != "tpl_source" || read.Key == nil || *read.Key != key || read.BaseContentAddress != testBaseContentAddress || !bytes.Contains(read.Config, []byte("secret.source-key")) {
 		t.Fatalf("rewritten template = %#v config %s, want source manifest", read, read.Config)
 	}
 
-	if payload := readArchiveEntry(t, rewritten.Bytes(), "payload.txt"); payload != "payload" {
-		t.Fatalf("payload entry = %q, want preserved payload", payload)
+	if payload := readArchiveEntry(t, rewritten.Bytes(), archiveRootfsName); payload != testRootfsPayload {
+		t.Fatalf("rootfs entry = %q, want preserved overlay", payload)
 	}
 }
 
@@ -52,8 +57,8 @@ func TestReadAndRewriteRejectSnapshotMemoryEntry(t *testing.T) {
 	t.Parallel()
 
 	source := buildArchiveEntries(t,
-		Template{ID: "tpl_memory", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)},
-		map[string]string{archiveMemoryName: "memory"},
+		Template{ID: "tpl_memory", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`), BaseContentAddress: testBaseContentAddress},
+		map[string]string{archiveRootfsName: testRootfsPayload, archiveMemoryName: "memory"},
 	)
 
 	if _, err := ReadTemplate(context.Background(), bytes.NewReader(source)); !errors.Is(err, ErrInvalid) {
@@ -61,15 +66,35 @@ func TestReadAndRewriteRejectSnapshotMemoryEntry(t *testing.T) {
 	}
 
 	var rewritten bytes.Buffer
-	if err := RewriteTemplate(context.Background(), bytes.NewReader(source), &rewritten, Template{ID: "tpl_rewritten", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)}); !errors.Is(err, ErrInvalid) {
+	if err := RewriteTemplate(context.Background(), bytes.NewReader(source), &rewritten, Template{ID: "tpl_rewritten", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`), BaseContentAddress: testBaseContentAddress}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("rewrite archive error = %v, want invalid", err)
+	}
+}
+
+func TestReadAndRewriteRejectTemplateArchiveWithoutBaseMetadataOrOverlay(t *testing.T) {
+	t.Parallel()
+
+	missingBase := buildArchiveEntries(t,
+		Template{ID: "tpl_missing_base", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)},
+		map[string]string{archiveRootfsName: testRootfsPayload},
+	)
+	if _, err := ReadTemplate(context.Background(), bytes.NewReader(missingBase)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("read missing base metadata error = %v, want invalid", err)
+	}
+
+	missingOverlay := buildArchiveEntries(t,
+		Template{ID: "tpl_missing_overlay", Config: json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`), BaseContentAddress: testBaseContentAddress},
+		map[string]string{},
+	)
+	if _, err := ReadTemplate(context.Background(), bytes.NewReader(missingOverlay)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("read missing rootfs error = %v, want invalid", err)
 	}
 }
 
 func buildArchive(t *testing.T, archiveTemplate Template) []byte {
 	t.Helper()
 
-	return buildArchiveEntries(t, archiveTemplate, map[string]string{"payload.txt": "payload"})
+	return buildArchiveEntries(t, archiveTemplate, map[string]string{archiveRootfsName: testRootfsPayload})
 }
 
 func buildArchiveEntries(t *testing.T, archiveTemplate Template, entries map[string]string) []byte {

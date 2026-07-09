@@ -9,20 +9,21 @@ import (
 )
 
 const (
-	assetDirName           = "cloud-hypervisor"
-	baseDirName            = "base"
-	environmentsDir        = "environments"
-	templatesDir           = "templates"
-	manifestFileName       = "manifest.json"
-	baseMetadataFileName   = "metadata.json"
-	cloudHypervisorName    = "cloud-hypervisor"
-	envStateFileName       = "vm.json"
-	envRootfsFileName      = "rootfs.img"
-	envSeedFileName        = "cidata.img"
-	snapshotDirName        = "snapshot"
-	snapshotConfigFileName = "config.json"
-	snapshotStateFileName  = "state.json"
-	snapshotMemoryFileName = "memory-ranges"
+	assetDirName             = "cloud-hypervisor"
+	baseDirName              = "base"
+	environmentsDir          = "environments"
+	templatesDir             = "templates"
+	manifestFileName         = "manifest.json"
+	baseMetadataFileName     = "metadata.json"
+	templateMetadataFileName = "metadata.json"
+	cloudHypervisorName      = "cloud-hypervisor"
+	envStateFileName         = "vm.json"
+	envRootfsFileName        = "rootfs.img"
+	envSeedFileName          = "cidata.img"
+	snapshotDirName          = "snapshot"
+	snapshotConfigFileName   = "config.json"
+	snapshotStateFileName    = "state.json"
+	snapshotMemoryFileName   = "memory-ranges"
 )
 
 type manifest struct {

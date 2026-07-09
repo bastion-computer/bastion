@@ -58,9 +58,10 @@ const (
 // Template describes the environment template supplied to VM orchestration.
 // It is accepted now so the runtime API can evolve without changing callers.
 type Template struct {
-	ID     string          `json:"id"`
-	Key    *string         `json:"key,omitempty"`
-	Config json.RawMessage `json:"config"`
+	ID                 string          `json:"id"`
+	Key                *string         `json:"key,omitempty"`
+	Config             json.RawMessage `json:"config"`
+	BaseContentAddress string          `json:"baseContentAddress,omitempty"`
 }
 
 // LaunchRequest asks bastiond to launch a VM for an environment.
@@ -97,14 +98,15 @@ type ImportedTemplate struct {
 
 // PreparedTemplate describes durable prepared template artifacts.
 type PreparedTemplate struct {
-	TemplateID  string `json:"templateId"`
-	TemplateDir string `json:"templateDir,omitempty"`
-	RootfsPath  string `json:"rootfsPath,omitempty"`
-	SeedPath    string `json:"seedPath,omitempty"`
-	SnapshotDir string `json:"snapshotDir,omitempty"`
-	SSHKeyPath  string `json:"sshKeyPath,omitempty"`
-	CreatedAt   string `json:"createdAt,omitempty"`
-	UpdatedAt   string `json:"updatedAt,omitempty"`
+	TemplateID         string `json:"templateId"`
+	TemplateDir        string `json:"templateDir,omitempty"`
+	RootfsPath         string `json:"rootfsPath,omitempty"`
+	SeedPath           string `json:"seedPath,omitempty"`
+	SnapshotDir        string `json:"snapshotDir,omitempty"`
+	SSHKeyPath         string `json:"sshKeyPath,omitempty"`
+	BaseContentAddress string `json:"baseContentAddress,omitempty"`
+	CreatedAt          string `json:"createdAt,omitempty"`
+	UpdatedAt          string `json:"updatedAt,omitempty"`
 }
 
 // LaunchStreamEvent is one line in a streamed VM launch response.

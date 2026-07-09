@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,6 +24,8 @@ import (
 	"github.com/bastion-computer/bastion/core/internal/basearchive"
 	"github.com/klauspost/compress/zstd"
 )
+
+const testQcow2Format = "qcow2"
 
 func TestPrepareCloudInitUsesEnvironmentIDForHostname(t *testing.T) {
 	t.Parallel()
@@ -192,6 +193,7 @@ func TestPrepareTemplateWorkspaceUsesResourceVolumeSize(t *testing.T) {
 
 	dataDir := t.TempDir()
 	writeTestCloudHypervisorAssets(t, dataDir)
+	baseMetadata := writeInstalledTestBase(t, dataDir)
 
 	rootfsSize := strconv.FormatInt(5*gibBytes, 10)
 
@@ -205,13 +207,38 @@ func TestPrepareTemplateWorkspaceUsesResourceVolumeSize(t *testing.T) {
 		return nil
 	}}
 
-	workspace, err := manager.prepareTemplateWorkspace(context.Background(), "tpl_resources", resolvedResources{rootfsSize: rootfsSize})
+	workspace, err := manager.prepareTemplateWorkspace(context.Background(), "tpl_resources", resolvedResources{rootfsSize: rootfsSize}, baseMetadata)
 	if err != nil {
 		t.Fatalf("prepare workspace: %v", err)
 	}
 
-	if len(resizeArgs) != 3 || resizeArgs[0] != "resize" || resizeArgs[1] != workspace.rootfsPath || resizeArgs[2] != rootfsSize {
-		t.Fatalf("qemu-img resize args = %#v, want resize rootfs to resource volume", resizeArgs)
+	want := []string{"create", "-f", testQcow2Format, "-F", testQcow2Format, "-b", filepath.Join(baseDir(dataDir), basearchive.RootfsName), workspace.rootfsPath, rootfsSize}
+	if !slicesEqual(resizeArgs, want) {
+		t.Fatalf("qemu-img args = %#v, want template overlay backed by base", resizeArgs)
+	}
+
+	if !workspace.rootfsBackingFiles {
+		t.Fatalf("template workspace rootfsBackingFiles = false, want true for base overlay")
+	}
+}
+
+func TestPrepareBaseWorkspaceKeepsAssetRootfsSize(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeTestCloudHypervisorAssets(t, dataDir)
+
+	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error {
+		return errors.New("unexpected qemu-img resize")
+	}}
+
+	workspace, err := manager.prepareBaseWorkspace(context.Background(), resolvedResources{cpus: 1, memoryBytes: gibBytes})
+	if err != nil {
+		t.Fatalf("prepare base workspace: %v", err)
+	}
+
+	if _, err := os.Stat(workspace.rootfsPath); err != nil {
+		t.Fatalf("stat base workspace rootfs: %v", err)
 	}
 }
 
@@ -225,13 +252,14 @@ func TestManagerExportsAndImportsPreparedTemplateArchive(t *testing.T) {
 	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
 
 	writeTestCloudHypervisorAssets(t, dataDir)
-	writeTestPreparedTemplate(t, dataDir, sourceID)
+	baseMetadata := writeInstalledTestBase(t, dataDir)
+	writeTestPreparedTemplate(t, dataDir, sourceID, baseMetadata.ContentAddress)
 
-	manager := Manager{DataDir: dataDir}
+	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error { return nil }}
 
 	var archive bytes.Buffer
 	if err := manager.ExportTemplate(context.Background(), ExportTemplateRequest{
-		Template: Template{ID: sourceID, Key: &sourceKey, Config: config},
+		Template: Template{ID: sourceID, Key: &sourceKey, Config: config, BaseContentAddress: baseMetadata.ContentAddress},
 		Writer:   &archive,
 	}); err != nil {
 		t.Fatalf("export template archive: %v", err)
@@ -247,25 +275,24 @@ func TestManagerExportsAndImportsPreparedTemplateArchive(t *testing.T) {
 		t.Fatalf("import template archive: %v", err)
 	}
 
-	if imported.Template.ID != restoredID || imported.Template.Key != nil || !jsonEqual(imported.Template.Config, config) {
+	if imported.Template.ID != restoredID || imported.Template.Key != nil || imported.Template.BaseContentAddress != baseMetadata.ContentAddress || !jsonEqual(imported.Template.Config, config) {
 		t.Fatalf("imported template = %#v, want restored id/config without key", imported.Template)
 	}
 
 	assertPreparedTemplateFiles(t, dataDir, restoredID)
 	assertPathMode(t, filepath.Join(templateDir(dataDir, restoredID), envRootfsFileName), 0o400)
-	assertPathMode(t, filepath.Join(templateDir(dataDir, restoredID), templateArchiveSSHKeyName), 0o600)
 
 	prepared, err := loadPreparedTemplate(dataDir, restoredID)
 	if err != nil {
 		t.Fatalf("load imported prepared template: %v", err)
 	}
 
-	if prepared.SSHKeyPath == "" {
-		t.Fatal("imported prepared template SSHKeyPath is empty")
+	if prepared.BaseContentAddress != baseMetadata.ContentAddress {
+		t.Fatalf("imported prepared template base content address = %q, want %q", prepared.BaseContentAddress, baseMetadata.ContentAddress)
 	}
 }
 
-func TestManagerExportsPreparedTemplateArchiveWithoutSnapshotMemory(t *testing.T) {
+func TestManagerExportsPreparedTemplateArchiveOnlyContainsOverlayAndManifest(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
@@ -273,21 +300,24 @@ func TestManagerExportsPreparedTemplateArchiveWithoutSnapshotMemory(t *testing.T
 	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
 
 	writeTestCloudHypervisorAssets(t, dataDir)
-	writeTestPreparedTemplate(t, dataDir, sourceID)
+	baseMetadata := writeInstalledTestBase(t, dataDir)
+	writeTestPreparedTemplate(t, dataDir, sourceID, baseMetadata.ContentAddress)
 
-	manager := Manager{DataDir: dataDir}
+	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error { return nil }}
 
 	var archive bytes.Buffer
 	if err := manager.ExportTemplate(context.Background(), ExportTemplateRequest{
-		Template: Template{ID: sourceID, Config: config},
+		Template: Template{ID: sourceID, Config: config, BaseContentAddress: baseMetadata.ContentAddress},
 		Writer:   &archive,
 	}); err != nil {
 		t.Fatalf("export template archive: %v", err)
 	}
 
 	entries := templateArchiveEntryNames(t, archive.Bytes())
-	if entries[path.Join(snapshotDirName, snapshotMemoryFileName)] {
-		t.Fatalf("archive unexpectedly contains %s", path.Join(snapshotDirName, snapshotMemoryFileName))
+
+	wantEntries := map[string]bool{templateArchiveManifestName: true, envRootfsFileName: true}
+	if fmt.Sprintf("%#v", entries) != fmt.Sprintf("%#v", wantEntries) {
+		t.Fatalf("archive entries = %#v, want only template overlay and manifest", entries)
 	}
 }
 
@@ -299,28 +329,49 @@ func TestManagerImportsPreparedTemplateArchiveWithoutSnapshotMemory(t *testing.T
 	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
 
 	writeTestCloudHypervisorAssets(t, dataDir)
+	baseMetadata := writeInstalledTestBase(t, dataDir)
 
 	var archive bytes.Buffer
-	writeZstdTemplateArchive(t, &archive, config, map[string][]byte{
-		envRootfsFileName:         []byte("rootfs"),
-		envSeedFileName:           []byte("seed"),
-		templateArchiveSSHKeyName: []byte("imported-key"),
-		templateArchiveSSHPubName: []byte("imported-key-pub"),
-	})
+	writeZstdTemplateArchive(t, &archive, config, baseMetadata.ContentAddress, map[string][]byte{envRootfsFileName: []byte("rootfs")})
 
-	manager := Manager{DataDir: dataDir}
+	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error { return nil }}
 
 	imported, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: restoredID, Reader: bytes.NewReader(archive.Bytes())})
 	if err != nil {
 		t.Fatalf("import disk-only template archive: %v", err)
 	}
 
-	if imported.Template.ID != restoredID || !jsonEqual(imported.Template.Config, config) {
+	if imported.Template.ID != restoredID || imported.Template.BaseContentAddress != baseMetadata.ContentAddress || !jsonEqual(imported.Template.Config, config) {
 		t.Fatalf("imported template = %#v, want restored id/config", imported.Template)
 	}
 
 	if _, err := os.Stat(filepath.Join(templateDir(dataDir, restoredID), snapshotDirName, snapshotMemoryFileName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("imported snapshot memory stat error = %v, want not exist", err)
+	}
+}
+
+func TestManagerImportTemplateRequiresMatchingBase(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	config := json.RawMessage(`{"agents":{"opencode":{}},"actions":{"init":[]}}`)
+
+	var archive bytes.Buffer
+	writeZstdTemplateArchive(t, &archive, config, "sha256:archive-base", map[string][]byte{envRootfsFileName: []byte("rootfs")})
+
+	manager := Manager{DataDir: dataDir}
+	if _, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_missing_base", Reader: bytes.NewReader(archive.Bytes())}); !errors.Is(err, ErrBaseNotFound) {
+		t.Fatalf("import without base error = %v, want base not found", err)
+	}
+
+	writeTestCloudHypervisorAssets(t, dataDir)
+	baseMetadata := writeInstalledTestBase(t, dataDir)
+
+	archive.Reset()
+	writeZstdTemplateArchive(t, &archive, config, baseMetadata.ContentAddress+"-stale", map[string][]byte{envRootfsFileName: []byte("rootfs")})
+
+	if _, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_wrong_base", Reader: bytes.NewReader(archive.Bytes())}); !errors.Is(err, ErrInvalidTemplateArchive) {
+		t.Fatalf("import base mismatch error = %v, want invalid template archive", err)
 	}
 }
 
@@ -331,9 +382,10 @@ func TestPrepareRestoreWorkspaceUsesImportedTemplateSSHKey(t *testing.T) {
 	templateID := "tpl_imported_key"
 
 	writeTestCloudHypervisorAssets(t, dataDir)
-	writeTestPreparedTemplate(t, dataDir, templateID)
+	baseMetadata := writeInstalledTestBase(t, dataDir)
+	writeTestPreparedTemplate(t, dataDir, templateID, baseMetadata.ContentAddress)
 
-	importedKeyPath := filepath.Join(templateDir(dataDir, templateID), templateArchiveSSHKeyName)
+	importedKeyPath := filepath.Join(templateDir(dataDir, templateID), "ssh_key")
 	if err := os.WriteFile(importedKeyPath, []byte("imported-key"), 0o600); err != nil {
 		t.Fatalf("write imported key: %v", err)
 	}
@@ -344,7 +396,7 @@ func TestPrepareRestoreWorkspaceUsesImportedTemplateSSHKey(t *testing.T) {
 
 	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error { return nil }}
 
-	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_imported_key", Template{ID: templateID})
+	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_imported_key", Template{ID: templateID, BaseContentAddress: baseMetadata.ContentAddress})
 	if err != nil {
 		t.Fatalf("prepare restore workspace: %v", err)
 	}
@@ -359,13 +411,14 @@ func TestPrepareRestoreWorkspaceDoesNotRequireTemplateSnapshot(t *testing.T) {
 
 	dataDir := t.TempDir()
 	writeTestCloudHypervisorAssets(t, dataDir)
+	baseMetadata := writeInstalledTestBase(t, dataDir)
 
 	templateID := "tpl_disk_only"
-	writeDiskOnlyPreparedTemplate(t, dataDir, templateID)
+	writeDiskOnlyPreparedTemplate(t, dataDir, templateID, baseMetadata.ContentAddress)
 
 	manager := Manager{DataDir: dataDir, run: func(context.Context, string, ...string) error { return nil }}
 
-	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_disk_boot", Template{ID: templateID})
+	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_disk_boot", Template{ID: templateID, BaseContentAddress: baseMetadata.ContentAddress})
 	if err != nil {
 		t.Fatalf("prepare restore workspace: %v", err)
 	}
@@ -385,7 +438,11 @@ func TestManagerImportTemplateRejectsGzipArchive(t *testing.T) {
 
 	writeGzipTemplateArchive(t, &archive, config)
 
-	manager := Manager{DataDir: t.TempDir()}
+	dataDir := t.TempDir()
+	writeTestCloudHypervisorAssets(t, dataDir)
+	writeInstalledTestBase(t, dataDir)
+
+	manager := Manager{DataDir: dataDir}
 
 	_, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_gzip", Reader: bytes.NewReader(archive.Bytes())})
 	if !errors.Is(err, ErrInvalidTemplateArchive) {
@@ -421,7 +478,11 @@ func TestManagerImportTemplateRejectsUnsafeArchivePath(t *testing.T) {
 		t.Fatalf("close zstd: %v", err)
 	}
 
-	manager := Manager{DataDir: t.TempDir()}
+	dataDir := t.TempDir()
+	writeTestCloudHypervisorAssets(t, dataDir)
+	writeInstalledTestBase(t, dataDir)
+
+	manager := Manager{DataDir: dataDir}
 	if _, err := manager.ImportTemplate(context.Background(), ImportTemplateRequest{TemplateID: "tpl_unsafe", Reader: bytes.NewReader(archive.Bytes())}); err == nil {
 		t.Fatal("import unsafe archive path error = nil, want error")
 	}
@@ -491,7 +552,8 @@ func TestPrepareRestoreWorkspaceCreatesQCOW2Overlay(t *testing.T) {
 
 	templateID := "tpl_overlay"
 	templateRootfs := filepath.Join(templateDir(dataDir, templateID), envRootfsFileName)
-	writeTestPreparedTemplate(t, dataDir, templateID)
+	baseMetadata := writeInstalledTestBase(t, dataDir)
+	writeTestPreparedTemplate(t, dataDir, templateID, baseMetadata.ContentAddress)
 
 	var qemuImgArgs []string
 
@@ -503,12 +565,12 @@ func TestPrepareRestoreWorkspaceCreatesQCOW2Overlay(t *testing.T) {
 		return nil
 	}}
 
-	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_overlay", Template{ID: templateID})
+	workspace, err := manager.prepareRestoreWorkspace(context.Background(), "env_overlay", Template{ID: templateID, BaseContentAddress: baseMetadata.ContentAddress})
 	if err != nil {
 		t.Fatalf("prepare restore workspace: %v", err)
 	}
 
-	want := []string{"create", "-f", "qcow2", "-F", "qcow2", "-b", templateRootfs, workspace.rootfsPath}
+	want := []string{"create", "-f", testQcow2Format, "-F", testQcow2Format, "-b", templateRootfs, workspace.rootfsPath}
 	if !slicesEqual(qemuImgArgs, want) {
 		t.Fatalf("qemu-img args = %#v, want %#v", qemuImgArgs, want)
 	}
@@ -828,7 +890,7 @@ func writeTestCloudHypervisorAssets(t *testing.T, dataDir string) {
 	}
 }
 
-func writeTestPreparedTemplate(t *testing.T, dataDir, templateID string) {
+func writeTestPreparedTemplate(t *testing.T, dataDir, templateID, baseContentAddress string) {
 	t.Helper()
 
 	dir := templateDir(dataDir, templateID)
@@ -851,9 +913,11 @@ func writeTestPreparedTemplate(t *testing.T, dataDir, templateID string) {
 			t.Fatalf("write prepared template file %s: %v", filepath.Base(path), err)
 		}
 	}
+
+	writeTestTemplateMetadata(t, dir, baseContentAddress)
 }
 
-func writeDiskOnlyPreparedTemplate(t *testing.T, dataDir, templateID string) {
+func writeDiskOnlyPreparedTemplate(t *testing.T, dataDir, templateID, baseContentAddress string) {
 	t.Helper()
 
 	dir := templateDir(dataDir, templateID)
@@ -870,6 +934,35 @@ func writeDiskOnlyPreparedTemplate(t *testing.T, dataDir, templateID string) {
 		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 			t.Fatalf("write prepared template file %s: %v", filepath.Base(path), err)
 		}
+	}
+
+	writeTestTemplateMetadata(t, dir, baseContentAddress)
+}
+
+func writeInstalledTestBase(t *testing.T, dataDir string) basearchive.Metadata {
+	t.Helper()
+
+	srcDir := filepath.Join(dataDir, "source-base")
+	writeTestBaseArtifacts(t, srcDir)
+
+	metadata, err := installBase(context.Background(), dataDir, srcDir, basearchive.Metadata{})
+	if err != nil {
+		t.Fatalf("install test base: %v", err)
+	}
+
+	return metadata
+}
+
+func writeTestTemplateMetadata(t *testing.T, dir, baseContentAddress string) {
+	t.Helper()
+
+	contents, err := json.Marshal(PreparedTemplate{BaseContentAddress: baseContentAddress})
+	if err != nil {
+		t.Fatalf("encode template metadata: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, templateMetadataFileName), append(contents, '\n'), 0o600); err != nil {
+		t.Fatalf("write template metadata: %v", err)
 	}
 }
 
@@ -896,8 +989,9 @@ func writeGzipTemplateArchive(t *testing.T, writer io.Writer, config json.RawMes
 	manifest := templateArchiveManifest{
 		Format: templateArchiveFormat,
 		Template: Template{
-			ID:     "tpl_gzip_source",
-			Config: config,
+			ID:                 "tpl_gzip_source",
+			Config:             config,
+			BaseContentAddress: "sha256:test-base",
 		},
 	}
 
@@ -910,9 +1004,6 @@ func writeGzipTemplateArchive(t *testing.T, writer io.Writer, config json.RawMes
 	entries := map[string][]byte{
 		templateArchiveManifestName: manifestContents,
 		envRootfsFileName:           []byte("rootfs"),
-		envSeedFileName:             []byte("seed"),
-		templateArchiveSSHKeyName:   []byte("ssh-key"),
-		templateArchiveSSHPubName:   []byte("ssh-key-pub"),
 	}
 
 	for name, contents := range entries {
@@ -934,7 +1025,7 @@ func writeGzipTemplateArchive(t *testing.T, writer io.Writer, config json.RawMes
 	}
 }
 
-func writeZstdTemplateArchive(t *testing.T, writer io.Writer, config json.RawMessage, entries map[string][]byte) {
+func writeZstdTemplateArchive(t *testing.T, writer io.Writer, config json.RawMessage, baseContentAddress string, entries map[string][]byte) {
 	t.Helper()
 
 	zstdWriter, err := zstd.NewWriter(writer)
@@ -947,8 +1038,9 @@ func writeZstdTemplateArchive(t *testing.T, writer io.Writer, config json.RawMes
 	manifest := templateArchiveManifest{
 		Format: templateArchiveFormat,
 		Template: Template{
-			ID:     "tpl_source",
-			Config: config,
+			ID:                 "tpl_source",
+			Config:             config,
+			BaseContentAddress: baseContentAddress,
 		},
 	}
 
@@ -1011,9 +1103,7 @@ func assertPreparedTemplateFiles(t *testing.T, dataDir, templateID string) {
 	dir := templateDir(dataDir, templateID)
 	for _, path := range []string{
 		filepath.Join(dir, envRootfsFileName),
-		filepath.Join(dir, envSeedFileName),
-		filepath.Join(dir, templateArchiveSSHKeyName),
-		filepath.Join(dir, templateArchiveSSHPubName),
+		filepath.Join(dir, templateMetadataFileName),
 	} {
 		info, err := os.Stat(path)
 		if err != nil {

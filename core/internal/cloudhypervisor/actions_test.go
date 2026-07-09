@@ -956,7 +956,7 @@ func TestSetupDockerPresetInputs(t *testing.T) {
 	}
 }
 
-func TestSetupTemplateAgentsCopiesOpenCodeAndWritesInputs(t *testing.T) {
+func TestSetupBaseAgentsCopiesOpenCodeAndInstallsBinary(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
@@ -983,14 +983,12 @@ func TestSetupTemplateAgentsCopiesOpenCodeAndWritesInputs(t *testing.T) {
 		},
 	}
 
-	config := json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/project dir","auth":{"anthropic":{"type":"api","key":"test-key"}},"config":{"model":"anthropic/claude-sonnet-4-5","server":{"port":4097}}}},"actions":{"init":[]}}`)
-
-	if err := manager.setupTemplateAgents(context.Background(), testActionVM(), config, nil); err != nil {
-		t.Fatalf("setup template agents: %v", err)
+	if err := manager.setupBaseAgents(context.Background(), testActionVM(), nil); err != nil {
+		t.Fatalf("setup base agents: %v", err)
 	}
 
 	if len(calls) != 2 {
-		t.Fatalf("commands = %#v, want opencode copy and setup command", calls)
+		t.Fatalf("commands = %#v, want opencode copy and install command", calls)
 	}
 
 	if calls[0].name != testSCPCommand || !containsArg(calls[0].args, filepath.Join(dataDir, "opencode", "opencode-linux-x64.tar.gz")) || !containsArg(calls[0].args, SSHUser+"@10.241.0.2:/tmp/opencode-linux-x64.tar.gz") {
@@ -998,17 +996,51 @@ func TestSetupTemplateAgentsCopiesOpenCodeAndWritesInputs(t *testing.T) {
 	}
 
 	if calls[1].name != testSSHCommand {
-		t.Fatalf("opencode setup call name = %q, want %s", calls[1].name, testSSHCommand)
+		t.Fatalf("opencode install call name = %q, want %s", calls[1].name, testSSHCommand)
 	}
 
 	command := calls[1].args[len(calls[1].args)-1]
-	if strings.Contains(command, "https://opencode.ai/install") {
-		t.Fatalf("opencode setup command = %q, want no install script", command)
-	}
-
 	for _, want := range []string{
+		"apt-get install -y --no-install-recommends bash ca-certificates curl jq tar gzip",
 		"tar -xzf /tmp/opencode-linux-x64.tar.gz -C /tmp opencode",
 		"install -m 0755 /tmp/opencode /usr/local/bin/opencode",
+		"rm -f /tmp/opencode-linux-x64.tar.gz /tmp/opencode",
+		"/usr/local/bin/opencode --version",
+	} {
+		if !strings.Contains(command, want) {
+			t.Fatalf("opencode base setup command = %q, want to contain %q", command, want)
+		}
+	}
+
+	for _, unwanted := range []string{
+		"/root/.config/opencode/opencode.json",
+		"/root/.local/share/opencode/auth.json",
+		"bastion-opencode.service",
+	} {
+		if strings.Contains(command, unwanted) {
+			t.Fatalf("opencode base setup command = %q, want not to contain %q", command, unwanted)
+		}
+	}
+}
+
+func TestSetupTemplateAgentsWritesOpenCodeInputsWithoutInstallingBinary(t *testing.T) {
+	t.Parallel()
+
+	var commands []string
+
+	manager := Manager{stream: recordSSHCommands(t, &commands)}
+	config := json.RawMessage(`{"agents":{"opencode":{"working_directory":"/workspace/project dir","auth":{"anthropic":{"type":"api","key":"test-key"}},"config":{"model":"anthropic/claude-sonnet-4-5","server":{"port":4097}}}},"actions":{"init":[]}}`)
+
+	if err := manager.setupTemplateAgents(context.Background(), testActionVM(), config, nil); err != nil {
+		t.Fatalf("setup template agents: %v", err)
+	}
+
+	if len(commands) != 1 {
+		t.Fatalf("commands = %#v, want opencode setup command only", commands)
+	}
+
+	command := commands[0]
+	for _, want := range []string{
 		"/root/.config/opencode/opencode.json",
 		"/root/.local/share/opencode/auth.json",
 		"anthropic/claude-sonnet-4-5",
@@ -1019,7 +1051,20 @@ func TestSetupTemplateAgentsCopiesOpenCodeAndWritesInputs(t *testing.T) {
 		"--port 4097",
 	} {
 		if !strings.Contains(command, want) {
-			t.Fatalf("opencode setup command = %q, want to contain %q", command, want)
+			t.Fatalf("opencode template setup command = %q, want to contain %q", command, want)
+		}
+	}
+
+	for _, unwanted := range []string{
+		"apt-get update",
+		"apt-get install",
+		"tar -xzf /tmp/opencode-linux-x64.tar.gz",
+		"install -m 0755 /tmp/opencode /usr/local/bin/opencode",
+		"rm -f /tmp/opencode-linux-x64.tar.gz",
+		"/usr/local/bin/opencode --version",
+	} {
+		if strings.Contains(command, unwanted) {
+			t.Fatalf("opencode template setup command = %q, want not to contain %q", command, unwanted)
 		}
 	}
 }
