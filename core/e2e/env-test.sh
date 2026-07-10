@@ -907,7 +907,7 @@ fi"
 
   proxy_logs="/tmp/bastion-env-test-proxy-$RUN_ID.log"
   : >"$proxy_logs"
-  run_cli proxy --env-key "$first_env_key" --name frontend >/dev/null 2>"$proxy_logs" &
+  "$BASTION" --api-url "$API_URL" proxy --env-key "$first_env_key" --name frontend >/dev/null 2>"$proxy_logs" &
   PROXY_PIDS+=("$!")
   proxy_url="$(wait_for_proxy_url "$proxy_logs")"
 
@@ -932,7 +932,7 @@ fi"
 
   proxy_host_logs="/tmp/bastion-env-test-proxy-host-$RUN_ID.log"
   : >"$proxy_host_logs"
-  run_cli proxy --env-key "$first_env_key" --name frontend --host 127.0.0.1 >/dev/null 2>"$proxy_host_logs" &
+  "$BASTION" --api-url "$API_URL" proxy --env-key "$first_env_key" --name frontend --host 127.0.0.1 >/dev/null 2>"$proxy_host_logs" &
   PROXY_PIDS+=("$!")
   proxy_host_url="$(wait_for_proxy_url "$proxy_host_logs")"
 

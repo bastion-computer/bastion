@@ -26,6 +26,7 @@ MINIO_BUCKET="bastion-cluster-$RUN_ID"
 MINIO_ENDPOINT=""
 PG_URL=""
 CLUSTER_PID=""
+PROXY_PID=""
 NODE_IDS=()
 NAMESPACE_IDS=()
 HOST_TEMPLATE_IDS=()
@@ -64,6 +65,11 @@ cleanup() {
   local status=$?
   set +e
 
+  if [ -n "$PROXY_PID" ]; then
+    kill "$PROXY_PID" >/dev/null 2>&1 || true
+    wait "$PROXY_PID" >/dev/null 2>&1 || true
+  fi
+
   if [ -n "$CLUSTER_PID" ]; then
     kill "$CLUSTER_PID" >/dev/null 2>&1 || true
     wait "$CLUSTER_PID" >/dev/null 2>&1 || true
@@ -74,6 +80,11 @@ cleanup() {
   fi
 
   docker rm -f "$MINIO_CONTAINER" >/dev/null 2>&1 || true
+
+  if [ "$status" -ne 0 ] && [ -n "${BASTION_E2E_KEEP_FAILED:-}" ]; then
+    log "preserving failed run resources: environments=${HOST_ENV_IDS[*]:-} templates=${HOST_TEMPLATE_IDS[*]:-} work_dir=$WORK_DIR"
+    exit "$status"
+  fi
 
   local env_id
   for env_id in "${HOST_ENV_IDS[@]}"; do
@@ -89,13 +100,7 @@ cleanup() {
     fi
   done
 
-  if [ "$status" -ne 0 ]; then
-    log "cluster log: $WORK_DIR/cluster.log"
-  fi
-
-  if [ "$status" -eq 0 ] || [ -z "${BASTION_E2E_KEEP_FAILED:-}" ]; then
-    rm -rf "$WORK_DIR"
-  fi
+  rm -rf "$WORK_DIR"
   exit "$status"
 }
 
@@ -305,7 +310,7 @@ vm_node_template_config() {
     actions: {
       init: [
         {run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y --no-install-recommends ca-certificates curl jq tar sudo bash"},
-        {run: "set -eu\nrm -f /swapfile\nfallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048\nchmod 600 /swapfile\nmkswap /swapfile\nswapon /swapfile"},
+        {run: "set -eu\nrm -f /swapfile\nfallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048\nchmod 600 /swapfile\nmkswap /swapfile\ngrep -q \"^/swapfile[[:space:]]\" /etc/fstab || printf \"/swapfile none swap sw 0 0\\n\" >> /etc/fstab\nswapon /swapfile"},
         {run: "set -eu\nmodprobe kvm_intel 2>/dev/null || modprobe kvm_amd 2>/dev/null || true\ntest -e /dev/kvm\ntest -r /dev/kvm\ntest -w /dev/kvm"}
       ]
     }
@@ -336,6 +341,11 @@ cd /root/bastion
 INNER_DATA_DIR=/root/.bastion-cluster-node
 INNER_SOCKET=/run/bastion-cluster-node/bastiond.sock
 INNER_API=http://127.0.0.1:4148
+
+if ! grep -q '^/swapfile ' /proc/swaps; then
+  printf 'VM-backed cluster node swap is not active\n' >&2
+  exit 1
+fi
 
 choose_inner_network_prefix() {
   local route second next
@@ -1011,8 +1021,8 @@ run_environment_case() {
 
   proxy_logs="$WORK_DIR/cluster-proxy.log"
   : >"$proxy_logs"
-  run_cli --namespace-id "$ns_a" proxy --env-id "$env1" --name cluster >/dev/null 2>"$proxy_logs" &
-  local proxy_pid=$!
+  "$BASTION" --api-url "$CLUSTER_URL" --namespace-id "$ns_a" proxy --env-id "$env1" --name cluster >/dev/null 2>"$proxy_logs" &
+  PROXY_PID=$!
   local i=0
   while [ "$i" -lt 80 ]; do
     if grep -q 'proxy listening on ' "$proxy_logs"; then
@@ -1023,13 +1033,15 @@ run_environment_case() {
   done
   proxy_url="$(sed -n 's/^proxy listening on //p' "$proxy_logs" | head -n 1)"
   if [ -z "$proxy_url" ]; then
-    kill "$proxy_pid" >/dev/null 2>&1 || true
-    wait "$proxy_pid" >/dev/null 2>&1 || true
+    kill "$PROXY_PID" >/dev/null 2>&1 || true
+    wait "$PROXY_PID" >/dev/null 2>&1 || true
+    PROXY_PID=""
     fail "cluster proxy did not start: $(<"$proxy_logs")"
   fi
   output="$(curl -fsS --connect-timeout 5 --max-time 20 "$proxy_url")"
-  kill "$proxy_pid" >/dev/null 2>&1 || true
-  wait "$proxy_pid" >/dev/null 2>&1 || true
+  kill "$PROXY_PID" >/dev/null 2>&1 || true
+  wait "$PROXY_PID" >/dev/null 2>&1 || true
+  PROXY_PID=""
   if [ "$output" != "cluster-env-ok" ]; then
     fail "cluster local proxy returned $output, want cluster-env-ok"
   fi
