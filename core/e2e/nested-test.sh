@@ -80,7 +80,7 @@ nested_template_config() {
 		actions: {
 			init: [
 				{run: "set -eu\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y --no-install-recommends ca-certificates curl jq tar sudo bash"},
-				{run: "set -eu\nrm -f /swapfile\nfallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048\nchmod 600 /swapfile\nmkswap /swapfile\nswapon /swapfile"},
+				{run: "set -eu\nrm -f /swapfile\nfallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048\nchmod 600 /swapfile\nmkswap /swapfile\ngrep -q \"^/swapfile[[:space:]]\" /etc/fstab || printf \"/swapfile none swap sw 0 0\\n\" >> /etc/fstab\nswapon /swapfile"},
 				{run: "set -eu\nmodprobe kvm_intel 2>/dev/null || modprobe kvm_amd 2>/dev/null || true\ntest -e /dev/kvm\ntest -r /dev/kvm\ntest -w /dev/kvm"}
 			]
 		}
@@ -139,6 +139,11 @@ INNER_DATA_DIR=/root/.bastion-nested
 INNER_SOCKET=/run/bastion-nested/bastiond.sock
 INNER_API=http://127.0.0.1:4148
 CHILD_KEY=nested-child
+
+if ! grep -q '^/swapfile ' /proc/swaps; then
+  printf 'nested Bastion host swap is not active\n' >&2
+  exit 1
+fi
 
 cleanup_inner() {
   set +e
@@ -206,6 +211,8 @@ done
 
 ./core/tmp/bastion --api-url "$INNER_API" templates list >/dev/null
 printf 'inner-api-ready\n'
+./core/tmp/bastion --api-url "$INNER_API" base build --force >/dev/null
+printf 'inner-base-built\n'
 ./core/tmp/bastion --api-url "$INNER_API" templates create --key "$CHILD_KEY" --config '{"agents":{"opencode":{}},"actions":{"init":[{"run":"set -eu\nprintf nested-ok > /root/nested-ok"}]}}' >/dev/null
 printf 'inner-child-template-created\n'
 
