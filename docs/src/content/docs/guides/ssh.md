@@ -58,10 +58,12 @@ environment after fixing the underlying template or host issue.
 
 ## How It Works
 
-The guest is provisioned with root SSH access using the SSH key generated during
-Cloud Hypervisor asset installation. The host API upgrades the HTTP connection
-using the `bastion-ssh` protocol and multiplexes stdin, stdout, stderr, terminal
-resize, exit status, and error frames over that connection.
+The guest is provisioned with root SSH access using the key stored in the current
+base. A locally built base copies the key generated during Cloud Hypervisor asset
+installation; an imported base carries its archived key. Each environment gets
+fresh cloud-init media configured with that key. The host API upgrades the HTTP
+connection using the `bastion-ssh` protocol and multiplexes stdin, stdout,
+stderr, terminal resize, exit status, and error frames over that connection.
 
 Direct guest SSH is an implementation detail. Prefer `bastion ssh` so the CLI
 continues to work as VM networking and metadata handling evolve.

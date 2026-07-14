@@ -20,7 +20,7 @@ The cluster control plane needs:
 | Requirement               | Purpose                                                                 |
 | ------------------------- | ----------------------------------------------------------------------- |
 | Postgres database         | Stores cluster nodes, namespaces, source resources, and routing state.  |
-| S3-compatible bucket      | Stores prepared source template archives shared across nodes.           |
+| S3-compatible bucket      | Stores the shared base and prepared template overlay archives.          |
 | One or more Bastion nodes | Run the standard Bastion host API and daemon on Linux with KVM support. |
 
 Every node URL you register must be reachable from the cluster control plane.
@@ -30,7 +30,9 @@ directly.
 ## Start Bastion Nodes
 
 On each Linux machine that will run environments, install Bastion and prepare the
-Cloud Hypervisor runtime as usual:
+Cloud Hypervisor and OpenCode assets as usual. Do not build a separate local base
+on each node; establish the shared base through the cluster API after registering
+the nodes.
 
 ```sh
 bastion system init --with-utilities
@@ -94,10 +96,42 @@ bastion --api-url http://cluster.internal:3150 cluster nodes get --key node-a
 bastion --api-url http://cluster.internal:3150 cluster nodes remove --key node-b
 ```
 
+If the cluster already has a base, node registration imports it before storing
+the new node record. Progress is streamed to stderr.
+
 `bastion cluster` commands default to `http://localhost:3150` when no
 `--api-url`, `BASTION_API_URL`, or client config is set. Other resource commands
 keep the normal host API default of `http://localhost:3148`, so pass `--api-url`
 or persist it before managing cluster resources.
+
+## Build the Cluster Base
+
+The base is a global cluster resource and is not scoped to a namespace. After at
+least one node is registered, build it through the cluster API:
+
+```sh
+bastion --api-url http://cluster.internal:3150 base build
+```
+
+The control plane selects one node to build the base, exports it to the
+configured S3-compatible bucket, and imports it into every other registered
+node. Inspect it with:
+
+```sh
+bastion --api-url http://cluster.internal:3150 base get
+```
+
+You can establish the same base from an existing archive instead:
+
+```sh
+bastion --api-url http://cluster.internal:3150 \
+  base import --file ./base.tar.zst
+```
+
+Build or import the cluster base before creating templates. Replacing it with
+`--force` affects templates in every namespace because each template requires
+the exact base content address it was created from. See the
+[Base guide](/guides/base/) for archive and replacement details.
 
 ## Create Namespaces
 
@@ -156,13 +190,15 @@ bastion opencode --key review-123
 
 The control plane stores the source secret, template, and environment IDs in
 Postgres. It creates node-local derivative resources only when needed. Template
-archives are stored in the configured S3 bucket so any node can restore the
-prepared source template before launching an environment.
+overlay archives are stored in the configured S3 bucket so any node with the
+matching synchronized base can import a prepared source template before
+launching an environment.
 
-During `templates create` and `env create`, the cluster API streams control-plane
-progress such as node selection, derivative import/export, archive storage, and
-record persistence through the normal `log` events. The CLI prints these
-`cluster:` progress lines to stderr alongside node-level creation logs.
+During `base build`, `base import`, `templates create`, and `env create`, the
+cluster API streams control-plane progress such as node selection, derivative
+import/export, archive storage, synchronization, and record persistence through
+the normal `log` events. The CLI prints these `cluster:` progress lines to stderr
+alongside node-level creation logs.
 
 Environment creation chooses a node with enough available vCPU, memory, and
 volume for the template's declared resources. If no registered node has enough

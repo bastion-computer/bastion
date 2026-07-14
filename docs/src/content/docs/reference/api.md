@@ -19,6 +19,9 @@ For example, `POST /v1/secrets` becomes
 `POST /v1/namespaces/ns_xxxxxx/secrets` with a namespace ID or
 `POST /v1/namespaces/by-key/team-a/secrets` with a namespace key.
 
+The base routes remain at `/v1/base` on both APIs. The base is global to a host
+or cluster and is never namespace-scoped.
+
 ## Health
 
 ```http
@@ -43,8 +46,9 @@ Returns host capacity and current allocations for live environments. `memory` an
 `volume` values are bytes. `vcpu.total` is calculated from host CPU topology as
 physical CPUs x cores per CPU x threads per core.
 
-Used capacity includes environments in `creating`, `running`, and `paused`
-states. It excludes `stopped`, `error`, and removed environments.
+Used capacity includes an environment when either its persisted status or live
+VM state is `creating`, `running`, or `paused`. This prevents a temporarily stale
+environment record from hiding a live VM's resource usage.
 
 Response:
 
@@ -67,6 +71,93 @@ Response:
   }
 }
 ```
+
+## Base
+
+The base is the singleton, template-agnostic disk layer used by every template.
+Its content address is stored on templates as `baseContentAddress`.
+
+### Get Base
+
+```http
+GET /v1/base
+```
+
+Response:
+
+```json
+{
+  "contentAddress": "sha256:...",
+  "createdAt": "<iso_timestamp>",
+  "updatedAt": "<iso_timestamp>"
+}
+```
+
+The route returns `404` when no base has been built or imported.
+
+### Build Base
+
+```http
+POST /v1/base/build?force=true
+Accept: application/x-ndjson
+```
+
+`force` defaults to `false`. Without it, building when a base already exists
+returns a conflict in the final stream event.
+
+Build responses are newline-delimited JSON. Progress uses `log` events:
+
+```json
+{ "type": "log", "log": "..." }
+```
+
+The final successful event contains the base metadata:
+
+```json
+{
+  "type": "result",
+  "base": {
+    "contentAddress": "sha256:...",
+    "createdAt": "<iso_timestamp>",
+    "updatedAt": "<iso_timestamp>"
+  }
+}
+```
+
+A logical failure is returned as the final event after streaming has started:
+
+```json
+{
+  "type": "error",
+  "error": "base already exists",
+  "status": 409
+}
+```
+
+### Export Base
+
+```http
+GET /v1/base/export
+Accept: application/vnd.bastion.base+tar+zstd
+```
+
+The response body is a zstd-compressed tar archive containing the base manifest,
+root disk, cloud-init seed, and guest SSH private key. Treat it as sensitive.
+
+### Import Base
+
+```http
+POST /v1/base/import?force=true
+Content-Type: application/vnd.bastion.base+tar+zstd
+Accept: application/x-ndjson
+```
+
+`force` defaults to `false`. Import uses the same `log`, `result`, and `error`
+stream events as base build.
+
+On the cluster API, base build and import store the archive in S3-compatible
+storage and synchronize it to registered nodes. The routes are global and do
+not accept namespace selection.
 
 ## Secrets
 
@@ -153,6 +244,9 @@ The response is the removed secret metadata without the secret value.
 
 ## Templates
 
+Creating or importing a template requires an existing base. The template's
+`baseContentAddress` must match the current host or cluster base.
+
 ### Create Template
 
 ```http
@@ -208,6 +302,7 @@ Result event:
   "template": {
     "id": "tpl_xxxxxx",
     "key": "dev",
+    "baseContentAddress": "sha256:...",
     "createdAt": "<iso_timestamp>"
   }
 }
@@ -240,6 +335,7 @@ Response:
     {
       "id": "tpl_xxxxxx",
       "key": "dev",
+      "baseContentAddress": "sha256:...",
       "createdAt": "<iso_timestamp>"
     }
   ]
@@ -269,6 +365,7 @@ Response:
       "init": []
     }
   },
+  "baseContentAddress": "sha256:...",
   "createdAt": "<iso_timestamp>"
 }
 ```
@@ -281,9 +378,10 @@ GET /v1/templates/by-key/dev/export
 Accept: application/vnd.bastion.template+tar+zstd
 ```
 
-The response body is a zstd-compressed tar archive containing the template config
-and prepared VM artifacts. Use the by-key route only for templates that have a
-key.
+The response body is a zstd-compressed tar archive containing a manifest with the
+template config and base content address, plus the immutable qcow2 template
+overlay. It does not contain cloud-init media or VM memory state. Use the by-key
+route only for templates that have a key.
 
 ### Import Template
 
@@ -293,7 +391,8 @@ Content-Type: application/vnd.bastion.template+tar+zstd
 ```
 
 The `key` query parameter is optional. Imports create a new template ID and do
-not preserve the exported ID or key.
+not preserve the exported ID or key. The current base must exactly match the
+archive's `baseContentAddress`.
 
 Response:
 
@@ -301,6 +400,7 @@ Response:
 {
   "id": "tpl_xxxxxx",
   "key": "dev-restored",
+  "baseContentAddress": "sha256:...",
   "createdAt": "<iso_timestamp>"
 }
 ```
@@ -592,6 +692,6 @@ Domain errors map to these statuses:
 ## Daemon API
 
 The daemon also exposes an internal API over its Unix socket. The host API uses
-it for `/v1/health`, `POST /v1/vms`, `GET /v1/vms/:id`, and
-`DELETE /v1/vms/:id`. Treat this API as an implementation detail unless you are
-working on Bastion itself.
+it for health, base build/get/import/export, template preparation and archive
+operations, and VM create/get/remove operations. Treat this API as an
+implementation detail unless you are working on Bastion itself.

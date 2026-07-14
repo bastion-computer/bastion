@@ -11,7 +11,7 @@ Bastion template plus prompt files for parallel sessions.
 
 Use it when you want a practical walkthrough that covers:
 
-- Installing and preparing Bastion.
+- Installing Bastion and building its shared base.
 - Creating a reusable template.
 - Creating parallel environments from that template.
 - Attaching over SSH, OpenCode, and `bastion mux`.
@@ -32,10 +32,16 @@ cd bastion-demo
 Then follow the repository README:
 
 ```sh
+bastion base build
 bastion templates create --key bastion-demo --file bastion/template.json
 bastion env create --template-key bastion-demo --key demo-fix-bug --tag demo
 bastion mux
 ```
+
+`bastion base build` is a one-time host setup step. It installs common guest
+components into the shared base; the demo template then adds Bun, Git, the
+project checkout, and project-specific OpenCode configuration in its lightweight
+overlay.
 
 The template installs Bun, clones the demo app into `/workspace/bastion-demo`,
 runs the tests, configures OpenCode to start in the project directory, and sets

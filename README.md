@@ -22,7 +22,7 @@
 
 Bastion is an open-source orchestrator for running background coding agents on your own Linux infrastructure. Each agent runs in a separate [Cloud Hypervisor](https://www.cloudhypervisor.org/) VM with a reproducible dev environment.
 
-Define an environment in JSON, prepare it once as a snapshot, and create disposable VMs for parallel tasks. Bastion can run on a single KVM host or schedule environments across an optional multi-node cluster.
+Define an environment in JSON, prepare its dependencies once as an immutable disk layer, and create disposable VMs for parallel tasks. Bastion can run on a single KVM host or schedule environments across an optional multi-node cluster.
 
 ## Why Bastion?
 
@@ -30,7 +30,7 @@ Bastion makes it easy to scale background coding agents into reproducible enviro
 
 - **VM-level isolation:** each environment has its own guest kernel, root filesystem, processes, and network.
 - **Declarative setup:** define CPU, memory, disk, agents, service tunnels, and lifecycle actions in schema-validated JSON.
-- **Prepared snapshots:** install dependencies during template creation, then replicate isolated copy-on-write environments from that prepared state.
+- **Layered environments:** prepare a shared base once, install project dependencies in a template overlay, then create isolated copy-on-write environments from that layer.
 - **Direct access:** connect through SSH, attach a local OpenCode TUI, or use `bastion mux` to move between persistent sessions.
 - **Conflict-free previews:** expose dev servers on the guest VM through named tunnels for host side previews.
 - **Self-hosted control:** start on one Linux machine, then add the cluster control plane when a single host is not enough.
@@ -51,8 +51,9 @@ The host needs:
 ```sh
 curl -fsSL https://bastion.computer/install.sh | bash
 
-bastion system check
 bastion system init --with-utilities
+bastion system check
+bastion base build
 ```
 
 The installer adds the `bastion` CLI, guest proxy, and systemd services for the host API and privileged VM daemon. Release archives are also available from [GitHub Releases](https://github.com/bastion-computer/bastion/releases).
@@ -83,7 +84,7 @@ JSON
 bastion templates create --key hello --file ./template.json
 ```
 
-Template creation boots a temporary VM, runs `actions.init`, and stores an immutable prepared root disk and VM snapshot.
+Template creation boots a temporary VM from the shared base, runs `actions.init`, and stores an immutable qcow2 overlay tied to that base.
 
 ### 3. Launch and enter an environment
 
@@ -130,9 +131,9 @@ The local control plane is split into two processes:
 1. `bastion start api` stores metadata, serves the HTTP API on `localhost:3148` by default, and runs without root privileges.
 2. `bastion start daemon` performs privileged Cloud Hypervisor operations behind a Unix socket.
 
-When a template is created, Bastion boots a temporary VM, runs the ordered `actions.init` steps, pauses it, and saves its prepared disk and VM snapshot. Creating an environment restores that snapshot, adds a small qcow2 writable overlay, runs optional `actions.start` steps, and exposes SSH, OpenCode, and configured service tunnels through the API.
+`bastion base build` prepares one template-agnostic root disk with common guest components. When a template is created, Bastion boots a temporary VM with a qcow2 overlay backed by that base, runs the ordered `actions.init` steps, and saves the immutable overlay. Creating an environment adds a fresh writable overlay backed by the template, cold-boots it with new cloud-init state, runs optional `actions.start` steps, and exposes SSH, OpenCode, and configured service tunnels through the API.
 
-For multiple hosts, the optional cluster API stores shared state in Postgres, stores prepared template archives in S3-compatible object storage, schedules environments onto registered nodes, and proxies connections to the node that owns each environment.
+For multiple hosts, the optional cluster API stores shared state in Postgres, stores the global base and template archives in S3-compatible object storage, synchronizes the base across nodes, schedules environments onto registered nodes, and proxies connections to the node that owns each environment.
 
 ## A more realistic template
 
@@ -199,7 +200,7 @@ See the [template guide](https://bastion.computer/guides/templates/) and [public
 
 ## Documentation
 
-Start with the [introduction](https://bastion.computer/introduction/) and [quick start](https://bastion.computer/quick-start/), then see the guides for [system setup](https://bastion.computer/guides/system/), [templates](https://bastion.computer/guides/templates/), [environments](https://bastion.computer/guides/environments/), and [clustering](https://bastion.computer/guides/cluster/). The site also includes complete [CLI](https://bastion.computer/reference/cli/) and [API](https://bastion.computer/reference/api/) references.
+Start with the [introduction](https://bastion.computer/introduction/) and [quick start](https://bastion.computer/quick-start/), then see the guides for [system setup](https://bastion.computer/guides/system/), the shared [base](https://bastion.computer/guides/base/), [templates](https://bastion.computer/guides/templates/), [environments](https://bastion.computer/guides/environments/), and [clustering](https://bastion.computer/guides/cluster/). The site also includes complete [CLI](https://bastion.computer/reference/cli/) and [API](https://bastion.computer/reference/api/) references.
 
 ## Feedback
 

@@ -12,11 +12,12 @@ The launch scope is intentionally small:
 
 | Concept      | What it does                                                           |
 | ------------ | ---------------------------------------------------------------------- |
-| Templates    | JSON definitions for VM resources and ordered initialization actions.  |
+| Base         | Shared template-agnostic root disk prepared once per host or cluster.  |
+| Templates    | JSON definitions and immutable disk overlays prepared from the base.   |
 | Environments | Running VM instances created from templates.                           |
 | Actions      | Built-in and custom setup steps such as `setup_node` and `setup_mise`. |
 | SSH          | Interactive shell and command execution inside running environments.   |
-| System setup | Host checks and Cloud Hypervisor asset installation.                   |
+| System setup | Host checks plus Cloud Hypervisor and OpenCode asset installation.     |
 
 ## Architecture
 
@@ -44,11 +45,11 @@ Templates can override those values per environment.
 
 ## Templates
 
-Templates are immutable prepared snapshots. A template defines optional VM
-resources, required `agents.opencode`, required `actions.init` steps, and
-optional `actions.start` steps. Init actions run once when the template is
-created. Start actions run each time an environment is restored from that
-prepared snapshot.
+Templates are immutable qcow2 overlays backed by the current base. A template
+defines optional VM resources, required `agents.opencode`, required
+`actions.init` steps, and optional `actions.start` steps. Init actions run once
+when the template is created. Start actions run each time an environment
+cold-boots from a fresh writable overlay backed by that template.
 
 Actions can be inline shell commands:
 
@@ -74,5 +75,6 @@ Actions can also reference built-in or custom action packages:
 
 ## Start Here
 
-Use the [Quick Start](/quick-start/) to install Bastion, prepare the host, create
-a template, launch an environment, and connect over SSH.
+Use the [Quick Start](/quick-start/) to install Bastion, prepare the host and
+[base](/guides/base/), create a template, launch an environment, and connect over
+SSH.

@@ -91,6 +91,13 @@ Create `template.json`:
 
 ## Create the Environment
 
+Complete [system setup](/guides/system/) and, if one does not already exist,
+build the shared base before using this template:
+
+```sh
+bastion base build
+```
+
 Create the secrets referenced by the template before registering it:
 
 ```sh

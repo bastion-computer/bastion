@@ -4,7 +4,8 @@ description: Host requirements and Cloud Hypervisor asset management.
 ---
 
 Bastion launches environments with Cloud Hypervisor. The `bastion system`
-commands check and install the host-side dependencies needed by that runtime.
+commands check and install the host-side dependencies and source assets needed
+by that runtime. They do not build the shared [base image](/guides/base/).
 
 ## Host Requirements
 
@@ -32,6 +33,7 @@ Bastion checks for these host utilities:
 | `qemu-img`   | Prepare root file system images.                                |
 | `mkfs.vfat`  | Build cloud-init seed media.                                    |
 | `mcopy`      | Write cloud-init files into seed media.                         |
+| `dnsmasq`    | Provide DHCP for each VM's TAP network.                         |
 | `ip`         | Create and configure TAP interfaces.                            |
 | `iptables`   | Configure forwarding and NAT.                                   |
 | `sysctl`     | Enable IPv4 forwarding.                                         |
@@ -74,16 +76,19 @@ them. To skip the prompt:
 bastion system init --with-utilities
 ```
 
-The command installs runtime assets under `<data-dir>/cloud-hypervisor`.
+The command installs Cloud Hypervisor assets under
+`<data-dir>/cloud-hypervisor` and pinned OpenCode assets under
+`<data-dir>/opencode`.
 
-| Asset                   | Description                                           |
-| ----------------------- | ----------------------------------------------------- |
-| Cloud Hypervisor binary | Static VMM binary used by the daemon.                 |
-| Guest kernel            | Ubuntu 24.04 kernel used to boot environments.        |
-| Guest initramfs         | Matching initramfs for the guest kernel.              |
-| Guest rootfs image      | Base Ubuntu image copied for each environment.        |
-| SSH key                 | Host-side key used for root SSH into guests.          |
-| Manifest                | Metadata for versions, paths, sources, and checksums. |
+| Asset                   | Description                                                           |
+| ----------------------- | --------------------------------------------------------------------- |
+| Cloud Hypervisor binary | Static VMM binary used by the daemon.                                 |
+| Guest kernel            | Ubuntu 24.04 kernel used to boot base, template, and environment VMs. |
+| Guest initramfs         | Matching initramfs for the guest kernel.                              |
+| Guest rootfs image      | Source Ubuntu image copied and prepared by `bastion base build`.      |
+| SSH key                 | Source key copied into a locally built base for guest root SSH.       |
+| OpenCode asset          | Pinned binary or archive installed into the guest during base build.  |
+| Manifests               | Metadata for versions, paths, sources, and checksums.                 |
 
 ## Clean System Dependencies
 
@@ -93,9 +98,9 @@ Run:
 bastion system clean
 ```
 
-This removes Bastion-managed Cloud Hypervisor assets from the data directory. It
-does not uninstall system utilities that were installed through the package
-manager.
+This removes Bastion-managed Cloud Hypervisor and OpenCode assets from the data
+directory. It does not remove bases, templates, environments, host metadata, or
+system utilities installed through the package manager.
 
 ## Start the Runtime Services
 
@@ -113,3 +118,10 @@ sudo bastion start daemon
 
 Both processes must point at the same data directory and daemon socket. The
 defaults are `~/.bastion` and `/run/bastion/bastiond.sock`.
+
+Once both services are running, [build or import the base](/guides/base/) before
+creating templates:
+
+```sh
+bastion base build
+```

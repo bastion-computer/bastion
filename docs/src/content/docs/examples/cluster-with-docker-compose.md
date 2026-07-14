@@ -4,7 +4,8 @@ description: Run the Bastion Cluster API with Postgres 18 and MinIO using Docker
 ---
 
 Use Docker Compose to run the Bastion cluster control plane, a Postgres 18
-database, and MinIO for S3-compatible template archive storage on one machine.
+database, and MinIO for S3-compatible base and template archive storage on one
+machine.
 The Bastion API container uses the latest published Docker Hub image:
 `bastioncomputer/bastion:latest`.
 
@@ -177,7 +178,17 @@ If the node API runs on the same Docker host, expose it on an address reachable
 from containers, such as `host.docker.internal`, your host's LAN address, or a
 private DNS name.
 
-After registering nodes and creating a namespace, use the cluster API URL and
+Build the global cluster base after registering at least one node:
+
+```sh
+docker compose exec -T cluster-api \
+  bastion --api-url http://localhost:3150 base build
+```
+
+The cluster stores the base in MinIO and synchronizes it to every registered
+node. Base commands are global and do not use a namespace.
+
+After building the base and creating a namespace, use the cluster API URL and
 namespace with the normal Bastion resource commands:
 
 ```sh
