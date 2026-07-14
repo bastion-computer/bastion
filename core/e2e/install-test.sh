@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SERVICE_USER="bastion-e2e"
+
 INSTALL_URL=""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -255,7 +257,7 @@ run_remote_install() {
   local env_id=$1
 
   log "running installer inside $env_id from local docs server"
-  run_cli ssh --id "$env_id" -- env DOCS_HOST="$DOCS_HOST" DOCS_PORT="$DOCS_PORT" LATEST_VERSION="$LATEST_VERSION" bash -s <<'INNER'
+  run_cli ssh --id "$env_id" -- env DOCS_HOST="$DOCS_HOST" DOCS_PORT="$DOCS_PORT" LATEST_VERSION="$LATEST_VERSION" SERVICE_USER="$SERVICE_USER" bash -s <<'INNER'
 set -euo pipefail
 
 fail() {
@@ -312,6 +314,36 @@ service_data_dir() {
   # shellcheck disable=SC1091
   . /etc/default/bastion
   printf '%s\n' "$BASTION_DATA_DIR"
+}
+
+assert_base_ssh_access() {
+  local data_dir
+  local expected_owner
+  local actual_owner
+  local actual_mode
+
+  data_dir="$(service_data_dir)"
+  expected_owner="$(id -u "$SERVICE_USER"):$(id -g "$SERVICE_USER")"
+  actual_owner="$(stat -c '%u:%g' "$data_dir/base")"
+  actual_mode="$(stat -c '%a' "$data_dir/base")"
+  if [ "$actual_owner" != "$expected_owner" ] || [ "$actual_mode" != "750" ]; then
+    fail "base directory access is $actual_owner $actual_mode, want $expected_owner 750"
+  fi
+
+  actual_owner="$(stat -c '%u:%g' "$data_dir/base/ssh_key")"
+  actual_mode="$(stat -c '%a' "$data_dir/base/ssh_key")"
+  if [ "$actual_owner" != "$expected_owner" ] || [ "$actual_mode" != "600" ]; then
+    fail "base SSH key access is $actual_owner $actual_mode, want $expected_owner 600"
+  fi
+}
+
+restrict_base_ssh_access_to_root() {
+  local data_dir
+
+  data_dir="$(service_data_dir)"
+  chown root:root "$data_dir/base" "$data_dir/base/ssh_key"
+  chmod 0750 "$data_dir/base"
+  chmod 0600 "$data_dir/base/ssh_key"
 }
 
 assert_bastion_opencode_attach() {
@@ -437,11 +469,15 @@ gateway=$3
 download_installer "$gateway"
 release_base_url="${INSTALL_URL%/install.sh}/e2e-releases/$LATEST_VERSION"
 
+if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
+  useradd --create-home "$SERVICE_USER"
+fi
+
 if ! grep -q 'bastion-computer/bastion' /tmp/bastion-install.sh; then
   fail "downloaded installer does not look like the local Bastion installer"
 fi
 
-curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | BASTION_INSTALL_VERSION="$LATEST_VERSION" BASTION_RELEASE_BASE_URL="$release_base_url" bash 2>&1 | tee /tmp/bastion-install.log
+curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | BASTION_INSTALL_VERSION="$LATEST_VERSION" BASTION_RELEASE_BASE_URL="$release_base_url" BASTION_SERVICE_USER="$SERVICE_USER" bash 2>&1 | tee /tmp/bastion-install.log
 
 grep -q 'checksum verified' /tmp/bastion-install.log || fail "installer did not verify the release checksum"
 grep -q 'services installed, enabled, and started' /tmp/bastion-install.log || fail "installer did not set up services by default"
@@ -453,6 +489,7 @@ grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastiond.se
 grep -q '^EnvironmentFile=/etc/default/bastion$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not read /etc/default/bastion"
 grep -q '^ExecStart=.*/bastion start daemon --socket-uid ' /etc/systemd/system/bastiond.service || fail "bastiond.service does not run bastion start daemon"
 grep -q '^ExecStart=.*/bastion start api$' /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not run bastion start api"
+grep -q "^User=$SERVICE_USER$" /etc/systemd/system/bastion-api.service || fail "bastion-api.service does not run as $SERVICE_USER"
 
 inner_network_prefix="$(choose_inner_network_prefix)"
 printf '\nBASTION_E2E_SENTINEL=preserve\nBASTION_VM_CPUS=1\nBASTION_VM_NETWORK_PREFIX=%s\n' "$inner_network_prefix" >>/etc/default/bastion
@@ -467,6 +504,8 @@ bastion system --data-dir "$data_dir" init --with-utilities
 bastion system --data-dir "$data_dir" check
 printf '[remote-install] building base before restart-preservation checks\n'
 bastion base build --force >/dev/null
+assert_base_ssh_access
+restrict_base_ssh_access_to_root
 
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastiond.service
 printf '\n# BASTION_E2E_UNIT_SENTINEL=reset\n' >>/etc/systemd/system/bastion-api.service
@@ -484,7 +523,7 @@ exec "$real_bastion" "\$@"
 EOF
 chmod +x "$bastion_path"
 
-curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | BASTION_INSTALL_VERSION="$LATEST_VERSION" BASTION_RELEASE_BASE_URL="$release_base_url" bash 2>&1 | tee /tmp/bastion-reinstall.log
+curl --connect-timeout 10 --max-time 60 -fsSL "$INSTALL_URL" | BASTION_INSTALL_VERSION="$LATEST_VERSION" BASTION_RELEASE_BASE_URL="$release_base_url" BASTION_SERVICE_USER="$SERVICE_USER" bash 2>&1 | tee /tmp/bastion-reinstall.log
 rm -f "$real_bastion"
 
 grep -q 'updating Bastion from v0.0.0' /tmp/bastion-reinstall.log || fail "installer did not enter the update path"
@@ -505,6 +544,7 @@ systemctl is-enabled --quiet bastion-api.service || fail "bastion-api.service is
 wait_active bastiond.service
 wait_active bastion-api.service
 wait_bastion_api
+assert_base_ssh_access
 verify_bastiond_restart_preserves_environment
 grep -q '^KillMode=process$' /etc/systemd/system/bastiond.service || fail "bastiond.service does not keep VM child processes outside daemon restarts"
 

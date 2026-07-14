@@ -511,7 +511,7 @@ func TestInstallBaseRecomputesInstalledContentAddress(t *testing.T) {
 		t.Fatalf("mutate source base rootfs: %v", err)
 	}
 
-	metadata, err := installBase(ctx, dataDir, srcDir, basearchive.Metadata{ContentAddress: staleAddress, CreatedAt: "created", UpdatedAt: "created"})
+	metadata, err := (Manager{DataDir: dataDir}).installBase(ctx, srcDir, basearchive.Metadata{ContentAddress: staleAddress, CreatedAt: "created", UpdatedAt: "created"})
 	if err != nil {
 		t.Fatalf("install base: %v", err)
 	}
@@ -541,6 +541,79 @@ func TestInstallBaseRecomputesInstalledContentAddress(t *testing.T) {
 	var archive bytes.Buffer
 	if err := basearchive.Write(ctx, &archive, loaded, basearchive.Files(baseDir(dataDir))); err != nil {
 		t.Fatalf("export installed base archive: %v", err)
+	}
+}
+
+func TestInstallBaseGrantsHostAPISSHAccess(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	srcDir := filepath.Join(dataDir, "source-base")
+	writeTestBaseArtifacts(t, srcDir)
+
+	uid, gid := testProxyOwner()
+	manager := Manager{DataDir: dataDir, ProxyUID: uid, ProxyGID: gid}
+
+	if _, err := manager.installBase(context.Background(), srcDir, basearchive.Metadata{}); err != nil {
+		t.Fatalf("install base: %v", err)
+	}
+
+	dir := baseDir(dataDir)
+	keyPath := filepath.Join(dir, basearchive.SSHKeyName)
+	assertPathMode(t, dir, 0o750)
+	assertPathMode(t, keyPath, 0o600)
+
+	if os.Geteuid() == 0 {
+		assertPathOwner(t, dir, uid, gid)
+		assertPathOwner(t, keyPath, uid, gid)
+	}
+}
+
+func TestEnsureBaseSSHAccessRepairsExistingBase(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	writeInstalledTestBase(t, dataDir)
+
+	dir := baseDir(dataDir)
+	keyPath := filepath.Join(dir, basearchive.SSHKeyName)
+	//nolint:gosec // Test intentionally restricts directory traversal before repair.
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatalf("restrict base directory: %v", err)
+	}
+
+	if err := os.Chmod(keyPath, 0o400); err != nil {
+		t.Fatalf("restrict base SSH key: %v", err)
+	}
+
+	uid, gid := testProxyOwner()
+	manager := Manager{DataDir: dataDir, ProxyUID: uid, ProxyGID: gid}
+
+	if err := manager.ensureBaseSSHAccess(); err != nil {
+		t.Fatalf("ensure base SSH access: %v", err)
+	}
+
+	assertPathMode(t, dir, 0o750)
+	assertPathMode(t, keyPath, 0o600)
+
+	if os.Geteuid() == 0 {
+		assertPathOwner(t, dir, uid, gid)
+		assertPathOwner(t, keyPath, uid, gid)
+	}
+}
+
+func TestEnsureBaseSSHAccessIgnoresMissingBase(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	manager := Manager{DataDir: dataDir, ProxyUID: os.Getuid(), ProxyGID: os.Getgid()}
+
+	if err := manager.ensureBaseSSHAccess(); err != nil {
+		t.Fatalf("ensure missing base SSH access: %v", err)
+	}
+
+	if _, err := os.Stat(baseDir(dataDir)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing base stat error = %v, want not exist", err)
 	}
 }
 
@@ -829,6 +902,14 @@ func assertPathOwner(t *testing.T, path string, wantUID, wantGID int) {
 	}
 }
 
+func testProxyOwner() (int, int) {
+	if os.Geteuid() == 0 {
+		return 12345, 12345
+	}
+
+	return os.Getuid(), os.Getgid()
+}
+
 func startTestCloudHypervisorProcess(t *testing.T) *exec.Cmd {
 	t.Helper()
 
@@ -956,7 +1037,7 @@ func writeInstalledTestBase(t *testing.T, dataDir string) basearchive.Metadata {
 	srcDir := filepath.Join(dataDir, "source-base")
 	writeTestBaseArtifacts(t, srcDir)
 
-	metadata, err := installBase(context.Background(), dataDir, srcDir, basearchive.Metadata{})
+	metadata, err := (Manager{DataDir: dataDir}).installBase(context.Background(), srcDir, basearchive.Metadata{})
 	if err != nil {
 		t.Fatalf("install test base: %v", err)
 	}
