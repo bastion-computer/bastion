@@ -15,7 +15,7 @@ The core package lives in `core/`. On Linux it builds the `bastion` and `bastion
 | ---- | ------- |
 | `actions` | Embedded built-in preset actions seeded into `<data-dir>/actions`. |
 | `cmd/bastion` | Minimal CLI/API/daemon binary entrypoint. |
-| `cmd/bastion-guest-proxy` | Minimal Linux guest-side vsock HTTP proxy installed into templates. |
+| `cmd/bastion-guest-proxy` | Minimal Linux guest-side vsock HTTP proxy installed into the shared base image. |
 | `pkg/sshtunnel` | Public SSH tunnel framing protocol shared by CLI/API SSH streams. |
 | `internal/cli` | Cobra command tree and CLI output handling. |
 | `internal/api` | Gin router assembly and HTTP server setup. Route definitions live here. |
@@ -86,7 +86,7 @@ Host-initiated guest proxy traffic must use `internal/tunnel.DialGuestProxy`; Cl
 
 - `--addr`: listen address. Defaults to `localhost:3150` and can be set with `BASTION_CLUSTER_ADDR`.
 - `--database-url`: Postgres connection URL. Defaults to `postgres://bastion:bastion@localhost:3151/bastion_cluster?sslmode=disable`, can be set with `BASTION_CLUSTER_DATABASE_URL`, and falls back to `DATABASE_URL` when set.
-- `--s3-bucket`, `--s3-endpoint`, `--s3-region`, `--s3-access-key-id`, `--s3-secret-access-key`, and `--s3-use-path-style`: S3-compatible storage for cluster template archives. Environment variables are `BASTION_CLUSTER_S3_BUCKET`, `BASTION_CLUSTER_S3_ENDPOINT`, `BASTION_CLUSTER_S3_REGION`, `BASTION_CLUSTER_S3_ACCESS_KEY_ID`, `BASTION_CLUSTER_S3_SECRET_ACCESS_KEY`, and `BASTION_CLUSTER_S3_USE_PATH_STYLE`; access key flags also fall back to `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+- `--s3-bucket`, `--s3-endpoint`, `--s3-region`, `--s3-access-key-id`, `--s3-secret-access-key`, and `--s3-use-path-style`: S3-compatible storage for cluster base and template archives. Environment variables are `BASTION_CLUSTER_S3_BUCKET`, `BASTION_CLUSTER_S3_ENDPOINT`, `BASTION_CLUSTER_S3_REGION`, `BASTION_CLUSTER_S3_ACCESS_KEY_ID`, `BASTION_CLUSTER_S3_SECRET_ACCESS_KEY`, and `BASTION_CLUSTER_S3_USE_PATH_STYLE`; access key flags also fall back to `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
 - `--log-format`: log handler format. Defaults to `json` and can be set with `BASTION_CLUSTER_LOG_FORMAT` or `BASTION_LOG_FORMAT`; supported values are `json` and `text`.
 - `--log-level`: minimum log level. Defaults to `info` and can be set with `BASTION_CLUSTER_LOG_LEVEL` or `BASTION_LOG_LEVEL`; supported values are `debug`, `info`, `warn`, and `error`.
 

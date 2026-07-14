@@ -103,6 +103,7 @@ export default defineConfig({
           label: "Guides",
           items: [
             { label: "System Setup", slug: "guides/system" },
+            { label: "Base", slug: "guides/base" },
             { label: "Templates", slug: "guides/templates" },
             { label: "Environments", slug: "guides/environments" },
             { label: "Cluster", slug: "guides/cluster" },

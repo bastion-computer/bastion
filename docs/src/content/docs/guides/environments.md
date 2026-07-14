@@ -3,10 +3,10 @@ title: Environments
 description: Create, list, inspect, and remove Bastion VM environments.
 ---
 
-An environment is a Cloud Hypervisor VM restored from a prepared template
-snapshot. It has its own process space, network interface, SSH server, and tiny
-qcow2 writable root disk overlay backed by the template's immutable prepared
-root disk.
+An environment is a Cloud Hypervisor VM with a writable qcow2 root disk overlay
+backed by an immutable template overlay, which is itself backed by the shared
+base. It has its own process space, network interface, SSH server, and fresh
+cloud-init state.
 
 ## Create an Environment
 
@@ -36,10 +36,10 @@ Attach tags with repeated `--tag` flags:
 bastion env create --template-key dev --tag repo:bastion --tag agent:review
 ```
 
-During creation, Bastion restores the template snapshot, starts DHCP for the
-environment TAP network, waits for SSH, runs any `actions.start` steps, and
-writes the final JSON environment to stdout. Init actions already ran during
-`bastion templates create`.
+During creation, Bastion creates the writable overlay, starts DHCP for the
+environment TAP network, writes fresh cloud-init media, cold-boots the VM, waits
+for SSH, runs any `actions.start` steps, and writes the final JSON environment to
+stdout. Init actions already ran during `bastion templates create`.
 
 Example response:
 
@@ -187,9 +187,11 @@ Environment status is derived from Cloud Hypervisor runtime state.
 
 When a failure is persisted, responses include `lastError`.
 
-The `/v1/utilization` API counts `creating`, `running`, and `paused`
-environments as capacity-consuming. It excludes `stopped`, `error`, and removed
-environments.
+The `/v1/utilization` API counts environments as capacity-consuming when either
+their environment status or live VM state is `creating`, `running`, or `paused`.
+This includes a live VM whose persisted environment status is temporarily stale.
+An environment is excluded only when neither its record nor VM state is one of
+those active states.
 
 ## Creation Logs
 

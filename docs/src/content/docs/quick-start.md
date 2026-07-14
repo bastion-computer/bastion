@@ -54,15 +54,17 @@ Check host dependencies:
 bastion system check
 ```
 
-Install Cloud Hypervisor assets and any missing supported utilities:
+Install Cloud Hypervisor and OpenCode assets plus any missing supported
+utilities, then verify the result:
 
 ```sh
 bastion system init --with-utilities
+bastion system check
 ```
 
 This downloads the Cloud Hypervisor binary, guest kernel, guest initramfs, root
-file system image, and SSH key into the Bastion data directory. The default data
-directory is `~/.bastion`.
+file system image, SSH key, and pinned OpenCode asset into the Bastion data
+directory. The default data directory is `~/.bastion`.
 
 ## Check Bastion
 
@@ -74,6 +76,19 @@ Check that both services are running:
 ```sh
 sudo systemctl status bastiond.service bastion-api.service
 ```
+
+## Build the Base
+
+Build the shared, template-agnostic base image:
+
+```sh
+bastion base build
+```
+
+The base contains common guest components used by every template. Bastion builds
+it once, then creates lightweight template overlays on top. See the
+[Base guide](/guides/base/) for inspection, backup, import, and replacement
+workflows.
 
 ## Create a Template
 
@@ -105,9 +120,9 @@ Register it with Bastion:
 bastion templates create --key hello --file ./template.json
 ```
 
-Template creation boots a temporary VM, runs `actions.init`, and stores a Cloud
-Hypervisor snapshot plus an immutable prepared root disk. Init logs stream to
-stderr while the final template metadata is written to stdout.
+Template creation boots a temporary VM from the base, runs `actions.init`, and
+stores the resulting immutable qcow2 overlay. Init logs stream to stderr while
+the final template metadata is written to stdout.
 
 The `hello` key is optional, but it gives the template a stable human-friendly
 name for later commands.
@@ -118,6 +133,7 @@ Example response:
 {
   "id": "tpl_xxxxxx",
   "key": "hello",
+  "baseContentAddress": "sha256:...",
   "createdAt": "<iso_timestamp>"
 }
 ```
@@ -130,9 +146,10 @@ Create an environment from the template:
 bastion env create --template-key hello --tag quickstart
 ```
 
-Environment creation restores the prepared template snapshot, creates a small
-qcow2 copy-on-write root disk overlay, gets a fresh DHCP lease, runs any
-`actions.start` steps, and prints the final JSON environment record to stdout.
+Environment creation adds a writable qcow2 overlay backed by the immutable
+template, cold-boots it with fresh cloud-init state, gets a fresh DHCP lease,
+runs any `actions.start` steps, and prints the final JSON environment record to
+stdout.
 
 Example response:
 
@@ -186,10 +203,10 @@ bastion templates remove --key hello
 
 ## Next Steps
 
-Read the [Templates guide](/guides/templates/) to define reusable environments,
-the [Environments guide](/guides/environments/) to manage VM lifecycle, and the
-[Custom Actions guide](/actions/custom-actions/) to package shared setup
-steps.
+Read the [Base guide](/guides/base/) to manage the shared image, the
+[Templates guide](/guides/templates/) to define reusable environments, the
+[Environments guide](/guides/environments/) to manage VM lifecycle, and the
+[Custom Actions guide](/actions/custom-actions/) to package shared setup steps.
 
 For a full practical walkthrough, use the
 [issue tracker demo repo](/examples/bastion-demo-repo/) to create parallel Bun

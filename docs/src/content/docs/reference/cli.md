@@ -57,22 +57,22 @@ Starts the cluster control plane API service.
 bastion start cluster [flags]
 ```
 
-| Flag                     | Environment                                                          | Default                                                                     | Description                              |
-| ------------------------ | -------------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------- |
-| `--addr`                 | `BASTION_CLUSTER_ADDR`                                               | `localhost:3150`                                                            | Cluster API listen address.              |
-| `--database-url`         | `BASTION_CLUSTER_DATABASE_URL`, then `DATABASE_URL`                  | `postgres://bastion:bastion@localhost:3151/bastion_cluster?sslmode=disable` | Cluster Postgres database URL.           |
-| `--s3-bucket`            | `BASTION_CLUSTER_S3_BUCKET`                                          |                                                                             | S3 bucket for cluster template archives. |
-| `--s3-endpoint`          | `BASTION_CLUSTER_S3_ENDPOINT`                                        |                                                                             | S3-compatible endpoint URL.              |
-| `--s3-region`            | `BASTION_CLUSTER_S3_REGION`                                          | `us-east-1`                                                                 | S3 region for template archives.         |
-| `--s3-access-key-id`     | `BASTION_CLUSTER_S3_ACCESS_KEY_ID`, then `AWS_ACCESS_KEY_ID`         |                                                                             | S3 access key ID.                        |
-| `--s3-secret-access-key` | `BASTION_CLUSTER_S3_SECRET_ACCESS_KEY`, then `AWS_SECRET_ACCESS_KEY` |                                                                             | S3 secret access key.                    |
-| `--s3-use-path-style`    | `BASTION_CLUSTER_S3_USE_PATH_STYLE`                                  | `false`                                                                     | Use path-style S3 URLs.                  |
-| `--log-format`           | `BASTION_CLUSTER_LOG_FORMAT`, then `BASTION_LOG_FORMAT`              | `json`                                                                      | `json` or `text`.                        |
-| `--log-level`            | `BASTION_CLUSTER_LOG_LEVEL`, then `BASTION_LOG_LEVEL`                | `info`                                                                      | `debug`, `info`, `warn`, or `error`.     |
+| Flag                     | Environment                                                          | Default                                                                     | Description                               |
+| ------------------------ | -------------------------------------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------- |
+| `--addr`                 | `BASTION_CLUSTER_ADDR`                                               | `localhost:3150`                                                            | Cluster API listen address.               |
+| `--database-url`         | `BASTION_CLUSTER_DATABASE_URL`, then `DATABASE_URL`                  | `postgres://bastion:bastion@localhost:3151/bastion_cluster?sslmode=disable` | Cluster Postgres database URL.            |
+| `--s3-bucket`            | `BASTION_CLUSTER_S3_BUCKET`                                          |                                                                             | S3 bucket for base and template archives. |
+| `--s3-endpoint`          | `BASTION_CLUSTER_S3_ENDPOINT`                                        |                                                                             | S3-compatible endpoint URL.               |
+| `--s3-region`            | `BASTION_CLUSTER_S3_REGION`                                          | `us-east-1`                                                                 | S3 region for base and template archives. |
+| `--s3-access-key-id`     | `BASTION_CLUSTER_S3_ACCESS_KEY_ID`, then `AWS_ACCESS_KEY_ID`         |                                                                             | S3 access key ID.                         |
+| `--s3-secret-access-key` | `BASTION_CLUSTER_S3_SECRET_ACCESS_KEY`, then `AWS_SECRET_ACCESS_KEY` |                                                                             | S3 secret access key.                     |
+| `--s3-use-path-style`    | `BASTION_CLUSTER_S3_USE_PATH_STYLE`                                  | `false`                                                                     | Use path-style S3 URLs.                   |
+| `--log-format`           | `BASTION_CLUSTER_LOG_FORMAT`, then `BASTION_LOG_FORMAT`              | `json`                                                                      | `json` or `text`.                         |
+| `--log-level`            | `BASTION_CLUSTER_LOG_LEVEL`, then `BASTION_LOG_LEVEL`                | `info`                                                                      | `debug`, `info`, `warn`, or `error`.      |
 
-Configure S3 storage before using cluster template and environment
-orchestration. Without template archive storage, node and namespace management
-can still run, but template archive operations fail.
+Configure S3 storage before using cluster base, template, and environment
+orchestration. Without archive storage, node and namespace management can still
+run, but base and template archive operations fail.
 
 ### `bastion start daemon`
 
@@ -99,7 +99,7 @@ environment tunnels, so it should match the user running `bastion start api`.
 ## `bastion system`
 
 Manages host dependencies, Cloud Hypervisor assets, and the pinned OpenCode
-binary used during template preparation.
+binary used during base preparation.
 
 On macOS, `bastion system` and its subcommands are no-ops that print a
 compatibility message because Cloud Hypervisor host setup is Linux-only.
@@ -114,6 +114,40 @@ bastion system [--data-dir DIR] clean
 | ------------------ | ------------ | --------------------------------------------------------------------- |
 | `--data-dir`       | `~/.bastion` | Directory for system assets. Can also be set with `BASTION_DATA_DIR`. |
 | `--with-utilities` | `false`      | Install missing supported utilities without prompting.                |
+
+`bastion system init` installs source assets but does not build the shared base.
+Run `bastion base build` after the host API and daemon are available.
+
+## `bastion base`
+
+Manages the singleton base image used by every template.
+
+```sh
+bastion base build [--force]
+bastion base get
+bastion base export > base.tar.zst
+bastion base import --file PATH [--force]
+```
+
+| Command  | Description                                                |
+| -------- | ---------------------------------------------------------- |
+| `build`  | Prepare and store a base from the installed system assets. |
+| `get`    | Return the current base content address and timestamps.    |
+| `export` | Stream the current base archive to stdout.                 |
+| `import` | Upload and install a base archive.                         |
+
+Build and import write progress to stderr and final metadata to stdout. Export
+writes the binary archive to stdout and progress to stderr. A second build or
+import returns a conflict unless `--force` is supplied.
+
+Each template stores the base `contentAddress` as `baseContentAddress`.
+Template imports and environment launches require an exact match, so replacing a
+base can make existing templates unusable. Base archives include the guest SSH
+private key and should be treated as sensitive.
+
+When the CLI points at the cluster API, these same commands manage the global
+cluster base and synchronize it across registered nodes. Namespace selectors do
+not apply to base commands.
 
 ## `bastion client`
 
@@ -184,12 +218,12 @@ bastion cluster nodes get (--id ID | --key KEY)
 bastion cluster nodes remove (--id ID | --key KEY)
 ```
 
-| Command  | Description                             |
-| -------- | --------------------------------------- |
-| `create` | Add a Bastion API node to the cluster.  |
-| `list`   | Return paginated cluster node metadata. |
-| `get`    | Return one cluster node by ID or key.   |
-| `remove` | Remove one cluster node by ID or key.   |
+| Command  | Description                                                          |
+| -------- | -------------------------------------------------------------------- |
+| `create` | Add a Bastion API node and synchronize the current base, if present. |
+| `list`   | Return paginated cluster node metadata.                              |
+| `get`    | Return one cluster node by ID or key.                                |
+| `remove` | Remove one cluster node by ID or key.                                |
 
 Node URLs must be absolute `http` or `https` URLs reachable from the cluster
 control plane. Node IDs start with `node_`. Node keys are optional, unique, and
@@ -231,9 +265,9 @@ bastion utilization
 ```
 
 The command calls `GET /v1/utilization` and writes JSON to stdout. `memory` and
-`volume` values are bytes. Used capacity includes environments in `creating`,
-`running`, and `paused` states. Against the cluster API, the response aggregates
-capacity across registered nodes.
+`volume` values are bytes. Used capacity includes an environment when either its
+record or live VM is in the `creating`, `running`, or `paused` state. Against the
+cluster API, the response aggregates capacity across registered nodes.
 
 ## `bastion secrets`
 
@@ -270,17 +304,22 @@ bastion templates import [--key KEY] --file PATH
 bastion templates remove (--id ID | --key KEY)
 ```
 
-| Command  | Description                                                      |
-| -------- | ---------------------------------------------------------------- |
-| `create` | Validate, initialize, snapshot, and store an immutable template. |
-| `list`   | Return paginated template metadata.                              |
-| `get`    | Return one template with full config.                            |
-| `export` | Stream a prepared template archive to stdout by ID or key.       |
-| `import` | Upload a prepared template archive and create a new template.    |
-| `remove` | Delete one template by ID or key.                                |
+| Command  | Description                                                       |
+| -------- | ----------------------------------------------------------------- |
+| `create` | Validate, initialize, and store an immutable base-backed overlay. |
+| `list`   | Return paginated template metadata.                               |
+| `get`    | Return one template with full config.                             |
+| `export` | Stream a prepared template archive to stdout by ID or key.        |
+| `import` | Upload a prepared template archive and create a new template.     |
+| `remove` | Delete one template by ID or key.                                 |
 
 Template keys are optional. When set, they must be unique. Unkeyed templates are
 referenced by ID.
+
+Creating or importing a template requires a base. Template metadata includes
+`baseContentAddress`, and imports require the current base to match the archive.
+Template archives contain a manifest and the prepared qcow2 overlay, without
+cloud-init media or VM memory state.
 
 Imports never preserve the exported template ID or key. Use `--key` on import to
 assign a new key to the restored template.
@@ -297,13 +336,13 @@ bastion env tunnels (--id ID | --key KEY)
 bastion env remove (--id ID | --key KEY)
 ```
 
-| Command   | Description                                                            |
-| --------- | ---------------------------------------------------------------------- |
-| `create`  | Restore a prepared template snapshot with an optional environment key. |
-| `list`    | Return paginated environments, optionally filtered by repeated tags.   |
-| `get`     | Return one environment after reconciling with the daemon.              |
-| `tunnels` | Return registered tunnel ports and API URLs.                           |
-| `remove`  | Tear down and delete an environment.                                   |
+| Command   | Description                                                          |
+| --------- | -------------------------------------------------------------------- |
+| `create`  | Cold-boot a fresh writable overlay with an optional environment key. |
+| `list`    | Return paginated environments, optionally filtered by repeated tags. |
+| `get`     | Return one environment after reconciling with the daemon.            |
+| `tunnels` | Return registered tunnel ports and API URLs.                         |
+| `remove`  | Tear down and delete an environment.                                 |
 
 Environment keys are optional. When set, they must be unique. `--template-key KEY`
 requires a keyed template; use `--template-id ID` for unkeyed templates.

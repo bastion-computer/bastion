@@ -127,6 +127,8 @@ Default data directory:
 ├── sqlite.db
 ├── actions/
 ├── cloud-hypervisor/
+├── opencode/
+├── base/
 ├── templates/
 └── environments/
 ```
@@ -141,14 +143,15 @@ Runtime files live under `/run/bastion` by default:
 
 Important paths:
 
-| Path                               | Description                                                   |
-| ---------------------------------- | ------------------------------------------------------------- |
-| `<data-dir>/client.json`           | Persisted CLI client option overrides.                        |
-| `<data-dir>/sqlite.db`             | Host API metadata database.                                   |
-| `<data-dir>/actions`               | Built-in and custom action packages.                          |
-| `<data-dir>/cloud-hypervisor`      | Cloud Hypervisor binary, guest images, SSH key, and manifest. |
-| `<data-dir>/opencode`              | Pinned OpenCode binary and manifest.                          |
-| `<data-dir>/templates/<tpl-id>`    | Prepared template root disk, cloud-init seed, and snapshot.   |
-| `<data-dir>/environments/<env-id>` | Persistent per-environment VM files and metadata.             |
-| `/run/bastion/vms/<vm-id>`         | Runtime symlink and socket files for live VMs.                |
-| `/run/bastion/bastiond.sock`       | Default daemon Unix socket.                                   |
+| Path                               | Description                                                          |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| `<data-dir>/client.json`           | Persisted CLI client option overrides.                               |
+| `<data-dir>/sqlite.db`             | Host API metadata database.                                          |
+| `<data-dir>/actions`               | Built-in and custom action packages.                                 |
+| `<data-dir>/cloud-hypervisor`      | Cloud Hypervisor binary, source guest images, SSH key, and manifest. |
+| `<data-dir>/opencode`              | Pinned OpenCode binary and manifest.                                 |
+| `<data-dir>/base`                  | Shared prepared root disk, cloud-init seed, SSH key, and metadata.   |
+| `<data-dir>/templates/<tpl-id>`    | Immutable template qcow2 overlay and base metadata.                  |
+| `<data-dir>/environments/<env-id>` | Writable overlay, fresh cloud-init media, and VM metadata.           |
+| `/run/bastion/vms/<vm-id>`         | Runtime symlink and socket files for live VMs.                       |
+| `/run/bastion/bastiond.sock`       | Default daemon Unix socket.                                          |

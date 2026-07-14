@@ -124,14 +124,18 @@ curl -fsSL https://bastion.computer/install.sh | bash
     }
     ```
 
-2.  Initialize the template.
+2.  Prepare the shared base and initialize the template.
 
     ```sh
+    bastion system init --with-utilities
+    bastion system check
+    bastion base build
     bastion secrets create --key OPENAI_API_KEY --value sk_xxxxxx
     bastion templates create --key acme-app --file ./template.json
     # {
     #   "id": "tpl_123",
     #   "key": "acme-app",
+    #   "baseContentAddress": "sha256:...",
     #   "createdAt": "..."
     # }
     ```

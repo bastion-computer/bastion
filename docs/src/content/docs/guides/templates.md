@@ -3,14 +3,18 @@ title: Templates
 description: Define reusable Bastion environment templates with JSON.
 ---
 
-Templates describe how Bastion prepares reusable environment snapshots. During
-template creation, Bastion boots a temporary Cloud Hypervisor VM, runs the init
-actions, snapshots the paused VM, and stores an immutable prepared root disk.
-Environments created from the template restore that snapshot, run any start
-actions, and then become ready. Template JSON records are immutable and
-validated against the public template schema.
+Templates describe how Bastion prepares reusable environment disk layers.
+During template creation, Bastion creates a qcow2 overlay backed by the shared
+[base](/guides/base/), boots a temporary Cloud Hypervisor VM, runs the init
+actions, and stores the resulting overlay as immutable. Environments add a new
+writable overlay, cold-boot with fresh cloud-init state, run any start actions,
+and then become ready. Template JSON records are immutable and validated against
+the public template schema.
 Template keys are optional human-friendly aliases. When a key is set, it must be
 unique. Unkeyed templates are referenced by ID.
+
+Build or import a base before creating a template. Templates record the base's
+content address and only work while that exact base is available.
 
 The current schema is available at
 [`/schemas/template.json`](/schemas/template.json).
@@ -98,10 +102,11 @@ underscores, and hyphens. Ports must be integers from `1` to `65535`.
 
 ## Agents
 
-Every template must declare an `agents` object with `opencode`. Bastion copies
-the OpenCode binary downloaded by `bastion system init` during template
-preparation before `actions.init`, snapshots the result, and restarts the
-OpenCode service during environment creation before `actions.start`.
+Every template must declare an `agents` object with `opencode`. Base construction
+installs the pinned OpenCode binary and its template-agnostic dependencies.
+Template preparation writes the configured auth, OpenCode config, working
+directory, and service definition before `actions.init`. Environment creation
+refreshes that configuration and restarts the service before `actions.start`.
 
 Minimal agent config:
 
@@ -162,12 +167,12 @@ being prepared, after it boots and SSH is reachable. If any init action fails,
 template creation fails and no reusable template is registered.
 
 `actions.start` is an optional ordered array of steps that run during
-`bastion env create`, after the environment is restored from the template
-snapshot and SSH is reachable. If any start action fails, environment creation
+`bastion env create`, after the environment cold-boots from its new writable
+overlay and SSH is reachable. If any start action fails, environment creation
 fails and the environment is recorded in an error state.
 
-Start actions are useful for per-environment setup that should not be baked into
-the template snapshot. Use them for work that should happen each time an
+Start actions are useful for per-environment setup that should not be persisted
+in the template overlay. Use them for work that should happen each time an
 environment is created, such as running `git pull` in a cloned repository to get
 the latest code changes.
 
@@ -297,7 +302,7 @@ template JSON, including `agents.opencode`, `actions.init`, `actions.start`,
 `run` commands, `working_directory`, action package inputs, and action package
 context.
 
-Values used by `actions.init` are baked into the prepared template snapshot.
+Values used by `actions.init` are persisted in the prepared template overlay.
 Use `actions.start` for values that should be resolved fresh for each new
 environment.
 
@@ -323,6 +328,10 @@ bastion templates create --key dev --file ./template.json
 
 Exactly one of `--config` or `--file` is required.
 
+Creation requires an existing base. If no base has been built or imported,
+Bastion returns a failed dependency error. See the [Base guide](/guides/base/)
+for setup instructions.
+
 Creation may take several minutes for templates with package installs or other
 expensive init work. Bastion streams init logs to stderr and writes the final
 template metadata to stdout. Start action logs stream later during
@@ -334,6 +343,7 @@ Example response:
 {
   "id": "tpl_xxxxxx",
   "key": "dev",
+  "baseContentAddress": "sha256:...",
   "createdAt": "<iso_timestamp>"
 }
 ```
@@ -355,13 +365,15 @@ Example response:
     {
       "id": "tpl_xxxxxx",
       "key": "dev",
+      "baseContentAddress": "sha256:...",
       "createdAt": "<iso_timestamp>"
     }
   ]
 }
 ```
 
-The list response contains metadata only. Use `get` to inspect the full
+The list response contains metadata only. `baseContentAddress` identifies the
+base required to import or launch the template. Use `get` to inspect the full
 configuration. Unkeyed entries omit `key`.
 
 ## Get a Template
@@ -394,9 +406,10 @@ Export by ID:
 bastion templates export --id tpl_xxxxxx > dev-template.tar.zst
 ```
 
-The archive contains the stored template config plus the prepared root disk,
-cloud-init seed image, and paused VM snapshot. Use it for backups or to replicate
-a prepared template to another Bastion host without rerunning init actions.
+The archive contains a manifest with the stored config and base content address,
+plus the prepared qcow2 root disk overlay. It does not contain cloud-init media
+or VM memory state. Use it for backups or to replicate a prepared template to
+another Bastion host without rerunning init actions.
 
 Import with a new key:
 
@@ -413,9 +426,22 @@ bastion templates import --file ./dev-template.tar.zst
 Imports always create a new template ID. They do not preserve the exported ID or
 key; pass `--key` when the restored template should have a human-friendly alias.
 
-Exported configs keep secret reference syntax, but prepared VM artifacts can
-contain values resolved during init actions. Treat exported archives as sensitive
-backup material.
+The destination must already have the exact base identified by the template
+archive. Export and import the base before its templates:
+
+```sh
+# Source host
+bastion base export > base.tar.zst
+bastion templates export --key dev > dev-template.tar.zst
+
+# Destination host
+bastion base import --file ./base.tar.zst
+bastion templates import --key dev --file ./dev-template.tar.zst
+```
+
+Exported configs keep secret reference syntax, but the prepared disk overlay can
+contain values resolved during init actions. Treat exported archives as
+sensitive backup material.
 
 ## Remove a Template
 
@@ -433,5 +459,6 @@ Remove by ID:
 bastion templates remove --id tpl_xxxxxx
 ```
 
-Removing a template also removes its prepared snapshot and immutable root disk.
-A template cannot be removed while environment records still depend on it.
+Removing a template also removes its immutable root disk overlay and prepared
+metadata. A template cannot be removed while environment records still depend
+on it.

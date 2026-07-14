@@ -54,7 +54,7 @@ Use package-qualified tasks such as `mise run //core:test`, `mise run //docs:dev
 The `core/` package owns the product runtime. On Linux it builds two binaries:
 
 - `bastion`: CLI, host API service, cluster control plane service, and privileged daemon entrypoint.
-- `bastion-guest-proxy`: guest-side vsock HTTP proxy installed into templates.
+- `bastion-guest-proxy`: guest-side vsock HTTP proxy installed into the shared base image.
 
 On Darwin, `mise run //core:build` builds the `bastion` binary with client commands and the cluster control plane. The host API, daemon, guest proxy, and VM runtime remain Linux-only, so the Darwin build removes any stale Linux runtime binaries.
 
