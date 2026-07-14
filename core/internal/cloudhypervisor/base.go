@@ -151,7 +151,7 @@ func (m Manager) BuildBase(ctx context.Context, req BuildBaseRequest) (basearchi
 		return basearchive.Metadata{}, err
 	}
 
-	metadata, err = installBase(ctx, m.DataDir, workspace.dir, metadata)
+	metadata, err = m.installBase(ctx, workspace.dir, metadata)
 	if err != nil {
 		_ = os.RemoveAll(workspace.dir)
 
@@ -249,7 +249,7 @@ func (m Manager) ImportBase(ctx context.Context, req ImportBaseRequest) (basearc
 		return basearchive.Metadata{}, err
 	}
 
-	metadata, err = installBase(ctx, m.DataDir, tmpDir, metadata)
+	metadata, err = m.installBase(ctx, tmpDir, metadata)
 	if err != nil {
 		return basearchive.Metadata{}, err
 	}
@@ -343,12 +343,16 @@ func (m Manager) failBasePreparation(vm VM, workspace workspace, err error) (bas
 	return basearchive.Metadata{}, failErr
 }
 
-func installBase(ctx context.Context, dataDir, srcDir string, metadata basearchive.Metadata) (basearchive.Metadata, error) {
+func (m Manager) installBase(ctx context.Context, srcDir string, metadata basearchive.Metadata) (basearchive.Metadata, error) {
 	if err := ctx.Err(); err != nil {
 		return basearchive.Metadata{}, err
 	}
 
-	finalDir := baseDir(dataDir)
+	if err := m.ensureBaseSSHAccessAt(srcDir); err != nil {
+		return basearchive.Metadata{}, fmt.Errorf("prepare base SSH access: %w", err)
+	}
+
+	finalDir := baseDir(m.DataDir)
 	if err := os.RemoveAll(finalDir); err != nil {
 		return basearchive.Metadata{}, fmt.Errorf("remove existing base: %w", err)
 	}
@@ -380,6 +384,41 @@ func installBase(ctx context.Context, dataDir, srcDir string, metadata basearchi
 	}
 
 	return metadata, nil
+}
+
+func (m Manager) ensureBaseSSHAccess() error {
+	return m.ensureBaseSSHAccessAt(baseDir(m.DataDir))
+}
+
+func (m Manager) ensureBaseSSHAccessAt(dir string) error {
+	dirInfo, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat base directory: %w", err)
+	}
+	if !dirInfo.IsDir() {
+		return errors.New("base path is not a directory")
+	}
+
+	keyPath := filepath.Join(dir, basearchive.SSHKeyName)
+	keyInfo, err := os.Lstat(keyPath)
+	if err != nil {
+		return fmt.Errorf("stat base SSH key: %w", err)
+	}
+	if !keyInfo.Mode().IsRegular() {
+		return errors.New("base SSH key is not a regular file")
+	}
+
+	if err := m.setProxyAccess(dir, 0o750); err != nil {
+		return fmt.Errorf("prepare base directory access: %w", err)
+	}
+	if err := m.setProxyAccess(keyPath, 0o600); err != nil {
+		return fmt.Errorf("prepare base SSH key access: %w", err)
+	}
+
+	return nil
 }
 
 func loadBase(dataDir string) (basearchive.Metadata, error) {

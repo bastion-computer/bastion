@@ -40,6 +40,10 @@ type ServerOptions struct {
 func RunServer(ctx context.Context, opts ServerOptions) error {
 	opts = opts.withDefaults()
 
+	if err := opts.Manager.ensureBaseSSHAccess(); err != nil {
+		return fmt.Errorf("prepare base SSH access: %w", err)
+	}
+
 	listener, err := listenUnixSocket(ctx, opts)
 	if err != nil {
 		return err

@@ -83,9 +83,10 @@ These settings apply to `bastion start daemon`.
 
 `bastion start daemon` must run as root. When run with `sudo`, it defaults its data
 directory to the invoking user's home directory rather than root's home.
-The configured socket owner/group is also applied to per-VM proxy sockets used
-by OpenCode and environment tunnels, so it should match the user running the
-host API service.
+The configured socket owner/group is also applied to per-VM proxy sockets and
+the shared base SSH private key used by the host API. Set `--socket-uid` to the
+UID running the host API service so it can open environment tunnels and SSH
+sessions.
 
 ## VM Defaults
 
