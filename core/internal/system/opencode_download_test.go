@@ -25,8 +25,8 @@ func TestOpenCodeHTTPDownloaderUsesPinnedReleaseAsset(t *testing.T) {
 		t.Fatalf("OpenCode release URL = %q, want pinned URL", openCodeReleasesURL)
 	}
 
-	if openCodeReleasesURL != "https://api.github.com/repos/anomalyco/opencode/releases/tags/v1.17.13" {
-		t.Fatalf("OpenCode metadata URL = %q, want v1.17.13 tag URL", openCodeReleasesURL)
+	if openCodeReleasesURL != "https://api.github.com/repos/anomalyco/opencode/releases/tags/v1.18.1" {
+		t.Fatalf("OpenCode metadata URL = %q, want v1.18.1 tag URL", openCodeReleasesURL)
 	}
 
 	if openCodeLinuxX64AssetName != "opencode-linux-x64.tar.gz" {

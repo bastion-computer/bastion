@@ -56,7 +56,7 @@ func TestCheckOpenCodeDisplaysPinnedAssetVersion(t *testing.T) {
 		t.Fatalf("render tree: %v", err)
 	}
 
-	if want := "opencode binary (v1.17.13)"; !strings.Contains(out.String(), want) {
+	if want := "opencode binary (v1.18.1)"; !strings.Contains(out.String(), want) {
 		t.Fatalf("check output missing %q:\n%s", want, out.String())
 	}
 }
