@@ -1252,7 +1252,7 @@ func writeTestOpenCodeAssets(t *testing.T, dataDir string) {
 		t.Fatalf("write opencode archive: %v", err)
 	}
 
-	manifest := `{"version":"v1.17.13","architecture":"x86_64","opencode":"opencode","archive":"opencode-linux-x64.tar.gz"}`
+	manifest := `{"version":"v1.18.1","architecture":"x86_64","opencode":"opencode","archive":"opencode-linux-x64.tar.gz"}`
 	if err := os.WriteFile(filepath.Join(dir, manifestFileName), []byte(manifest), 0o600); err != nil {
 		t.Fatalf("write opencode manifest: %v", err)
 	}

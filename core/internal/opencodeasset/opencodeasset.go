@@ -6,7 +6,7 @@ import "path/filepath"
 
 const (
 	// Version is the pinned OpenCode release downloaded by Bastion system setup.
-	Version = "v1.17.13"
+	Version = "v1.18.1"
 	// DirName is the Bastion data directory child containing OpenCode assets.
 	DirName = "opencode"
 	// BinaryName is the OpenCode executable file name.
