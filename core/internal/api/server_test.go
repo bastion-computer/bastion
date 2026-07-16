@@ -124,8 +124,8 @@ func TestDocumentedTemplateExamplesCreateTemplates(t *testing.T) {
 		key  string
 		path string
 	}{
-		{name: "quick start", key: "docs-quick-start", path: "../../../docs/src/content/docs/quick-start.md"},
-		{name: "bastion dev environment", key: "docs-bastion-dev", path: "../../../docs/src/content/docs/template-examples/bastion-dev-environment.md"},
+		{name: "get started", key: "docs-get-started", path: "../../../docs/src/content/docs/tutorials/get-started.md"},
+		{name: "parallel agents", key: "docs-parallel-agents", path: "../../../docs/src/content/docs/tutorials/run-parallel-agents.md"},
 	}
 
 	for _, tc := range cases {
@@ -983,16 +983,16 @@ func documentedTemplateConfig(t *testing.T, path string) json.RawMessage {
 		t.Fatalf("read documented template example %s: %v", path, err)
 	}
 
-	const marker = "```json title=\"template.json\"\n"
+	const marker = "<<'JSON'\n"
 
 	_, rest, ok := strings.Cut(string(contents), marker)
 	if !ok {
 		t.Fatalf("documented template example %s missing %q", path, marker)
 	}
 
-	config, _, ok := strings.Cut(rest, "\n```")
+	config, _, ok := strings.Cut(rest, "\n   JSON\n")
 	if !ok {
-		t.Fatalf("documented template example %s missing closing code fence", path)
+		t.Fatalf("documented template example %s missing closing heredoc delimiter", path)
 	}
 
 	return json.RawMessage(config)

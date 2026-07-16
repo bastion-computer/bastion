@@ -43,7 +43,7 @@ export default defineConfig({
         bastionHeaderLinks(),
       ],
       favicon: "/favicon.ico",
-      title: "bastion.computer",
+      title: "Bastion",
       head: [
         {
           tag: "meta",
@@ -77,86 +77,129 @@ export default defineConfig({
         dark: "./src/assets/logo-dark.png",
       },
       sidebar: [
-        { label: "Introduction", slug: "introduction" },
-        { label: "Quick Start", slug: "quick-start" },
         {
-          label: "Agents",
+          label: "Tutorials",
           items: [
             {
-              label: "llms.txt",
-              link: "/llms.txt",
-              attrs: { target: "_blank", rel: "noopener noreferrer" },
+              label: "Get started",
+              slug: "tutorials/get-started",
             },
             {
-              label: "llms-full.txt",
-              link: "/llms-full.txt",
-              attrs: { target: "_blank", rel: "noopener noreferrer" },
-            },
-            {
-              label: "llms-small.txt",
-              link: "/llms-small.txt",
-              attrs: { target: "_blank", rel: "noopener noreferrer" },
+              label: "Run parallel agents",
+              slug: "tutorials/run-parallel-agents",
             },
           ],
         },
         {
-          label: "Guides",
+          label: "How-to guides",
           items: [
-            { label: "System Setup", slug: "guides/system" },
-            { label: "Base", slug: "guides/base" },
-            { label: "Templates", slug: "guides/templates" },
-            { label: "Environments", slug: "guides/environments" },
-            { label: "Cluster", slug: "guides/cluster" },
-            { label: "SSH", slug: "guides/ssh" },
+            {
+              label: "Install, update, or remove Bastion",
+              slug: "how-to/install-update-remove",
+            },
+            { label: "Manage the base", slug: "how-to/manage-base" },
+            { label: "Manage secrets", slug: "how-to/manage-secrets" },
+            {
+              label: "Create and manage templates",
+              slug: "how-to/create-manage-templates",
+            },
+            {
+              label: "Create custom actions",
+              slug: "how-to/create-custom-actions",
+            },
+            {
+              label: "Manage environments",
+              slug: "how-to/manage-environments",
+            },
+            {
+              label: "Connect to environments",
+              slug: "how-to/connect-to-environments",
+            },
+            {
+              label: "Expose environment services",
+              slug: "how-to/expose-environment-services",
+            },
+            {
+              label: "Back up and restore",
+              slug: "how-to/back-up-and-restore",
+            },
+            {
+              label: "Deploy and operate a cluster",
+              slug: "how-to/deploy-and-operate-cluster",
+            },
+            {
+              label: "Access Bastion with Tailscale",
+              slug: "how-to/remote-access-with-tailscale",
+            },
+            {
+              label: "Run a cluster with Docker Compose",
+              slug: "how-to/run-cluster-with-docker-compose",
+            },
+            { label: "Troubleshoot Bastion", slug: "how-to/troubleshoot" },
           ],
         },
         {
           label: "Reference",
           items: [
-            { label: "CLI", slug: "reference/cli" },
-            { label: "API", slug: "reference/api" },
-            { label: "Configuration", slug: "reference/configuration" },
+            {
+              label: "Host requirements and configuration",
+              slug: "reference/host-requirements-and-configuration",
+            },
+            {
+              label: "Template configuration",
+              slug: "reference/template-configuration",
+            },
+            {
+              label: "Action manifest",
+              slug: "reference/action-manifest",
+            },
+            {
+              label: "Built-in actions",
+              slug: "reference/built-in-actions",
+            },
+            {
+              label: "Environment states and streams",
+              slug: "reference/environment-states-and-streams",
+            },
+            {
+              label: "CLI",
+              items: [
+                { label: "Host commands", slug: "reference/cli/host" },
+                { label: "Cluster commands", slug: "reference/cli/cluster" },
+              ],
+            },
+            {
+              label: "API",
+              items: [
+                { label: "Host API", slug: "reference/api/host" },
+                { label: "Cluster API", slug: "reference/api/cluster" },
+              ],
+            },
+            { label: "Glossary", slug: "reference/glossary" },
           ],
         },
         {
-          label: "Templates",
+          label: "Explanation",
           items: [
             {
-              label: "Schema",
-              link: "/schemas/template.json",
-              attrs: { target: "_blank", rel: "noopener noreferrer" },
+              label: "How Bastion works",
+              slug: "explanation/how-bastion-works",
             },
             {
-              label: "Bastion dev env",
-              slug: "template-examples/bastion-dev-environment",
-            },
-          ],
-        },
-        {
-          label: "Actions",
-          items: [
-            { label: "Custom Actions", slug: "actions/custom-actions" },
-            {
-              label: "Utility Tools",
-              slug: "actions/built-ins/utility-tools",
-            },
-            { label: "Runtimes", slug: "actions/built-ins/runtimes" },
-          ],
-        },
-        {
-          label: "Examples",
-          items: [
-            {
-              label: "Cluster with Docker Compose",
-              slug: "examples/cluster-with-docker-compose",
+              label: "Resource lifecycle",
+              slug: "explanation/resource-lifecycle",
             },
             {
-              label: "Issue tracker demo",
-              slug: "examples/bastion-demo-repo",
+              label: "Actions and secrets",
+              slug: "explanation/actions-and-secrets",
             },
             {
-              label: "Remote access with Tailscale",
-              slug: "examples/remote-access-with-tailscale",
+              label: "Clusters and namespaces",
+              slug: "explanation/clusters-and-namespaces",
+            },
+            {
+              label: "Security and operational limits",
+              slug: "explanation/security-and-operational-limits",
             },
           ],
         },

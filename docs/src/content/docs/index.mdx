@@ -9,25 +9,16 @@ editUrl: false
 hero:
   tagline: Bastion deploys virtual computers for coding agents.
   actions:
-    - text: Read the docs
-      link: /introduction/
+    - text: Get started
+      link: /tutorials/get-started/
       icon: right-arrow
     - text: Star on GitHub
       link: https://github.com/bastion-computer/bastion
       icon: github
       variant: minimal
-      attrs:
-        target: _blank
-        rel: noopener noreferrer
 ---
 
-import {
-  Card,
-  CardGrid,
-  Steps,
-  TabItem,
-  Tabs,
-} from "@astrojs/starlight/components";
+import { Card, CardGrid, TabItem, Tabs } from "@astrojs/starlight/components";
 import { ContainerSection } from "starlight-theme-black/components";
 import HeroAsciiArt from "../../components/HeroAsciiArt.astro";
 import envCreateClip from "../../assets/env-create.mp4?url";
@@ -54,23 +45,23 @@ curl -fsSL https://bastion.computer/install.sh | bash
 <CardGrid stagger>
 
 <Card title="Scale background coding agents" icon="rocket">
-  Run multiple background coding agents at the same time with zero runtime
-  conflicts from other agents working in parallel.
+  Give parallel agents separate guest file systems, process trees, and ports.
+  Shared host capacity and external services remain shared.
 </Card>
 
 <Card title="Run agent environments in isolation" icon="laptop">
-  Every coding agent runs in a separate VM, giving agents complete control of
-  its dev environment from file systems to background processes.
+  Run each coding agent in a separate VM where it controls its own guest file
+  system, packages, and background processes.
 </Card>
 
 <Card title="Define environments as JSON" icon="seti:json">
-  All Bastion environments are initialized with schema validated JSON templates
-  rather than manually configured.
+  Initialize environments from schema-validated JSON templates instead of
+  configuring each machine manually.
 </Card>
 
 <Card title="Self-host on your infrastructure" icon="linux">
-  Run Bastion on Linux systems with KVM support, from a local workstation to
-  cloud instances like AWS EC2.
+  Host VMs on Linux x86_64 with KVM and vhost-vsock support, including cloud
+  instances that provide nested virtualization.
 </Card>
 
 </CardGrid>
@@ -79,114 +70,44 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
 <ContainerSection>
 
-<Steps>
+## Choose your path
 
-1.  Define your agent's environment with JSON configuration.
-
-    ```json title="template.json"
-    {
-      "agents": {
-        "opencode": {
-          "working_directory": "/workspace/acme-app",
-          "auth": {
-            "openai": {
-              "type": "api",
-              "key": "${{ secret.OPENAI_API_KEY }}"
-            }
-          },
-          "config": {
-            "model": "openai/gpt-5.5",
-            "permission": "allow"
-          }
-        }
-      },
-      "actions": {
-        "init": [
-          {
-            "use": "setup_bun"
-          },
-          {
-            "run": "git clone https://github.com/.../acme-app.git",
-            "working_directory": "/workspace"
-          },
-          {
-            "run": "bun install",
-            "working_directory": "/workspace/acme-app"
-          }
-        ],
-        "start": [
-          {
-            "run": "nohup bun run dev &",
-            "working_directory": "/workspace/acme-app"
-          }
-        ]
-      }
-    }
-    ```
-
-2.  Prepare the shared base and initialize the template.
-
-    ```sh
-    bastion system init --with-utilities
-    bastion system check
-    bastion base build
-    bastion secrets create --key OPENAI_API_KEY --value sk_xxxxxx
-    bastion templates create --key acme-app --file ./template.json
-    # {
-    #   "id": "tpl_123",
-    #   "key": "acme-app",
-    #   "baseContentAddress": "sha256:...",
-    #   "createdAt": "..."
-    # }
-    ```
-
-3.  Deploy your agent.
-
-    ```sh
-    bastion env create --template-key acme-app --key agent-1 --tag issue-32
-    # {
-    #   "id": "env_abc",
-    #   "key": "agent-1",
-    #   "status": "running",
-    #   "templateId": "tpl_123",
-    #   "tags": ["issue-32"],
-    #   "createdAt": "...",
-    #   "updatedAt": "..."
-    # }
-    ```
-
-4.  Interface directly via OpenCode or SSH.
-
-        <Tabs>
-
-      <TabItem label="OpenCode">
-
-            ```sh
-            bastion opencode --key agent-1
-            ```
-
-          </TabItem>
-
-      <TabItem label="SSH">
-
-            ```sh
-            bastion ssh --key agent-1
-            ```
-
-          </TabItem>
-
-    </Tabs>
-
-</Steps>
+<CardGrid>
+  <Card title="Learn Bastion" icon="open-book">
+    Follow the [getting started tutorial](/tutorials/get-started/) to install
+    Bastion, create a reusable template, and enter your first environment.
+  </Card>
+  <Card title="Complete a task" icon="puzzle">
+    [Install, update, or remove Bastion](/how-to/install-update-remove/), then
+    choose another task-focused how-to guide from the sidebar.
+  </Card>
+  <Card title="Look up details" icon="document">
+    Consult the [host CLI reference](/reference/cli/host/) for command syntax,
+    or choose another technical reference from the sidebar.
+  </Card>
+  <Card title="Understand the system" icon="information">
+    Read [how Bastion works](/explanation/how-bastion-works/) for the
+    architecture, resource model, security boundaries, and tradeoffs.
+  </Card>
+</CardGrid>
 
 </ContainerSection>
 
 <ContainerSection>
 
+## See Bastion in action
+
+The following silent recordings supplement the equivalent text procedures in
+the how-to guides.
+
 <div style={{ maxWidth: "1270px", margin: "0 auto" }}>
 
 <Tabs>
   <TabItem label="1. Initialize a template">
+
+    Prepare a reusable template by running its initialization actions once. The
+    [text procedure](/tutorials/run-parallel-agents/#prepare-the-demo-template)
+    provides the equivalent commands and expected result.
 
     <video
       controls
@@ -199,6 +120,10 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
   </TabItem>
   <TabItem label="2. Deploy an environment">
+
+    Create an isolated, writable environment from the prepared template. The
+    [text procedure](/tutorials/run-parallel-agents/#create-two-isolated-environments)
+    provides the equivalent commands and expected result.
 
     <video
       controls
@@ -213,6 +138,10 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
   <TabItem label="3. Use the multiplexer">
 
+    Select an environment and attach to its persistent terminal session. The
+    [connection guide](/how-to/connect-to-environments/#switch-between-environments-with-mux)
+    describes the equivalent keyboard and command workflow.
+
     <video
       controls
       preload="metadata"
@@ -225,6 +154,10 @@ curl -fsSL https://bastion.computer/install.sh | bash
   </TabItem>
 
   <TabItem label="4. Proxy to environment services">
+
+    Forward a named service from an environment to a local port. The [text
+    procedure](/tutorials/run-parallel-agents/#verify-the-results) provides the
+    equivalent command and expected result.
 
     <video
       controls

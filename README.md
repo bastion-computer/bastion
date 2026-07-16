@@ -13,9 +13,8 @@
 </p>
 
 <p align="center">
-  <a href="https://bastion.computer/">Website</a> ·
-  <a href="https://bastion.computer/introduction/">Docs</a> ·
-  <a href="https://bastion.computer/quick-start/">Quick start</a> ·
+  <a href="https://bastion.computer/">Docs</a> ·
+  <a href="https://bastion.computer/tutorials/get-started/">Get started</a> ·
   <a href="https://github.com/bastion-computer/bastion-demo">Demo</a> ·
   <a href="https://github.com/orgs/bastion-computer/discussions">Discussions</a>
 </p>
@@ -131,7 +130,7 @@ The local control plane is split into two processes:
 1. `bastion start api` stores metadata, serves the HTTP API on `localhost:3148` by default, and runs without root privileges.
 2. `bastion start daemon` performs privileged Cloud Hypervisor operations behind a Unix socket.
 
-`bastion base build` prepares one template-agnostic root disk with common guest components. When a template is created, Bastion boots a temporary VM with a qcow2 overlay backed by that base, runs the ordered `actions.init` steps, and saves the immutable overlay. Creating an environment adds a fresh writable overlay backed by the template, cold-boots it with new cloud-init state, runs optional `actions.start` steps, and exposes SSH, OpenCode, and configured service tunnels through the API.
+`bastion base build` prepares one template-independent root disk with common guest components. When a template is created, Bastion boots a temporary VM with a qcow2 overlay backed by that base, runs the ordered `actions.init` steps, and saves the immutable overlay. Creating an environment adds a fresh writable overlay backed by the template, cold-boots it with new cloud-init state, runs optional `actions.start` steps, and exposes SSH, OpenCode, and configured service tunnels through the API.
 
 For multiple hosts, the optional cluster API stores shared state in Postgres, stores the global base and template archives in S3-compatible object storage, synchronizes the base across nodes, schedules environments onto registered nodes, and proxies connections to the node that owns each environment.
 
@@ -188,7 +187,7 @@ bastion env create --template-key project --key issue-123 --tag repo:project
 bastion proxy --env-key issue-123 --name web
 ```
 
-See the [template guide](https://bastion.computer/guides/templates/) and [public JSON schema](https://bastion.computer/schemas/template.json) for the complete format.
+See the [template configuration reference](https://bastion.computer/reference/template-configuration/) and [public JSON schema](https://bastion.computer/schemas/template.json) for the complete format.
 
 ## Current limitations and security
 
@@ -200,7 +199,7 @@ See the [template guide](https://bastion.computer/guides/templates/) and [public
 
 ## Documentation
 
-Start with the [introduction](https://bastion.computer/introduction/) and [quick start](https://bastion.computer/quick-start/), then see the guides for [system setup](https://bastion.computer/guides/system/), the shared [base](https://bastion.computer/guides/base/), [templates](https://bastion.computer/guides/templates/), [environments](https://bastion.computer/guides/environments/), and [clustering](https://bastion.computer/guides/cluster/). The site also includes complete [CLI](https://bastion.computer/reference/cli/) and [API](https://bastion.computer/reference/api/) references.
+Start with the [getting started tutorial](https://bastion.computer/tutorials/get-started/), use the [how-to guides](https://bastion.computer/how-to/install-update-remove/) for specific tasks, consult the [CLI reference](https://bastion.computer/reference/cli/host/) and [API reference](https://bastion.computer/reference/api/host/) for technical details, and read [how Bastion works](https://bastion.computer/explanation/how-bastion-works/) for architecture and concepts.
 
 ## Feedback
 
