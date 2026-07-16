@@ -44,6 +44,7 @@ export default defineConfig({
       ],
       favicon: "/favicon.ico",
       title: "bastion.computer",
+      customCss: ["./src/styles/sidebar.css"],
       head: [
         {
           tag: "meta",
