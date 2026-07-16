@@ -42,6 +42,8 @@ The Astro configuration file defines the Starlight integration with site metadat
 
 Custom Starlight component overrides live under `docs/src/components/`. When overriding components also provided by `starlight-theme-black`, register the local override with a Starlight plugin after `starlightThemeBlack()` so the theme can install its defaults before replacing individual components.
 
+Custom Starlight style overrides live under `docs/src/styles/` and are registered through the `customCss` option in `astro.config.mjs`.
+
 ### tsconfig.json
 
 Extends `astro/tsconfigs/strict` — this is **independent** of the root `tsconfig.json` because Astro requires different compiler options (e.g., `noEmit` cannot be used with `.astro` files).
