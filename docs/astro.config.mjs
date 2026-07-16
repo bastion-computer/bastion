@@ -91,6 +91,14 @@ export default defineConfig({
           ],
         },
         {
+          label: "Agents",
+          items: [
+            { label: "llms.txt", link: "/llms.txt" },
+            { label: "llms-full.txt", link: "/llms-full.txt" },
+            { label: "llms-small.txt", link: "/llms-small.txt" },
+          ],
+        },
+        {
           label: "How-to guides",
           items: [
             {
