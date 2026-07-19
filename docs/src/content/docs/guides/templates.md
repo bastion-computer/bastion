@@ -120,8 +120,8 @@ OpenCode supports these optional fields:
 | `auth`              | JSON object written to OpenCode `auth.json`.     |
 | `config`            | JSON object written to OpenCode `opencode.json`. |
 
-`auth` and `config` uses the same [schema](https://opencode.ai/docs/config/) defined
-by OpenCode.
+`config` follows OpenCode's [configuration schema](https://opencode.ai/docs/config/).
+`auth` uses OpenCode's separate provider credential format.
 
 Example with provider credentials and a custom model:
 
