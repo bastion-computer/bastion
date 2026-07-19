@@ -5,8 +5,7 @@ description: Create, list, inspect, and remove Bastion VM environments.
 
 An environment is a Cloud Hypervisor VM with a writable qcow2 root disk overlay
 backed by an immutable template overlay, which is itself backed by the shared
-base. It has its own process space, network interface, SSH server, and fresh
-cloud-init state.
+base. It has its own process space, network interface, and fresh cloud-init state.
 
 ## Create an Environment
 
@@ -39,7 +38,7 @@ bastion env create --template-key dev --tag repo:bastion --tag agent:review
 During creation, Bastion creates the writable overlay, starts DHCP for the
 environment TAP network, writes fresh cloud-init media, cold-boots the VM, waits
 for SSH, runs any `actions.start` steps, and writes the final JSON environment to
-stdout. Init actions already ran during `bastion templates create`.
+stdout. Init actions already ran during template creation.
 
 Example response:
 
@@ -56,6 +55,19 @@ Example response:
 ```
 
 Unkeyed environment responses omit `key`.
+
+### Creation Logs
+
+API clients receive newline-delimited JSON events with these types:
+
+| Event    | Meaning                                 |
+| -------- | --------------------------------------- |
+| `log`    | Creation progress output, when present. |
+| `result` | Final environment record.               |
+| `error`  | Final error and HTTP-style status code. |
+
+The CLI converts `log` events to stderr and prints the `result` environment as
+formatted JSON on stdout.
 
 ## List Environments
 
@@ -192,19 +204,3 @@ their environment status or live VM state is `creating`, `running`, or `paused`.
 This includes a live VM whose persisted environment status is temporarily stale.
 An environment is excluded only when neither its record nor VM state is one of
 those active states.
-
-## Creation Logs
-
-`bastion env create` uses the host API streaming creation endpoint. API clients
-receive newline-delimited JSON events with these types, though init log events
-are normally emitted by `bastion templates create` because init runs during
-template preparation:
-
-| Event    | Meaning                                 |
-| -------- | --------------------------------------- |
-| `log`    | Creation progress output, when present. |
-| `result` | Final environment record.               |
-| `error`  | Final error and HTTP-style status code. |
-
-The CLI converts `log` events to stderr and prints the `result` environment as
-formatted JSON on stdout.

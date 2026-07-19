@@ -9,8 +9,8 @@ This guide takes you from a fresh Linux host to a running Bastion environment.
 
 Bastion currently targets Linux hosts with x86_64 KVM support.
 
-Check that `/dev/kvm` exists and that your user can read and write it, and that
-the host exposes `/dev/vhost-vsock` for VM tunnel traffic:
+Check that `/dev/kvm` exists, your user can read and write to it, and that the
+host exposes `/dev/vhost-vsock` for VM tunnel traffic:
 
 ```sh
 ls -l /dev/kvm
@@ -22,7 +22,7 @@ instance type.
 
 ## Install Bastion
 
-Install `bastion`, `bastion-guest-proxy`, and the systemd services:
+Install Bastion with the following script:
 
 ```sh
 curl -fsSL https://bastion.computer/install.sh | bash
@@ -54,17 +54,20 @@ Check host dependencies:
 bastion system check
 ```
 
-Install Cloud Hypervisor and OpenCode assets plus any missing supported
-utilities, then verify the result:
+Install Cloud Hypervisor, OpenCode assets, and any missing utilities:
 
 ```sh
 bastion system init --with-utilities
-bastion system check
 ```
 
-This downloads the Cloud Hypervisor binary, guest kernel, guest initramfs, root
-file system image, SSH key, and pinned OpenCode asset into the Bastion data
-directory. The default data directory is `~/.bastion`.
+This downloads all the required assets to operate a Bastion environment into the
+Bastion data directory. The default data directory is `~/.bastion`.
+
+Run the system check again to ensure all dependencies were installed:
+
+```sh
+bastion system check
+```
 
 ## Check Bastion
 
@@ -79,16 +82,16 @@ sudo systemctl status bastiond.service bastion-api.service
 
 ## Build the Base
 
-Build the shared, template-agnostic base image:
+Build the shared base image that will be use to back all downstream templates and
+environments:
 
 ```sh
 bastion base build
 ```
 
 The base contains common guest components used by every template. Bastion builds
-it once, then creates lightweight template overlays on top. See the
-[Base guide](/guides/base/) for inspection, backup, import, and replacement
-workflows.
+it once, then creates lightweight template overlays on top. See the [Base guide](/guides/base/)
+for inspection, backup, import, and replacement workflows.
 
 ## Create a Template
 
@@ -146,10 +149,9 @@ Create an environment from the template:
 bastion env create --template-key hello --tag quickstart
 ```
 
-Environment creation adds a writable qcow2 overlay backed by the immutable
-template, cold-boots it with fresh cloud-init state, gets a fresh DHCP lease,
-runs any `actions.start` steps, and prints the final JSON environment record to
-stdout.
+Environment creation adds a writable qcow2 overlay backed by the immutable template,
+cold-boots it with fresh cloud-init state, runs any `actions.start` steps, and prints
+the final JSON environment record to stdout.
 
 Example response:
 
@@ -166,7 +168,7 @@ Example response:
 
 ## Connect Over SSH
 
-Run a command inside the environment:
+Run a command inside the environment (replace `env_xxxxxx` with the real id):
 
 ```sh
 bastion ssh --id env_xxxxxx -- cat /workspace/README.md
@@ -203,11 +205,10 @@ bastion templates remove --key hello
 
 ## Next Steps
 
-Read the [Base guide](/guides/base/) to manage the shared image, the
-[Templates guide](/guides/templates/) to define reusable environments, the
-[Environments guide](/guides/environments/) to manage VM lifecycle, and the
-[Custom Actions guide](/actions/custom-actions/) to package shared setup steps.
+Read the [base guide](/guides/base/) to manage the shared image, the
+[templates guide](/guides/templates/) to define reusable environments, the
+[environments guide](/guides/environments/) to manage VM lifecycle, and the
+[custom actions guide](/actions/custom-actions/) to package shared setup steps.
 
-For a full practical walkthrough, use the
-[issue tracker demo repo](/examples/bastion-demo-repo/) to create parallel Bun
-and TypeScript coding environments.
+For a full practical walkthrough, use the [issue tracker demo repo](/examples/bastion-demo-repo/)
+to create parallel Bun and TypeScript coding environments.

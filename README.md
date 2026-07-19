@@ -4,7 +4,7 @@
   </a>
 </p>
 
-<p align="center"><strong>Self-hosted virtual computers for background coding agents.</strong></p>
+<p align="center"><strong>Self-hosted virtual machines for background coding agents.</strong></p>
 
 <p align="center">
   <a href="https://github.com/bastion-computer/bastion/actions/workflows/ci.yml"><img src="https://github.com/bastion-computer/bastion/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>

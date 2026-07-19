@@ -5,9 +5,9 @@ description: Run Bastion across multiple Linux nodes with the cluster control pl
 
 The Bastion cluster control plane lets one public API manage many Linux machines
 running the normal Bastion host API and daemon. Clients keep using the same
-`secrets`, `templates`, and `env` commands, while the control plane stores source
-resources, schedules environments onto registered nodes, and proxies SSH,
-OpenCode, and tunnel traffic to the node that owns each environment.
+`secrets`, `templates`, and `env` commands, while the control plane coordinates
+resources, schedules environments onto registered nodes, and proxies traffic to
+the node that owns each environment.
 
 Use a cluster when a single Bastion host is not enough. Each node still runs its
 own `bastion start daemon` and `bastion start api`; the cluster API sits in front
@@ -29,18 +29,11 @@ directly.
 
 ## Start Bastion Nodes
 
-On each Linux machine that will run environments, install Bastion and prepare the
-Cloud Hypervisor and OpenCode assets as usual. Do not build a separate local base
-on each node; establish the shared base through the cluster API after registering
-the nodes.
+On each Linux machine that will run environments, [install Bastion](/quick-start)
+as usual. Do not build a separate local base on each node; establish the shared
+base through the cluster API after registering the nodes.
 
-```sh
-bastion system init --with-utilities
-sudo bastion start daemon
-bastion start api --addr 0.0.0.0:3148
-```
-
-Expose the host API at an HTTP or HTTPS URL reachable by the control plane, such
+Expose the host API at a HTTP or HTTPS URL reachable by the control plane, such
 as `https://node-a.internal:3148`. The node API remains the same single-host API
 documented elsewhere; cluster-managed resources on the node are derivatives that
 the control plane creates and cleans up.
@@ -131,12 +124,12 @@ bastion --api-url http://cluster.internal:3150 \
 Build or import the cluster base before creating templates. Replacing it with
 `--force` affects templates in every namespace because each template requires
 the exact base content address it was created from. See the
-[Base guide](/guides/base/) for archive and replacement details.
+[base guide](/guides/base/) for archive and replacement details.
 
 ## Create Namespaces
 
-Cluster resource commands require a namespace. Namespaces isolate source
-secrets, templates, environment keys, and environment lists.
+Cluster resource commands require a namespace. Namespaces isolate secrets, templates,
+and environments.
 
 Create one namespace per tenant, team, or automation context:
 
@@ -163,7 +156,6 @@ For regular use, persist the cluster API URL and namespace locally:
 ```sh
 bastion client set api-url http://cluster.internal:3150
 bastion client set namespace-key team-a
-bastion client config
 ```
 
 After that, normal resource commands target the cluster namespace:
@@ -219,6 +211,3 @@ registered node is not reachable or does not report healthy.
 Removing a cluster environment removes the derivative environment from its node.
 When no environments use a derivative template on a node, the control plane also
 removes that derivative template and its derivative secrets.
-
-Removing a source template is blocked while environments still use it. Remove the
-environments first, then remove the template and its stored archive.

@@ -319,8 +319,7 @@ referenced by ID.
 
 Creating or importing a template requires a base. Template metadata includes
 `baseContentAddress`, and imports require the current base to match the archive.
-Template archives contain a manifest and the prepared qcow2 overlay, without
-cloud-init media or VM memory state.
+Template archives contain a manifest and the prepared qcow2 overlay.
 
 Imports never preserve the exported template ID or key. Use `--key` on import to
 assign a new key to the restored template.
@@ -427,11 +426,8 @@ set. Duplicate tabs connected to the same environment receive suffixes such as
 
 ## `bastion version`
 
-Prints the CLI version.
+Prints the current release version.
 
 ```sh
 bastion version
 ```
-
-Local development builds report `dev`. Release builds can inject a version at
-build time.

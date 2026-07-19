@@ -3,21 +3,13 @@ title: Templates
 description: Define reusable Bastion environment templates with JSON.
 ---
 
-Templates describe how Bastion prepares reusable environment disk layers.
-During template creation, Bastion creates a qcow2 overlay backed by the shared
-[base](/guides/base/), boots a temporary Cloud Hypervisor VM, runs the init
-actions, and stores the resulting overlay as immutable. Environments add a new
-writable overlay, cold-boot with fresh cloud-init state, run any start actions,
-and then become ready. Template JSON records are immutable and validated against
-the public template schema.
-Template keys are optional human-friendly aliases. When a key is set, it must be
-unique. Unkeyed templates are referenced by ID.
+Templates describe how Bastion prepares replicable dev environments. During template
+creation, Bastion creates a qcow2 overlay backed by the shared [base](/guides/base/),
+boots a temporary Cloud Hypervisor VM, runs the init actions, and stores the resulting
+overlay as immutable. Every Bastion environment VM is then backed by a prepared
+template.
 
-Build or import a base before creating a template. Templates record the base's
-content address and only work while that exact base is available.
-
-The current schema is available at
-[`/schemas/template.json`](/schemas/template.json).
+The current template schema is available at [`/schemas/template.json`](/schemas/template.json).
 
 ## Shape
 
@@ -103,10 +95,9 @@ underscores, and hyphens. Ports must be integers from `1` to `65535`.
 ## Agents
 
 Every template must declare an `agents` object with `opencode`. Base construction
-installs the pinned OpenCode binary and its template-agnostic dependencies.
-Template preparation writes the configured auth, OpenCode config, working
-directory, and service definition before `actions.init`. Environment creation
-refreshes that configuration and restarts the service before `actions.start`.
+installs the pinned OpenCode binary. Template preparation writes the configured
+auth, config, working directory, and service definition before `actions.init`. Environment
+creation refreshes that configuration and restarts the service before `actions.start`.
 
 Minimal agent config:
 
@@ -129,6 +120,9 @@ OpenCode supports these optional fields:
 | `auth`              | JSON object written to OpenCode `auth.json`.     |
 | `config`            | JSON object written to OpenCode `opencode.json`. |
 
+`config` follows OpenCode's [configuration schema](https://opencode.ai/docs/config/).
+`auth` uses OpenCode's separate provider credential format.
+
 Example with provider credentials and a custom model:
 
 ```json
@@ -143,7 +137,7 @@ Example with provider credentials and a custom model:
         }
       },
       "config": {
-        "model": "anthropic/claude-sonnet-4-20250514",
+        "model": "anthropic/claude-opus-4-8",
         "permission": "ask"
       }
     }
@@ -167,9 +161,9 @@ being prepared, after it boots and SSH is reachable. If any init action fails,
 template creation fails and no reusable template is registered.
 
 `actions.start` is an optional ordered array of steps that run during
-`bastion env create`, after the environment cold-boots from its new writable
-overlay and SSH is reachable. If any start action fails, environment creation
-fails and the environment is recorded in an error state.
+environment creation, after the VM cold-boots from its new writable overlay
+and SSH is reachable. If any start action fails, environment creation fails and
+the environment is recorded in an error state.
 
 Start actions are useful for per-environment setup that should not be persisted
 in the template overlay. Use them for work that should happen each time an
@@ -260,7 +254,7 @@ environment file contents.
 
 Preset actions can run in either `actions.init` or `actions.start`.
 
-See [Custom Actions](/actions/custom-actions/) for custom action package
+See [custom actions](/actions/custom-actions/) for custom action package
 layout. Built-in actions are documented by category under
 [Utility Tools](/actions/built-ins/utility-tools/) and
 [Runtimes](/actions/built-ins/runtimes/).
@@ -302,10 +296,6 @@ template JSON, including `agents.opencode`, `actions.init`, `actions.start`,
 `run` commands, `working_directory`, action package inputs, and action package
 context.
 
-Values used by `actions.init` are persisted in the prepared template overlay.
-Use `actions.start` for values that should be resolved fresh for each new
-environment.
-
 ## Create a Template
 
 Create an unkeyed template from inline JSON:
@@ -329,13 +319,13 @@ bastion templates create --key dev --file ./template.json
 Exactly one of `--config` or `--file` is required.
 
 Creation requires an existing base. If no base has been built or imported,
-Bastion returns a failed dependency error. See the [Base guide](/guides/base/)
+Bastion returns a failed dependency error. See the [base guide](/guides/base/)
 for setup instructions.
 
 Creation may take several minutes for templates with package installs or other
 expensive init work. Bastion streams init logs to stderr and writes the final
 template metadata to stdout. Start action logs stream later during
-`bastion env create`.
+environment creation.
 
 Example response:
 
@@ -353,7 +343,7 @@ Unkeyed template responses omit `key`.
 ## List Templates
 
 ```sh
-bastion templates list --limit 20
+bastion templates list
 ```
 
 Example response:
@@ -407,9 +397,8 @@ bastion templates export --id tpl_xxxxxx > dev-template.tar.zst
 ```
 
 The archive contains a manifest with the stored config and base content address,
-plus the prepared qcow2 root disk overlay. It does not contain cloud-init media
-or VM memory state. Use it for backups or to replicate a prepared template to
-another Bastion host without rerunning init actions.
+plus the prepared qcow2 root disk overlay. Use it for backups or to replicate a
+prepared template to another Bastion host without rerunning init actions.
 
 Import with a new key:
 

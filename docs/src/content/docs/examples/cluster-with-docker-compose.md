@@ -14,10 +14,11 @@ more Bastion host API nodes that are reachable from the cluster API container.
 
 ## Requirements
 
-You need Docker with the Compose plugin installed:
+You need Docker with the Compose plugin and the Bastion CLI installed locally:
 
 ```sh
 docker compose version
+bastion version
 ```
 
 ## Create the Compose File
@@ -135,27 +136,26 @@ Add `-f` to follow new log output.
 The MinIO console is available at `http://localhost:9001` with username
 `minioadmin` and password `minioadmin`.
 
-## Smoke Test the Cluster API
+## Configure and Test the Cluster API
 
-Run the Bastion CLI from the cluster API container:
+Point your local Bastion CLI at the cluster API:
 
 ```sh
-docker compose exec -T cluster-api \
-  bastion --api-url http://localhost:3150 cluster namespaces create --key compose-demo
+bastion client set api-url http://localhost:3150
 ```
 
-List namespaces:
+Create a namespace and persist it for normal resource commands:
 
 ```sh
-docker compose exec -T cluster-api \
-  bastion --api-url http://localhost:3150 cluster namespaces list
+bastion cluster namespaces create --key compose-demo
+bastion client set namespace-key compose-demo
 ```
 
-Remove the smoke-test namespace:
+Confirm the resolved client configuration and list the cluster namespaces:
 
 ```sh
-docker compose exec -T cluster-api \
-  bastion --api-url http://localhost:3150 cluster namespaces remove --key compose-demo
+bastion client config
+bastion cluster namespaces list
 ```
 
 ## Register Bastion Nodes
@@ -164,36 +164,28 @@ The cluster API schedules environments onto normal Bastion host API nodes. Each
 node must run `bastion start daemon` and `bastion start api`, and the node URL
 must be reachable from the `cluster-api` container.
 
-Register a node through the Compose-managed cluster API, replacing the URL with a
-real node API URL:
+Register a node through the cluster API, replacing the URL with a real node API
+URL:
 
 ```sh
-docker compose exec -T cluster-api \
-  bastion --api-url http://localhost:3150 cluster nodes create \
+bastion cluster nodes create \
   --key node-a \
   --url https://node-a.internal:3148
 ```
 
-If the node API runs on the same Docker host, expose it on an address reachable
-from containers, such as `host.docker.internal`, your host's LAN address, or a
-private DNS name.
-
 Build the global cluster base after registering at least one node:
 
 ```sh
-docker compose exec -T cluster-api \
-  bastion --api-url http://localhost:3150 base build
+bastion base build
 ```
 
 The cluster stores the base in MinIO and synchronizes it to every registered
 node. Base commands are global and do not use a namespace.
 
-After building the base and creating a namespace, use the cluster API URL and
-namespace with the normal Bastion resource commands:
+With the cluster API URL and `compose-demo` namespace persisted in the local
+client configuration, use normal Bastion resource commands:
 
 ```sh
-bastion client set api-url http://localhost:3150
-bastion client set namespace-key team-a
 bastion templates list
 bastion env list
 ```
@@ -210,6 +202,14 @@ Remove the containers and local data volumes:
 
 ```sh
 docker compose down -v
+```
+
+If you no longer need the local client configuration for this cluster, remove
+the persisted namespace and API URL:
+
+```sh
+bastion client remove namespace-key
+bastion client remove api-url
 ```
 
 ## Security Notes
