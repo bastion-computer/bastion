@@ -87,7 +87,7 @@ The command installs Cloud Hypervisor assets under
 | Guest initramfs         | Matching initramfs for the guest kernel.                              |
 | Guest rootfs image      | Source Ubuntu image copied and prepared by `bastion base build`.      |
 | SSH key                 | Source key copied into a locally built base for guest root SSH.       |
-| OpenCode asset          | Pinned binary or archive installed into the guest during base build.  |
+| OpenCode asset          | Pinned binary installed into the guest during base build.             |
 | Manifests               | Metadata for versions, paths, sources, and checksums.                 |
 
 ## Clean System Dependencies
@@ -104,6 +104,10 @@ system utilities installed through the package manager.
 
 ## Start the Runtime Services
 
+:::note
+This can be skipped if installing via the [installer script](/quick-start/#install-bastion).
+:::
+
 `bastion start api` runs the unprivileged host API:
 
 ```sh
@@ -118,6 +122,8 @@ sudo bastion start daemon
 
 Both processes must point at the same data directory and daemon socket. The
 defaults are `~/.bastion` and `/run/bastion/bastiond.sock`.
+
+## Build the base image
 
 Once both services are running, [build or import the base](/guides/base/) before
 creating templates:

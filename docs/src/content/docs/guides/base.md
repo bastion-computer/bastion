@@ -11,20 +11,14 @@ for every template.
 Bastion's disk layers are:
 
 ```text
-system rootfs --copied and prepared--> base rootfs
-
 base rootfs
 └── immutable template overlay
     └── writable environment overlay
 ```
 
-`bastion system init` installs the source runtime assets, including the Ubuntu
-rootfs and pinned OpenCode asset. `bastion base build` boots that rootfs,
-installs the guest proxy, OpenCode, and other template-agnostic dependencies, and
-stores the prepared base under `<data-dir>/base`.
-
-Templates and environments boot normally with fresh cloud-init media. Base,
-template, and environment artifacts do not contain VM memory snapshots.
+`bastion system init` installs the runtime assets, including the Ubuntu rootfs.
+`bastion base build` boots that rootfs, installs the template-agnostic dependencies
+and stores the prepared base under `<data-dir>/base`.
 
 ## Build the Base
 
@@ -32,8 +26,6 @@ Initialize the system assets and start the host API and daemon before building
 the base. The installer starts both services by default.
 
 ```sh
-bastion system init --with-utilities
-bastion system check
 bastion base build
 ```
 

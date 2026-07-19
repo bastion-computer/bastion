@@ -43,9 +43,7 @@ If the remote command exits non-zero, the CLI exits non-zero with the same code.
 
 ## Connection Requirements
 
-SSH requires an environment with stored SSH metadata and a VM state that can be
-connected to. In normal use, wait for the environment to reach `running` before
-connecting.
+SSH requires an environment to reach the `running` state before connecting.
 
 Check status with:
 
@@ -60,9 +58,8 @@ environment after fixing the underlying template or host issue.
 
 The guest is provisioned with root SSH access using the key stored in the current
 base. A locally built base copies the key generated during Cloud Hypervisor asset
-installation; an imported base carries its archived key. Each environment gets
-fresh cloud-init media configured with that key. The host API upgrades the HTTP
-connection using the `bastion-ssh` protocol and multiplexes stdin, stdout,
+installation; an imported base carries its archived key. The host API upgrades the
+HTTP connection using the `bastion-ssh` protocol and multiplexes stdin, stdout,
 stderr, terminal resize, exit status, and error frames over that connection.
 
 Direct guest SSH is an implementation detail. Prefer `bastion ssh` so the CLI

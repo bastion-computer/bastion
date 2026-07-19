@@ -6,22 +6,6 @@ description: Local HTTP API endpoints exposed by Bastion.
 The host API is served by `bastion start api` on `http://localhost:3148` by default.
 The CLI is a client for this API.
 
-When using the cluster API served by `bastion start cluster`, namespace-scoped
-resource endpoints use the same secret, template, and environment paths with a
-namespace prefix:
-
-```http
-/v1/namespaces/:id/(secrets | templates | environments)/...
-/v1/namespaces/by-key/:key/(secrets | templates | environments)/...
-```
-
-For example, `POST /v1/secrets` becomes
-`POST /v1/namespaces/ns_xxxxxx/secrets` with a namespace ID or
-`POST /v1/namespaces/by-key/team-a/secrets` with a namespace key.
-
-The base routes remain at `/v1/base` on both APIs. The base is global to a host
-or cluster and is never namespace-scoped.
-
 ## Health
 
 ```http
@@ -154,10 +138,6 @@ Accept: application/x-ndjson
 
 `force` defaults to `false`. Import uses the same `log`, `result`, and `error`
 stream events as base build.
-
-On the cluster API, base build and import store the archive in S3-compatible
-storage and synchronize it to registered nodes. The routes are global and do
-not accept namespace selection.
 
 ## Secrets
 
@@ -380,8 +360,7 @@ Accept: application/vnd.bastion.template+tar+zstd
 
 The response body is a zstd-compressed tar archive containing a manifest with the
 template config and base content address, plus the immutable qcow2 template
-overlay. It does not contain cloud-init media or VM memory state. Use the by-key
-route only for templates that have a key.
+overlay. Use the by-key route only for templates that have a key.
 
 ### Import Template
 
@@ -688,6 +667,24 @@ Domain errors map to these statuses:
 | `409`  | Conflict, such as duplicate non-null keys or in-use templates. |
 | `424`  | Failed dependency, such as a VM runtime issue.                 |
 | `500`  | Unexpected server error.                                       |
+
+## Cluster API
+
+When using the cluster API served by `bastion start cluster`, namespace-scoped
+resource endpoints use the same secret, template, and environment paths with a
+namespace prefix:
+
+```http
+/v1/namespaces/:id/(secrets | templates | environments)/...
+/v1/namespaces/by-key/:key/(secrets | templates | environments)/...
+```
+
+For example, `POST /v1/secrets` becomes
+`POST /v1/namespaces/ns_xxxxxx/secrets` with a namespace ID or
+`POST /v1/namespaces/by-key/team-a/secrets` with a namespace key.
+
+The base routes remain at `/v1/base` on both APIs. The base is global to a host
+or cluster and is never namespace-scoped.
 
 ## Daemon API
 

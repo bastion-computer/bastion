@@ -17,8 +17,8 @@ Create `template.json`:
 {
   "resources": {
     "vcpu": 4,
-    "memory": 8,
-    "volume": 40
+    "memory": 16,
+    "volume": 80
   },
   "agents": {
     "opencode": {
@@ -30,15 +30,15 @@ Create `template.json`:
         }
       },
       "config": {
-        "model": "openai/gpt-5.5",
+        "model": "openai/gpt-5.6-sol",
         "permission": "allow",
         "agent": {
           "build": {
-            "model": "openai/gpt-5.5",
+            "model": "openai/gpt-5.6-sol",
             "variant": "xhigh"
           },
           "plan": {
-            "model": "openai/gpt-5.5",
+            "model": "openai/gpt-5.6-sol",
             "variant": "xhigh"
           }
         }
@@ -108,53 +108,20 @@ bastion secrets create --key OPENAI_API_KEY --value sk_xxxxxx
 Register the template:
 
 ```sh
-bastion templates create --key bastion-dev --file ./template.json
+bastion templates create --key bastion --file ./template.json
 ```
 
 Launch an environment:
 
 ```sh
-bastion env create --template-key bastion-dev --key bastion-dev-1 --tag dev
+bastion env create --template-key bastion --key bastion-1
 ```
 
 Open an interactive shell:
 
 ```sh
-bastion ssh --key bastion-dev-1
+bastion ssh --key bastion-1
 ```
 
 The shell starts in `/workspace/bastion` because the template configures that path
 as the default SSH directory.
-
-## Change OpenCode Providers
-
-The template uses OpenAI by default. To use Anthropic instead, create an
-`ANTHROPIC_API_KEY` secret and change the `agents.opencode.auth` and
-`agents.opencode.config` objects:
-
-```json
-{
-  "agents": {
-    "opencode": {
-      "working_directory": "/workspace/bastion",
-      "auth": {
-        "anthropic": {
-          "type": "api",
-          "key": "${{ secret.ANTHROPIC_API_KEY }}"
-        }
-      },
-      "config": {
-        "model": "anthropic/claude-sonnet-4-20250514"
-      }
-    }
-  }
-}
-```
-
-For other providers, update both objects. Also update or remove the
-`config` agent model and variant overrides when they should not use OpenAI
-`gpt-5.5` with `xhigh`.
-
-Secret references such as `${{ secret.OPENAI_API_KEY }}` are resolved by
-Bastion before guest setup runs. The resolved API key is written into the guest
-OpenCode auth file, so use a token scoped for these environments.

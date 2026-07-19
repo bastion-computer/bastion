@@ -82,8 +82,8 @@ with `bun --version` and `bun --revision`.
 
 ## `setup_mise`
 
-`setup_mise` installs mise to `/usr/local/bin/mise` and activates it for root
-shells by updating `/root/.bashrc`.
+`setup_mise` installs mise and activates it for root shells by updating
+`/root/.bashrc`.
 
 | Input     | Required | Default | Description                                        |
 | --------- | -------- | ------- | -------------------------------------------------- |
@@ -124,8 +124,7 @@ Omit `version` to install the latest mise release:
 
 ## `setup_uv`
 
-`setup_uv` installs uv with the official standalone installer. It installs uv and
-uvx to `/usr/local/bin`.
+`setup_uv` installs uv and uvx with the official standalone installer.
 
 | Input            | Required | Default                | Description                                            |
 | ---------------- | -------- | ---------------------- | ------------------------------------------------------ |
@@ -158,7 +157,7 @@ Example:
 ```
 
 Omit `version` to install the latest uv release, and omit `python_version` when a
-template only needs uv without preinstalling a managed Python:
+template only needs uv without pre-installing a managed Python:
 
 ```json
 {

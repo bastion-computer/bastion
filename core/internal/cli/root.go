@@ -60,7 +60,7 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:           "bastion",
-		Short:         "Bastion deploys virtual computers for coding agents.",
+		Short:         "Self-hosted virtual machines for background coding agents.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {

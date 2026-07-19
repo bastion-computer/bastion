@@ -1,13 +1,13 @@
 ---
 title: Bastion
-description: Bastion deploys virtual computers for coding agents.
+description: Self-hosted virtual machines for background coding agents.
 head:
   - tag: title
     content: Bastion Computer
 template: splash
 editUrl: false
 hero:
-  tagline: Bastion deploys virtual computers for coding agents.
+  tagline: Self-hosted virtual machines for background coding agents.
   actions:
     - text: Read the docs
       link: /introduction/
@@ -53,24 +53,24 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
 <CardGrid stagger>
 
-<Card title="Scale background coding agents" icon="rocket">
-  Run multiple background coding agents at the same time with zero runtime
-  conflicts from other agents working in parallel.
+<Card title="Run every coding agent in isolation" icon="laptop">
+  Each coding agent runs in its own VM with full control over its development
+  environment, from the filesystem to background processes.
 </Card>
 
-<Card title="Run agent environments in isolation" icon="laptop">
-  Every coding agent runs in a separate VM, giving agents complete control of
-  its dev environment from file systems to background processes.
+<Card title="Scale coding agents on demand" icon="rocket">
+  Orchestrate coding agents across a cluster of physical servers and run them
+  asynchronously in the background.
 </Card>
 
-<Card title="Define environments as JSON" icon="seti:json">
-  All Bastion environments are initialized with schema validated JSON templates
-  rather than manually configured.
+<Card title="Define environments with JSON" icon="seti:json">
+  Initialize every agent from a schema-validated JSON template with no manual
+  provisioning required.
 </Card>
 
 <Card title="Self-host on your infrastructure" icon="linux">
-  Run Bastion on Linux systems with KVM support, from a local workstation to
-  cloud instances like AWS EC2.
+  Run Bastion on any Linux machine with KVM support, from local workstations to
+  cloud servers.
 </Card>
 
 </CardGrid>
@@ -81,13 +81,13 @@ curl -fsSL https://bastion.computer/install.sh | bash
 
 <Steps>
 
-1.  Define your agent's environment with JSON configuration.
+1.  Define your agent's environment with a JSON template.
 
     ```json title="template.json"
     {
       "agents": {
         "opencode": {
-          "working_directory": "/workspace/acme-app",
+          "working_directory": "/workspace/app",
           "auth": {
             "openai": {
               "type": "api",
@@ -106,35 +106,25 @@ curl -fsSL https://bastion.computer/install.sh | bash
             "use": "setup_bun"
           },
           {
-            "run": "git clone https://github.com/.../acme-app.git",
+            "run": "git clone https://github.com/.../app.git",
             "working_directory": "/workspace"
           },
           {
             "run": "bun install",
-            "working_directory": "/workspace/acme-app"
-          }
-        ],
-        "start": [
-          {
-            "run": "nohup bun run dev &",
-            "working_directory": "/workspace/acme-app"
+            "working_directory": "/workspace/app"
           }
         ]
       }
     }
     ```
 
-2.  Prepare the shared base and initialize the template.
+2.  Initialize the template.
 
     ```sh
-    bastion system init --with-utilities
-    bastion system check
-    bastion base build
-    bastion secrets create --key OPENAI_API_KEY --value sk_xxxxxx
-    bastion templates create --key acme-app --file ./template.json
+    bastion templates create --key app --file ./template.json
     # {
     #   "id": "tpl_123",
-    #   "key": "acme-app",
+    #   "key": "app",
     #   "baseContentAddress": "sha256:...",
     #   "createdAt": "..."
     # }
@@ -143,7 +133,7 @@ curl -fsSL https://bastion.computer/install.sh | bash
 3.  Deploy your agent.
 
     ```sh
-    bastion env create --template-key acme-app --key agent-1 --tag issue-32
+    bastion env create --template-key app --key agent-1 --tag issue-32
     # {
     #   "id": "env_abc",
     #   "key": "agent-1",
@@ -155,9 +145,17 @@ curl -fsSL https://bastion.computer/install.sh | bash
     # }
     ```
 
-4.  Interface directly via OpenCode or SSH.
+4.  Interface directly via tmux, OpenCode, or SSH.
 
         <Tabs>
+
+      <TabItem label="tmux">
+
+          ```sh
+          bastion mux
+          ```
+
+        </TabItem>
 
       <TabItem label="OpenCode">
 

@@ -6,11 +6,6 @@ description: Built-in Bastion actions for development utilities.
 Utility tool actions install CLIs and helper tools commonly needed by coding
 agents in guest VMs.
 
-Secret references such as `${{ secret.GITHUB_TOKEN }}` are resolved before
-guest actions run. The resolved values are passed into the guest action and may
-be written to guest files by the action. Use scoped tokens appropriate for the
-environment.
-
 ## `set_default_ssh_directory`
 
 `set_default_ssh_directory` configures interactive root SSH shells to start in a
@@ -125,14 +120,9 @@ Example:
 }
 ```
 
-The action stores GitHub configuration under `/etc/bastion` and installs a
-wrapper at `/usr/local/bin/gh`. The wrapper exports `GH_TOKEN`,
-`GH_ENTERPRISE_TOKEN`, `GH_HOST`, and non-interactive update/prompt settings
-before delegating to `/usr/bin/gh`.
-
 The action also runs `gh auth setup-git` and configures `git` to use the
-GitHub CLI credential helper for the target host. Global `git` identity defaults
-to `bastion-agent <agent@bastion.computer>` and can be overridden with `name`
+GitHub CLI credential helper. Global `git` identity defaults to
+`bastion-agent <agent@bastion.computer>` and can be overridden with `name`
 and `email`.
 
 The token is stored in the guest at `/etc/bastion/github-token` with mode `600`.
@@ -191,8 +181,7 @@ For temporary IAM credentials, also pass `session_token`:
 ```
 
 The action downloads the official AWS CLI v2 Linux installer for the guest CPU
-architecture, installs it under `/usr/local/aws-cli`, and creates the
-`/usr/local/bin/aws` symlink.
+architecture.
 
 Credentials are written to root's AWS shared config files under `/root/.aws` with
 mode `600`, matching the AWS CLI's standard configuration file behavior. Treat
@@ -300,15 +289,9 @@ the action creates a Pixel 9 AVD named `pixel_9` and installs
 }
 ```
 
-The action installs command-line tools under `/opt/android-sdk`, installs
-`platform-tools`, `emulator`, one Android platform, and one Build Tools version,
-accepts Android SDK licenses non-interactively, sets `ANDROID_HOME` and
-`ANDROID_SDK_ROOT`, creates `/root/Android/sdk` as a compatibility symlink for
-tools that look in Android's default SDK location, and exposes common tools such
-as `sdkmanager`, `avdmanager`, `adb`, and `emulator` on `PATH`. Agent services
-import `/etc/environment`, so the SDK variables are also available to commands
-run from built-in agents. When `create_avd` is `true`, it also installs the
-selected system image and creates the AVD under `/root/.android/avd`.
+The action exposes common tools such as `sdkmanager`, `avdmanager`, `adb`, and `emulator`
+on `PATH`. When `create_avd` is `true`, it also installs the selected system image
+and creates the AVD under `/root/.android/avd`.
 
 ## `setup_maestro`
 
@@ -376,6 +359,5 @@ Omit `version` to install the latest Maestro CLI release:
 ```
 
 The action uses Maestro's official installer with `MAESTRO_VERSION` when a
-version is provided, installs Maestro under `/usr/local/maestro`, creates the
-`/usr/local/bin/maestro` symlink, sets `MAESTRO_DIR`, and verifies the
-installation with `maestro --version` and `maestro --help`.
+version is provided and verifies the installation with `maestro --version`
+and `maestro --help`.
